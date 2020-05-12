@@ -7,19 +7,41 @@ import agents from "../../agents.json";
 function save(sender, ipfshash, timechain) {
   return parseResult(ipfshash)
     .then((result) => {
-      if (result["/geo"] === "") {
-        result["/geo"] = "59.9646,30.4033";
-      }
       if (result["/geo"]) {
-        return Data.create({
-          sender,
-          resultHash: ipfshash,
-          data: JSON.stringify(result["/data"]),
-          geo: result["/geo"],
-          timechain,
+        const list = [];
+        const rows = result["/data"].sort(function (a, b) {
+          if (a.timestamp > b.timestamp) {
+            return 1;
+          }
+          if (a.timestamp < b.timestamp) {
+            return -1;
+          }
+          return 0;
         });
+        for (const row of rows) {
+          if (
+            Object.prototype.hasOwnProperty.call(row, "timestamp") &&
+            Number(row.timestamp) > 0
+          ) {
+            list.push({
+              sender,
+              resultHash: ipfshash,
+              data: JSON.stringify(row),
+              geo: result["/geo"],
+              timechain,
+            });
+          } else {
+            logger.info(
+              `skip row. not found timestamp. ${ipfshash} from ${sender}`
+            );
+          }
+        }
+        if (list.length > 0) {
+          return Data.bulkCreate(list);
+        }
+      } else {
+        logger.info(`skip msg. not found geo. ${ipfshash} from ${sender}`);
       }
-      logger.info(`skip ${ipfshash} from ${sender}`);
       return null;
     })
     .catch(() => {
@@ -43,9 +65,11 @@ export default async function worker(cb) {
     for (const item of list) {
       const ipfshash = recordToHash(item[1]);
       const timestamp = Number(item[0]);
-      const row = await save(agent, ipfshash, timestamp);
-      if (row) {
-        cb(row);
+      const rows = await save(agent, ipfshash, timestamp);
+      if (rows) {
+        for (const row of rows) {
+          cb(row);
+        }
       }
     }
   }

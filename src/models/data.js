@@ -39,11 +39,13 @@ export function getAll() {
   }).then((rows) => {
     return rows.map((row) => {
       const data = JSON.parse(row.data);
+      const timestamp = data.timestamp + "000";
+      delete data.timestamp;
       return {
         sender: row.sender,
         geo: row.geo,
         data: data,
-        timestamp: row.timechain,
+        timestamp,
       };
     });
   });
@@ -67,13 +69,15 @@ export function getByType(type) {
   }).then((rows) => {
     return rows.map((row) => {
       const data = JSON.parse(row.data);
+      const timestamp = data.timestamp + "000";
+      delete data.timestamp;
       if (data[type]) {
         return {
           sender: row.sender,
           geo: row.geo,
           value: data[type],
           data: data,
-          timestamp: row.timechain,
+          timestamp,
         };
       }
       return false;
@@ -92,9 +96,12 @@ export function getBySender(sender) {
     },
   }).then((rows) => {
     return rows.map((row) => {
+      const data = JSON.parse(row.data);
+      const timestamp = data.timestamp + "000";
+      delete data.timestamp;
       return {
-        data: JSON.parse(row.data),
-        timestamp: row.timechain,
+        data: data,
+        timestamp,
       };
     });
   });
@@ -116,7 +123,7 @@ export function getByDateRange(from, to) {
         pm10: data.PM10,
         pm25: data["PM2.5"],
         geo: row.geo,
-        date: moment(new Date(row.timechain)).format("DD.MM.YYYY HH:mm"),
+        date: moment(data.timestamp, "X").format("DD.MM.YYYY HH:mm"),
       };
     });
   });
@@ -145,7 +152,7 @@ export function getBySenderDateRange(sender, from, to) {
       return {
         pm10: data.PM10,
         pm25: data["PM2.5"],
-        date: moment(new Date(row.timechain)).format("DD.MM.YYYY HH:mm"),
+        date: moment(data.timestamp, "X").format("DD.MM.YYYY HH:mm"),
       };
     });
   });

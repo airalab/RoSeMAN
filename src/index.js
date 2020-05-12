@@ -18,9 +18,18 @@ app.use("/csv", csvRouter);
 
 const worker = net.createServer();
 worker.on("connection", (socket) => {
+  let buffered = "";
+  function processReceived() {
+    let received = buffered.split("\n");
+    while (received.length > 1) {
+      io.emit("update", JSON.parse(received[0]));
+      buffered = received.slice(1).join("\n");
+      received = buffered.split("\n");
+    }
+  }
   socket.on("data", (msg) => {
-    const item = JSON.parse(msg.toString("utf8"));
-    io.emit("update", item);
+    buffered += msg;
+    processReceived();
   });
 });
 

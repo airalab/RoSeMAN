@@ -26,10 +26,18 @@ export function parseResult(result, options = { topics: ["/data", "/geo"] }) {
     return rosBag(
       tmpFile.name,
       function (bag) {
+        let data;
         try {
-          message[bag.topic] = JSON.parse(bag.message.data);
+          data = JSON.parse(bag.message.data);
         } catch (error) {
-          message[bag.topic] = bag.message.data;
+          data = bag.message.data;
+        }
+        if (!Object.prototype.hasOwnProperty.call(message, bag.topic)) {
+          message[bag.topic] = data;
+        } else if (Array.isArray(message[bag.topic])) {
+          message[bag.topic].push(data);
+        } else {
+          message[bag.topic] = [message[bag.topic], data];
         }
       },
       options
