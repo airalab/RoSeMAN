@@ -22,7 +22,19 @@ worker.on("connection", (socket) => {
   function processReceived() {
     let received = buffered.split("\n");
     while (received.length > 1) {
-      io.emit("update", JSON.parse(received[0]));
+      try {
+        const msg = JSON.parse(received[0]);
+        if (
+          Object.prototype.hasOwnProperty.call(msg, "cmd") &&
+          msg.cmd === "new_point"
+        ) {
+          io.emit("update", msg.data);
+        }
+      } catch (_) {
+        if (config.DEBUG) {
+          logger.warn(`bad msg: ${received[0]}`);
+        }
+      }
       buffered = received.slice(1).join("\n");
       received = buffered.split("\n");
     }
@@ -30,6 +42,11 @@ worker.on("connection", (socket) => {
   socket.on("data", (msg) => {
     buffered += msg;
     processReceived();
+  });
+  socket.on("error", function (err) {
+    if (config.DEBUG) {
+      logger.warn(`error connect: ${err}`);
+    }
   });
 });
 

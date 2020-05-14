@@ -12,10 +12,13 @@ client.on("connect", function () {
     client.write(
       Buffer.from(
         JSON.stringify({
-          sender: item.sender,
-          geo: item.geo,
-          data: data,
-          timestamp,
+          cmd: "new_point",
+          data: {
+            sender: item.sender,
+            geo: item.geo,
+            data: data,
+            timestamp,
+          },
         }) + "\n"
       )
     );

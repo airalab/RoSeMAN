@@ -2,6 +2,7 @@ import Data, { getLastTimeByAgent } from "../models/data";
 import { getInstance, recordToHash } from "./chain";
 import { parseResult } from "../utils";
 import logger from "./logger";
+import config from "../config";
 import agents from "../../agents.json";
 
 function save(sender, ipfshash, timechain) {
@@ -65,6 +66,9 @@ export default async function worker(cb) {
     for (const item of list) {
       const ipfshash = recordToHash(item[1]);
       const timestamp = Number(item[0]);
+      if (config.DEBUG) {
+        logger.info(`start parse ipfs hash ${ipfshash} from ${agent}`);
+      }
       const rows = await save(agent, ipfshash, timestamp);
       if (rows) {
         for (const row of rows) {
