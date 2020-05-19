@@ -4,8 +4,9 @@ export default {
   DEBUG: process.env.DEBUG
     ? process.env.DEBUG.trim().toLowerCase() === "true"
     : false,
-  PORT: "3000",
-  PORT_WORKER: "3001",
+  HOST: process.env.HOST || "127.0.0.1",
+  PORT: process.env.PORT || "3000",
+  PORT_WORKER: process.env.PORT_WORKER || "3001",
   SSL_ENABLE: process.env.SSL_ENABLE
     ? process.env.SSL_ENABLE.trim().toLowerCase() === "true"
     : false,

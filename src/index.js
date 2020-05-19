@@ -51,8 +51,8 @@ worker.on("connection", (socket) => {
 });
 
 db.sequelize.sync().then(() => {
-  server.listen(config.PORT, () => {
-    logger.info("Web listening on port " + config.PORT);
+  server.listen(config.PORT, config.HOST, () => {
+    logger.info("Web listening " + config.HOST + " on port " + config.PORT);
     worker.listen(config.PORT_WORKER, () => {
       logger.info("Worker listening on port " + config.PORT_WORKER);
     });
