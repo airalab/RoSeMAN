@@ -8,40 +8,43 @@ import agents from "../../agents.json";
 function save(sender, ipfshash, timechain) {
   return parseResult(ipfshash)
     .then((result) => {
-      if (result["/geo"]) {
-        const list = [];
-        const rows = result["/data"].sort(function (a, b) {
-          if (a.timestamp > b.timestamp) {
-            return 1;
+      let json;
+      try {
+        json = JSON.parse(result);
+      } catch (e) {
+        logger.info(`error ${ipfshash} from ${sender}`);
+        return null;
+      }
+
+      for (const sensor_id in json) {
+        const data = json[sensor_id];
+        if (Object.prototype.hasOwnProperty.call(data, "model")) {
+          const list = [];
+          for (const item of data.measurements) {
+            if (
+              Object.prototype.hasOwnProperty.call(item, "geo") &&
+              Object.prototype.hasOwnProperty.call(item, "timestamp")
+            ) {
+              const { geo, timestamp, ...measurement } = item;
+              list.push({
+                sensor_id,
+                resultHash: ipfshash,
+                sender,
+                geo,
+                data: JSON.stringify(measurement),
+                timestamp: timestamp,
+                timechain,
+              });
+            } else {
+              logger.info(`skip row. ${ipfshash} from ${sender}`);
+            }
           }
-          if (a.timestamp < b.timestamp) {
-            return -1;
+          if (list.length > 0) {
+            return Data.bulkCreate(list);
           }
-          return 0;
-        });
-        for (const row of rows) {
-          if (
-            Object.prototype.hasOwnProperty.call(row, "timestamp") &&
-            Number(row.timestamp) > 0
-          ) {
-            list.push({
-              sender,
-              resultHash: ipfshash,
-              data: JSON.stringify(row),
-              geo: result["/geo"],
-              timechain,
-            });
-          } else {
-            logger.info(
-              `skip row. not found timestamp. ${ipfshash} from ${sender}`
-            );
-          }
+        } else {
+          logger.info(`skip msg. ${ipfshash} from ${sender}`);
         }
-        if (list.length > 0) {
-          return Data.bulkCreate(list);
-        }
-      } else {
-        logger.info(`skip msg. not found geo. ${ipfshash} from ${sender}`);
       }
       return null;
     })

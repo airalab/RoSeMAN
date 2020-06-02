@@ -1,10 +1,10 @@
 import moment from "moment";
 import stringify from "csv-stringify";
-import { getByDateRange, getBySenderDateRange } from "../models/data";
+import { getByDateRange, getBySensorDateRange } from "../models/data";
 
 export default {
   async download(req, res) {
-    const sender = req.params.agent;
+    const sensor = req.params.agent;
     const days = req.params.days;
 
     const from = moment().subtract(days, "day").format("x");
@@ -12,8 +12,8 @@ export default {
 
     let rows = [];
     try {
-      if (sender !== "all") {
-        rows = await getBySenderDateRange(sender, from, to);
+      if (sensor !== "all") {
+        rows = await getBySensorDateRange(sensor, from, to);
       } else {
         rows = await getByDateRange(from, to);
       }

@@ -1,4 +1,4 @@
-import { getAll, getByType, getBySender } from "../models/data";
+import { getAll, getByType, getBySensor } from "../models/data";
 
 export default {
   async all(req, res) {
@@ -41,11 +41,11 @@ export default {
       });
     }
   },
-  async sender(req, res) {
-    const sender = req.params.sender;
+  async sensor(req, res) {
+    const sensor = req.params.sensor;
 
     try {
-      const result = await getBySender(sender);
+      const result = await getBySensor(sensor);
 
       res.send({
         result,

@@ -2,6 +2,9 @@ import moment from "moment";
 import db from "./db";
 
 const Data = db.sequelize.define("data", {
+  sensor_id: {
+    type: db.Sequelize.STRING,
+  },
   sender: {
     type: db.Sequelize.STRING,
   },
@@ -14,6 +17,9 @@ const Data = db.sequelize.define("data", {
   geo: {
     type: db.Sequelize.STRING,
   },
+  timestamp: {
+    type: db.Sequelize.NUMBER,
+  },
   timechain: {
     type: db.Sequelize.NUMBER,
   },
@@ -25,27 +31,28 @@ export function getAll() {
   return Data.findAll({
     attributes: [
       [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
+      "sensor_id",
       "sender",
       "data",
       "geo",
       "timechain",
+      "timestamp",
     ],
     where: {
       timechain: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
     },
-    group: ["sender"],
+    group: ["sensor_id"],
   }).then((rows) => {
     return rows.map((row) => {
       const data = JSON.parse(row.data);
-      const timestamp = data.timestamp + "000";
-      delete data.timestamp;
       return {
+        sensor_id: row.sensor_id,
         sender: row.sender,
         geo: row.geo,
         data: data,
-        timestamp,
+        timestamp: row.timestamp,
       };
     });
   });
@@ -55,29 +62,30 @@ export function getByType(type) {
   return Data.findAll({
     attributes: [
       [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
+      "sensor_id",
       "sender",
       "data",
       "geo",
       "timechain",
+      "timestamp",
     ],
     where: {
       timechain: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
     },
-    group: ["sender"],
+    group: ["sensor_id"],
   }).then((rows) => {
     return rows.map((row) => {
       const data = JSON.parse(row.data);
-      const timestamp = data.timestamp + "000";
-      delete data.timestamp;
       if (data[type]) {
         return {
+          sensor_id: row.sensor_id,
           sender: row.sender,
           geo: row.geo,
           value: data[type],
           data: data,
-          timestamp,
+          timestamp: row.timestamp,
         };
       }
       return false;
@@ -85,11 +93,11 @@ export function getByType(type) {
   });
 }
 
-export function getBySender(sender) {
+export function getBySensor(sensor_id) {
   return Data.findAll({
-    attributes: ["data", "timechain"],
+    attributes: ["data", "timechain", "timestamp"],
     where: {
-      sender,
+      sensor_id,
       timechain: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
@@ -97,11 +105,9 @@ export function getBySender(sender) {
   }).then((rows) => {
     return rows.map((row) => {
       const data = JSON.parse(row.data);
-      const timestamp = data.timestamp + "000";
-      delete data.timestamp;
       return {
         data: data,
-        timestamp,
+        timestamp: row.timestamp,
       };
     });
   });
@@ -109,7 +115,7 @@ export function getBySender(sender) {
 
 export function getByDateRange(from, to) {
   return Data.findAll({
-    attributes: ["data", "geo", "timechain"],
+    attributes: ["data", "geo", "timechain", "timestamp"],
     where: {
       timechain: {
         [db.Sequelize.Op.between]: [from, to],
@@ -120,23 +126,23 @@ export function getByDateRange(from, to) {
     return rows.map((row) => {
       const data = JSON.parse(row.data);
       return {
-        pm10: data.PM10,
-        pm25: data["PM2.5"],
+        pm10: data.pm10,
+        pm25: data.pm25,
         geo: row.geo,
-        date: moment(data.timestamp, "X").format("DD.MM.YYYY HH:mm"),
+        date: moment(row.timestamp, "X").format("DD.MM.YYYY HH:mm"),
       };
     });
   });
 }
 
-export function getBySenderDateRange(sender, from, to) {
+export function getBySensorDateRange(sensor_id, from, to) {
   return Data.findAll({
-    attributes: ["data", "timechain"],
+    attributes: ["data", "timechain", "timestamp"],
     where: {
       [db.Sequelize.Op.and]: [
         db.Sequelize.where(
-          db.Sequelize.fn("lower", db.Sequelize.col("sender")),
-          db.Sequelize.fn("lower", sender)
+          db.Sequelize.fn("lower", db.Sequelize.col("sensor_id")),
+          db.Sequelize.fn("lower", sensor_id)
         ),
         {
           timechain: {
@@ -150,9 +156,9 @@ export function getBySenderDateRange(sender, from, to) {
     return rows.map((row) => {
       const data = JSON.parse(row.data);
       return {
-        pm10: data.PM10,
-        pm25: data["PM2.5"],
-        date: moment(data.timestamp, "X").format("DD.MM.YYYY HH:mm"),
+        pm10: data.pm10,
+        pm25: data.pm25,
+        date: moment(row.timestamp, "X").format("DD.MM.YYYY HH:mm"),
       };
     });
   });

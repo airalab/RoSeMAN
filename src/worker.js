@@ -6,18 +6,16 @@ const client = net.createConnection(config.PORT_WORKER);
 
 client.on("connect", function () {
   worker((item) => {
-    const data = JSON.parse(item.data);
-    const timestamp = data.timestamp + "000";
-    delete data.timestamp;
     client.write(
       Buffer.from(
         JSON.stringify({
           cmd: "new_point",
           data: {
+            sensor_id: item.sensor_id,
             sender: item.sender,
             geo: item.geo,
-            data: data,
-            timestamp,
+            data: JSON.parse(item.data),
+            timestamp: item.timestamp,
           },
         }) + "\n"
       )
