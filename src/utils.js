@@ -1,14 +1,13 @@
-import IPFS from "ipfs-api";
+import IPFS from "ipfs-http-client";
 import config from "./config";
 
-export const ipfs = new IPFS(config.IPFS);
+export const ipfs = IPFS(config.IPFS);
 
-function ipfsCat(hash) {
-  return ipfs.cat(hash);
-}
-
-export function parseResult(result) {
-  return ipfsCat(result).then(function (r) {
-    return r.toString("utf8");
-  });
+export async function parseResult(hash, options = {}) {
+  const source = ipfs.cat(hash, options);
+  const data = [];
+  for await (const chunk of source) {
+    data.push(chunk);
+  }
+  return Buffer.concat(data).toString();
 }

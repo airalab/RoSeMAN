@@ -6,7 +6,9 @@ import config from "../config";
 import agents from "../../agents.json";
 
 function save(sender, ipfshash, timechain) {
-  return parseResult(ipfshash)
+  return parseResult(ipfshash, {
+    timeout: config.TIMEOUT_CAT,
+  })
     .then((result) => {
       let json;
       try {

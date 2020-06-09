@@ -21,4 +21,5 @@ export default {
     port: "5001",
     protocol: "http",
   },
+  TIMEOUT_CAT: process.env.TIMEOUT || 60000,
 };
