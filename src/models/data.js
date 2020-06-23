@@ -11,6 +11,9 @@ const Data = db.sequelize.define("data", {
   resultHash: {
     type: db.Sequelize.STRING,
   },
+  model: {
+    type: db.Sequelize.NUMBER,
+  },
   data: {
     type: db.Sequelize.STRING,
   },

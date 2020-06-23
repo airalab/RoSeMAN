@@ -32,6 +32,7 @@ function save(sender, ipfshash, timechain) {
                 sensor_id,
                 resultHash: ipfshash,
                 sender,
+                model: data.model,
                 geo,
                 data: JSON.stringify(measurement),
                 timestamp: timestamp,
