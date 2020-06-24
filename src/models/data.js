@@ -30,12 +30,19 @@ const Data = db.sequelize.define("data", {
 
 export default Data;
 
-export function getAll() {
+export async function getAll() {
+  const model2 = await getLastRecordByModel(2);
+  const model3 = await getAllByModel(3);
+  return [...model2, ...model3];
+}
+
+export function getLastRecordByModel(model) {
   return Data.findAll({
     attributes: [
       [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
       "sensor_id",
       "sender",
+      "model",
       "data",
       "geo",
       "timechain",
@@ -45,6 +52,7 @@ export function getAll() {
       timechain: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
+      model: model,
     },
     group: ["sensor_id"],
   }).then((rows) => {
@@ -53,6 +61,40 @@ export function getAll() {
       return {
         sensor_id: row.sensor_id,
         sender: row.sender,
+        model: row.model,
+        geo: row.geo,
+        data: data,
+        timestamp: row.timestamp,
+      };
+    });
+  });
+}
+
+export function getAllByModel(model) {
+  return Data.findAll({
+    attributes: [
+      "id",
+      "sensor_id",
+      "sender",
+      "model",
+      "data",
+      "geo",
+      "timechain",
+      "timestamp",
+    ],
+    where: {
+      timechain: {
+        [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
+      },
+      model: model,
+    },
+  }).then((rows) => {
+    return rows.map((row) => {
+      const data = JSON.parse(row.data);
+      return {
+        sensor_id: row.sensor_id,
+        sender: row.sender,
+        model: row.model,
         geo: row.geo,
         data: data,
         timestamp: row.timestamp,
@@ -67,6 +109,7 @@ export function getByType(type) {
       [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
       "sensor_id",
       "sender",
+      "model",
       "data",
       "geo",
       "timechain",
@@ -85,6 +128,7 @@ export function getByType(type) {
         return {
           sensor_id: row.sensor_id,
           sender: row.sender,
+          model: row.model,
           geo: row.geo,
           value: data[type],
           data: data,

@@ -13,6 +13,7 @@ client.on("connect", function () {
           data: {
             sensor_id: item.sensor_id,
             sender: item.sender,
+            model: item.model,
             geo: item.geo,
             data: JSON.parse(item.data),
             timestamp: item.timestamp,

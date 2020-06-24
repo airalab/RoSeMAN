@@ -14,7 +14,7 @@ function save(sender, ipfshash, timechain) {
       try {
         json = JSON.parse(result);
       } catch (e) {
-        logger.info(`error ${ipfshash} from ${sender}`);
+        logger.info(`error json ${ipfshash} from ${sender}`);
         return null;
       }
 
