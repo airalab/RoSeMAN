@@ -20,11 +20,4 @@ yarn build
 yarn start
 ```
 
-### Run worker
-
-```
-yarn worker
-// Script worker can be added to cron, for example, 1 time per hour
-```
-
 ### Required ipfs

@@ -1,14 +1,8 @@
 import moment from "moment";
-import db from "./db";
+import db from "../../models/db";
 
 const Data = db.sequelize.define("data", {
   sensor_id: {
-    type: db.Sequelize.STRING,
-  },
-  sender: {
-    type: db.Sequelize.STRING,
-  },
-  resultHash: {
     type: db.Sequelize.STRING,
   },
   model: {
@@ -23,7 +17,13 @@ const Data = db.sequelize.define("data", {
   timestamp: {
     type: db.Sequelize.NUMBER,
   },
-  timechain: {
+  chain_sender: {
+    type: db.Sequelize.STRING,
+  },
+  chain_result: {
+    type: db.Sequelize.STRING,
+  },
+  chain_time: {
     type: db.Sequelize.NUMBER,
   },
 });
@@ -41,15 +41,15 @@ export function getLastRecordByModel(model) {
     attributes: [
       [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
       "sensor_id",
-      "sender",
+      "chain_sender",
       "model",
       "data",
       "geo",
-      "timechain",
+      "chain_time",
       "timestamp",
     ],
     where: {
-      timechain: {
+      chain_time: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
       model: model,
@@ -60,7 +60,7 @@ export function getLastRecordByModel(model) {
       const data = JSON.parse(row.data);
       return {
         sensor_id: row.sensor_id,
-        sender: row.sender,
+        sender: row.chain_sender,
         model: row.model,
         geo: row.geo,
         data: data,
@@ -75,15 +75,15 @@ export function getAllByModel(model) {
     attributes: [
       "id",
       "sensor_id",
-      "sender",
+      "chain_sender",
       "model",
       "data",
       "geo",
-      "timechain",
+      "chain_time",
       "timestamp",
     ],
     where: {
-      timechain: {
+      chain_time: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
       model: model,
@@ -93,7 +93,7 @@ export function getAllByModel(model) {
       const data = JSON.parse(row.data);
       return {
         sensor_id: row.sensor_id,
-        sender: row.sender,
+        sender: row.chain_sender,
         model: row.model,
         geo: row.geo,
         data: data,
@@ -108,15 +108,15 @@ export function getByType(type) {
     attributes: [
       [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
       "sensor_id",
-      "sender",
+      "chain_sender",
       "model",
       "data",
       "geo",
-      "timechain",
+      "chain_time",
       "timestamp",
     ],
     where: {
-      timechain: {
+      chain_time: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
     },
@@ -127,7 +127,7 @@ export function getByType(type) {
       if (data[type]) {
         return {
           sensor_id: row.sensor_id,
-          sender: row.sender,
+          sender: row.chain_sender,
           model: row.model,
           geo: row.geo,
           value: data[type],
@@ -142,10 +142,10 @@ export function getByType(type) {
 
 export function getBySensor(sensor_id) {
   return Data.findAll({
-    attributes: ["data", "timechain", "timestamp"],
+    attributes: ["data", "chain_time", "timestamp"],
     where: {
       sensor_id,
-      timechain: {
+      chain_time: {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
     },
@@ -160,11 +160,22 @@ export function getBySensor(sensor_id) {
   });
 }
 
+export function countTxBySender(sender) {
+  return Data.count({
+    where: {
+      chain_sender: sender,
+    },
+    group: ["chain_time"],
+  }).then((rows) => {
+    return rows.length;
+  });
+}
+
 export function getByDateRange(from, to) {
   return Data.findAll({
-    attributes: ["data", "geo", "timechain", "timestamp"],
+    attributes: ["data", "geo", "chain_time", "timestamp"],
     where: {
-      timechain: {
+      chain_time: {
         [db.Sequelize.Op.between]: [from, to],
       },
     },
@@ -184,7 +195,7 @@ export function getByDateRange(from, to) {
 
 export function getBySensorDateRange(sensor_id, from, to) {
   return Data.findAll({
-    attributes: ["data", "timechain", "timestamp"],
+    attributes: ["data", "chain_time", "timestamp"],
     where: {
       [db.Sequelize.Op.and]: [
         db.Sequelize.where(
@@ -192,7 +203,7 @@ export function getBySensorDateRange(sensor_id, from, to) {
           db.Sequelize.fn("lower", sensor_id)
         ),
         {
-          timechain: {
+          chain_time: {
             [db.Sequelize.Op.between]: [from, to],
           },
         },
@@ -211,18 +222,26 @@ export function getBySensorDateRange(sensor_id, from, to) {
   });
 }
 
-export function getLastTimeByAgent(sender) {
+export function save(list) {
+  if (list.length > 0) {
+    return Data.bulkCreate(list);
+  }
+  return null;
+}
+
+export function getLastTimeBySender(sender) {
   return Data.findOne({
-    attributes: ["timechain"],
+    attributes: ["chain_time"],
     where: {
-      sender,
+      chain_sender: sender,
     },
-    order: [["timechain", "DESC"]],
+    order: [["chain_time", "DESC"]],
     raw: true,
   }).then((row) => {
-    let last = null;
+    // let last = null;
+    let last = 1594816986000;
     if (row !== null) {
-      last = row.timechain;
+      last = row.chain_time;
     }
     return last;
   });

@@ -1,13 +1,6 @@
-import IPFS from "ipfs-http-client";
-import config from "./config";
+import axios from "axios";
 
-export const ipfs = IPFS(config.IPFS);
-
-export async function parseResult(hash, options = {}) {
-  const source = ipfs.cat(hash, options);
-  const data = [];
-  for await (const chunk of source) {
-    data.push(chunk);
-  }
-  return Buffer.concat(data).toString();
+export async function cat(hash) {
+  const res = await axios.get(`https://gateway.pinata.cloud/ipfs/${hash}`);
+  return JSON.stringify(res.data);
 }

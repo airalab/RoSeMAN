@@ -22,7 +22,6 @@ export default {
     protocol: "http",
   },
   TIMEOUT_CAT: process.env.TIMEOUT || 60000,
-  START_TIME: process.env.START_TIME || 0,
+  START_TIME: process.env.START_TIME || 1594816986000,
   WORKER_INTERVAL: process.env.WORKER_INTERVAL || 5000,
-  WORKER_MODULE: process.env.WORKER_MODULE || "sensor",
 };
