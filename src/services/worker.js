@@ -1,4 +1,5 @@
 import { getInstance, recordToHash } from "./chain";
+import moment from "moment";
 import { cat } from "../utils";
 import logger from "./logger";
 import config from "../config";
@@ -8,7 +9,7 @@ const module = require(`../modules/${config.WORKER_MODULE}`);
 
 function read(ipfshash) {
   return cat(ipfshash, {
-    timeout: config.TIMEOUT_CAT,
+    timeout: Number(config.TIMEOUT_CAT),
   })
     .then((result) => {
       try {
@@ -33,14 +34,18 @@ function read(ipfshash) {
 export default async function worker(cb) {
   const api = await getInstance();
   for (const agent of agents) {
-    let lastTime = await module.model.getLastTimeBySender(agent);
-    if (lastTime === null && config.START_TIME > 0) {
-      lastTime = config.START_TIME;
+    let lastTime = Number(await module.model.getLastTimeBySender(agent));
+    if (lastTime === 0 && config.START_TIME > 0) {
+      lastTime = Number(config.START_TIME);
+    }
+    const limitTime = Number(moment().subtract(1, "month").format("x"));
+    if (lastTime < limitTime) {
+      lastTime = limitTime;
     }
 
     let datalog = await api.query.datalog.datalog(agent);
 
-    if (lastTime) {
+    if (lastTime > 0) {
       datalog = datalog.filter((item) => {
         return Number(item[0]) > lastTime;
       });

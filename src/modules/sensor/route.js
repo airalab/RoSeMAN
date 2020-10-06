@@ -5,6 +5,7 @@ const router = express.Router();
 
 router.get("/csv/:agent/:days", controller.download);
 router.get("/count/:sender", controller.countTxBySender);
+router.get("/count", controller.countTxAll);
 router.get("/all", controller.all);
 router.get("/all/:type", controller.allByType);
 router.get("/:sensor", controller.sensor);

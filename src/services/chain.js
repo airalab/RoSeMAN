@@ -16,10 +16,15 @@ export function getInstance() {
     types: {
       Record: "Vec<u8>",
     },
-  }).then((r) => {
-    instance = r;
-    return r;
-  });
+  })
+    .then((r) => {
+      instance = r;
+      return r;
+    })
+    .catch((e) => {
+      provider.disconnect();
+      throw e;
+    });
 }
 
 export function recordToHash(r) {

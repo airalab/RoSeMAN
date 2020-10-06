@@ -7,6 +7,7 @@ import {
   getByDateRange,
   getBySensorDateRange,
   countTxBySender,
+  countTxAll,
 } from "./table";
 
 export default {
@@ -99,6 +100,19 @@ export default {
 
     try {
       const result = await countTxBySender(sender);
+
+      res.send({
+        result,
+      });
+    } catch (error) {
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async countTxAll(req, res) {
+    try {
+      const result = await countTxAll();
 
       res.send({
         result,

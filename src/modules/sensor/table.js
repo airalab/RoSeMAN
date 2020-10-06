@@ -175,6 +175,14 @@ export function countTxBySender(sender) {
   });
 }
 
+export function countTxAll() {
+  return Data.count({
+    group: ["timechain"],
+  }).then((rows) => {
+    return rows.length;
+  });
+}
+
 export function getByDateRange(from, to) {
   return Data.findAll({
     attributes: ["data", "geo", ["timechain", "chain_time"], "timestamp"],

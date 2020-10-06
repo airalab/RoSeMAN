@@ -17,22 +17,28 @@ app.use(cors());
 app.use("/api/raas", raas);
 app.use("/api/sensor", sensor);
 
-let work = false;
-setInterval(() => {
-  if (!work) {
-    work = true;
-    worker((item) => {
-      io.emit("update", item);
-    })
-      .then(() => {
-        work = false;
+function startLoop() {
+  let work = false;
+  const loop = setInterval(() => {
+    if (!work) {
+      work = true;
+      worker((item) => {
+        io.emit("update", item);
       })
-      .catch((e) => {
-        logger.error(e.message);
-        work = false;
-      });
-  }
-}, config.WORKER_INTERVAL);
+        .then(() => {
+          work = false;
+        })
+        .catch((e) => {
+          logger.error(e.message);
+          clearInterval(loop);
+          setTimeout(() => {
+            startLoop();
+          }, 15000);
+        });
+    }
+  }, config.WORKER_INTERVAL);
+}
+startLoop();
 
 db.sequelize.sync().then(() => {
   server.listen(config.PORT, config.HOST, () => {
