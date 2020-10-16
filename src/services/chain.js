@@ -11,20 +11,18 @@ export function getInstance() {
     });
   }
   const provider = new WsProvider(config.CHAIN_API);
+  provider.on("error", () => {
+    console.log("err");
+  });
   return ApiPromise.create({
     provider,
     types: {
       Record: "Vec<u8>",
     },
-  })
-    .then((r) => {
-      instance = r;
-      return r;
-    })
-    .catch((e) => {
-      provider.disconnect();
-      throw e;
-    });
+  }).then((r) => {
+    instance = r;
+    return r;
+  });
 }
 
 export function recordToHash(r) {

@@ -7,6 +7,7 @@ import raas from "./modules/raas/route";
 import sensor from "./modules/sensor/route";
 import config from "./config";
 import logger from "./services/logger";
+import prom from "./services/prom";
 import worker from "./services/worker";
 
 const app = express();
@@ -17,28 +18,11 @@ app.use(cors());
 app.use("/api/raas", raas);
 app.use("/api/sensor", sensor);
 
-function startLoop() {
-  let work = false;
-  const loop = setInterval(() => {
-    if (!work) {
-      work = true;
-      worker((item) => {
-        io.emit("update", item);
-      })
-        .then(() => {
-          work = false;
-        })
-        .catch((e) => {
-          logger.error(e.message);
-          clearInterval(loop);
-          setTimeout(() => {
-            startLoop();
-          }, 15000);
-        });
-    }
-  }, config.WORKER_INTERVAL);
-}
-startLoop();
+prom(app);
+
+worker((item) => {
+  io.emit("update", item);
+});
 
 db.sequelize.sync().then(() => {
   server.listen(config.PORT, config.HOST, () => {
