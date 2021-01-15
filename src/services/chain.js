@@ -3,6 +3,18 @@ import { u8aToString } from "@polkadot/util";
 import config from "../config";
 
 let instance = null;
+let provider = null;
+
+export function getProvider() {
+  if (provider) {
+    return provider;
+  }
+  provider = new WsProvider(config.CHAIN_API);
+  provider.on("error", () => {
+    console.log("err");
+  });
+  return provider;
+}
 
 export function getInstance() {
   if (instance) {
@@ -10,15 +22,9 @@ export function getInstance() {
       resolve(instance);
     });
   }
-  const provider = new WsProvider(config.CHAIN_API);
-  provider.on("error", () => {
-    console.log("err");
-  });
   return ApiPromise.create({
-    provider,
-    types: {
-      Record: "Vec<u8>",
-    },
+    provider: getProvider(),
+    types: config.CHAIN_TYPES,
   }).then((r) => {
     instance = r;
     return r;

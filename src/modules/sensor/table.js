@@ -183,54 +183,33 @@ export function countTxAll() {
   });
 }
 
-export function getByDateRange(from, to) {
+export function getHistoryByDate(from, to) {
   return Data.findAll({
-    attributes: ["data", "geo", ["timechain", "chain_time"], "timestamp"],
+    attributes: ["sensor_id", "sender", "model", "data", "geo", "timestamp"],
     where: {
-      timechain: {
+      timestamp: {
         [db.Sequelize.Op.between]: [from, to],
       },
     },
+    order: [["timestamp", "ASC"]],
     raw: true,
   }).then((rows) => {
-    return rows.map((row) => {
+    const result = {};
+    rows.forEach((row) => {
       const data = JSON.parse(row.data);
-      return {
-        pm10: data.pm10,
-        pm25: data.pm25,
+      if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
+        result[row.sensor_id] = [];
+      }
+      result[row.sensor_id].push({
+        sensor_id: row.sensor_id,
+        sender: row.sender,
+        model: row.model,
+        data: data,
         geo: row.geo,
-        date: moment(row.timestamp, "X").format("DD.MM.YYYY HH:mm"),
-      };
+        timestamp: Number(row.timestamp),
+      });
     });
-  });
-}
-
-export function getBySensorDateRange(sensor_id, from, to) {
-  return Data.findAll({
-    attributes: ["data", ["timechain", "chain_time"], "timestamp"],
-    where: {
-      [db.Sequelize.Op.and]: [
-        db.Sequelize.where(
-          db.Sequelize.fn("lower", db.Sequelize.col("sensor_id")),
-          db.Sequelize.fn("lower", sensor_id)
-        ),
-        {
-          timechain: {
-            [db.Sequelize.Op.between]: [from, to],
-          },
-        },
-      ],
-    },
-    raw: true,
-  }).then((rows) => {
-    return rows.map((row) => {
-      const data = JSON.parse(row.data);
-      return {
-        pm10: data.pm10,
-        pm25: data.pm25,
-        date: moment(row.timestamp, "X").format("DD.MM.YYYY HH:mm"),
-      };
-    });
+    return result;
   });
 }
 

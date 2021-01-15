@@ -3,7 +3,8 @@ import controller from "./controller";
 
 const router = express.Router();
 
-router.get("/csv/:agent/:days", controller.download);
+router.get("/history/:start/:end", controller.history);
+router.get("/csv/:start/:end", controller.csv);
 router.get("/count/:sender", controller.countTxBySender);
 router.get("/count", controller.countTxAll);
 router.get("/all", controller.all);

@@ -4,27 +4,31 @@ import {
   getAll,
   getByType,
   getBySensor,
-  getByDateRange,
-  getBySensorDateRange,
   countTxBySender,
   countTxAll,
+  getHistoryByDate,
 } from "./table";
 
 export default {
-  async download(req, res) {
-    const sensor = req.params.agent;
-    const days = req.params.days;
+  async csv(req, res) {
+    const start = Number(req.params.start);
+    const end = Number(req.params.end);
 
-    const from = moment().subtract(days, "day").format("x");
-    const to = moment().format("x");
-
-    let rows = [];
     try {
-      if (sensor !== "all") {
-        rows = await getBySensorDateRange(sensor, from, to);
-      } else {
-        rows = await getByDateRange(from, to);
-      }
+      const rows = await getHistoryByDate(start, end);
+      const result = [];
+      Object.keys(rows).forEach((sensor) => {
+        rows[sensor].forEach((item) => {
+          result.push({
+            timestamp: moment(item.timestamp, "X").format("DD.MM.YYYY HH:mm"),
+            sensor_id: item.sensor_id,
+            sender: item.sender,
+            geo: item.geo,
+            pm10: item.data.pm10,
+            pm25: item.data.pm25,
+          });
+        });
+      });
 
       res.setHeader("Content-Type", "text/csv");
       res.setHeader(
@@ -33,7 +37,7 @@ export default {
       );
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Pragma", "no-cache");
-      stringify(rows, { header: true }).pipe(res);
+      stringify(result, { header: true, delimiter: ";" }).pipe(res);
     } catch (error) {
       res.send({
         error: "Error",
@@ -116,6 +120,21 @@ export default {
 
       res.send({
         result,
+      });
+    } catch (error) {
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async history(req, res) {
+    const start = req.params.start;
+    const end = req.params.end;
+
+    try {
+      const rows = await getHistoryByDate(start, end);
+      res.send({
+        result: rows,
       });
     } catch (error) {
       res.send({

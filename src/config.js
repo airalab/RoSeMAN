@@ -17,11 +17,15 @@ export default {
   PATH_DB: path.join(__dirname, "/../files/database.sqlite"),
   // CHAIN_API: "ws://127.0.0.1:9944",
   CHAIN_API: "wss://substrate.ipci.io",
-  IPFS: {
-    host: "localhost",
-    port: "5001",
-    protocol: "http",
+  CHAIN_TYPES: {
+    Record: "Vec<u8>",
   },
+  // IPFS: {
+  //   host: "localhost",
+  //   port: "5001",
+  //   protocol: "http",
+  // },
+  IPFS_GATEWAY: "https://ipfs.io",
   TIMEOUT_CAT: process.env.TIMEOUT || "3000",
   START_TIME: process.env.START_TIME || 0,
   WORKER_INTERVAL: process.env.WORKER_INTERVAL || 5000,
