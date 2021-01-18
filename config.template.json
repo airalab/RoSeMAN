@@ -1,0 +1,12 @@
+{
+  "DEBUG": false,
+  "CHAIN_API": "wss://substrate.ipci.io",
+  "CHAIN_TYPES": {
+    "Record": "Vec<u8>"
+  },
+  "IPFS_GATEWAY": "https://ipfs.io",
+  "TIMEOUT_CAT": "10000",
+  "START_TIME": 0,
+  "WORKER_INTERVAL": 5000,
+  "WORKER_MODULE": "sensor"
+}
