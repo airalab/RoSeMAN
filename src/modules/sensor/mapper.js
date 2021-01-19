@@ -4,17 +4,17 @@ export default function (json, meta) {
   const list = [];
   for (const sensor_id in json) {
     const data = json[sensor_id];
-    if (Object.prototype.hasOwnProperty.call(data, "model")) {
+    if (
+      Object.prototype.hasOwnProperty.call(data, "model") &&
+      Object.prototype.hasOwnProperty.call(data, "geo")
+    ) {
       for (const item of data.measurements) {
-        if (
-          Object.prototype.hasOwnProperty.call(item, "geo") &&
-          Object.prototype.hasOwnProperty.call(item, "timestamp")
-        ) {
-          const { geo, timestamp, ...measurement } = item;
+        if (Object.prototype.hasOwnProperty.call(item, "timestamp")) {
+          const { timestamp, ...measurement } = item;
           list.push({
             sensor_id,
             model: data.model,
-            geo,
+            geo: data.geo,
             data: JSON.stringify(measurement),
             timestamp: timestamp,
             sender: meta.chain_sender,
