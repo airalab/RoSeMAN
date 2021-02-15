@@ -1,5 +1,6 @@
 import IPFS from "ipfs-http-client";
 import axios from "axios";
+import logger from "./services/logger";
 import config from "./config";
 
 let ipfs;
@@ -23,7 +24,11 @@ async function catNode(hash, options = {}) {
 
 export async function cat(hash, options = {}) {
   if (ipfs) {
-    return catNode(hash, options);
+    try {
+      return await catNode(hash, options);
+    } catch (error) {
+      logger.error(`hash: ${hash} | ${error.message}`);
+    }
   }
   return catGateway(hash, options);
 }
