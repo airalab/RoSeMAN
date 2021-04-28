@@ -1,5 +1,6 @@
 import moment from "moment";
 import stringify from "csv-stringify";
+import JSZip from "jszip";
 import {
   getAll,
   getByType,
@@ -8,6 +9,7 @@ import {
   countTxAll,
   getHistoryByDate,
 } from "./table";
+import logger from "../../services/logger";
 
 export default {
   async csv(req, res) {
@@ -17,28 +19,78 @@ export default {
     try {
       const rows = await getHistoryByDate(start, end);
       const result = [];
+      const headers = {
+        timestamp: "timestamp",
+        sensor_id: "sensor_id",
+        sender: "sender",
+        geo: "geo",
+        pm10: "pm10",
+        pm25: "pm25",
+      };
       Object.keys(rows).forEach((sensor) => {
         rows[sensor].forEach((item) => {
-          result.push({
+          const row = {
             timestamp: moment(item.timestamp, "X").format("DD.MM.YYYY HH:mm"),
             sensor_id: item.sensor_id,
             sender: item.sender,
             geo: item.geo,
-            pm10: item.data.pm10,
-            pm25: item.data.pm25,
-          });
+          };
+          for (const key in item.data) {
+            if (!Object.prototype.hasOwnProperty.call(headers, key)) {
+              headers[key] = key;
+            }
+            row[key] = item.data[key];
+          }
+          result.push(row);
+          // result.push({
+          //   timestamp: moment(item.timestamp, "X").format("DD.MM.YYYY HH:mm"),
+          //   sensor_id: item.sensor_id,
+          //   sender: item.sender,
+          //   geo: item.geo,
+          //   pm10: item.data.pm10,
+          //   pm25: item.data.pm25,
+          //   other: JSON.stringify(item.data),
+          // });
         });
       });
 
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader(
-        "Content-Disposition",
-        'attachment; filename="' + "download-" + Date.now() + '.csv"'
+      stringify(
+        result,
+        {
+          header: true,
+          delimiter: ";",
+          columns: headers,
+        },
+        function (err, output) {
+          res.setHeader("Content-Type", "application/zip");
+          res.setHeader(
+            "Content-disposition",
+            'attachment; filename="download-' + Date.now() + '.zip"'
+          );
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Pragma", "no-cache");
+          var zip = new JSZip();
+          zip.file("download-" + Date.now() + ".csv", output);
+          zip
+            .generateNodeStream({ compression: "DEFLATE", streamFiles: true })
+            .pipe(res);
+        }
       );
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Pragma", "no-cache");
-      stringify(result, { header: true, delimiter: ";" }).pipe(res);
+
+      // res.setHeader("Content-Type", "text/csv");
+      // res.setHeader(
+      //   "Content-Disposition",
+      //   'attachment; filename="' + "download-" + Date.now() + '.csv"'
+      // );
+      // res.setHeader("Cache-Control", "no-cache");
+      // res.setHeader("Pragma", "no-cache");
+      // stringify(result, {
+      //   header: true,
+      //   delimiter: ";",
+      //   columns: headers,
+      // }).pipe(res);
     } catch (error) {
+      logger.error(error.toString());
       res.send({
         error: "Error",
       });
