@@ -110,6 +110,7 @@ export default {
         error: "not sensors",
       });
     } catch (error) {
+      logger.error(error.toString());
       res.send({
         error: "Error",
       });
@@ -131,6 +132,7 @@ export default {
         error: "not sensors",
       });
     } catch (error) {
+      logger.error(error.toString());
       res.send({
         error: "Error",
       });
@@ -146,6 +148,7 @@ export default {
         result,
       });
     } catch (error) {
+      logger.error(error.toString());
       res.send({
         error: "Error",
       });
@@ -161,6 +164,7 @@ export default {
         result,
       });
     } catch (error) {
+      logger.error(error.toString());
       res.send({
         error: "Error",
       });
@@ -174,6 +178,7 @@ export default {
         result,
       });
     } catch (error) {
+      logger.error(error.toString());
       res.send({
         error: "Error",
       });
@@ -189,6 +194,7 @@ export default {
         result: rows,
       });
     } catch (error) {
+      logger.error(error.toString());
       res.send({
         error: "Error",
       });

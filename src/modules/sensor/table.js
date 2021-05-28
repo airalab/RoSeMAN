@@ -12,7 +12,7 @@ const Data = db.sequelize.define("data", {
     type: db.Sequelize.STRING,
   },
   model: {
-    type: db.Sequelize.NUMBER,
+    type: db.Sequelize.INTEGER,
   },
   data: {
     type: db.Sequelize.STRING,
@@ -21,10 +21,10 @@ const Data = db.sequelize.define("data", {
     type: db.Sequelize.STRING,
   },
   timestamp: {
-    type: db.Sequelize.NUMBER,
+    type: db.Sequelize.INTEGER,
   },
   timechain: {
-    type: db.Sequelize.NUMBER,
+    type: db.Sequelize.BIGINT,
   },
 });
 
@@ -54,7 +54,7 @@ export function getLastRecordByModel(model) {
       },
       model: model,
     },
-    group: ["sensor_id"],
+    group: ["sensor_id", "timestamp"],
     raw: true,
   }).then((rows) => {
     return rows.map((row) => {
@@ -152,6 +152,7 @@ export function getBySensor(sensor_id) {
         [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
       },
     },
+    group: ["timestamp"],
     raw: true,
   }).then((rows) => {
     return rows.map((row) => {
@@ -169,7 +170,7 @@ export function countTxBySender(sender) {
     where: {
       sender: sender,
     },
-    group: ["timechain"],
+    group: ["timestamp", "timechain"],
   }).then((rows) => {
     return rows.length;
   });
@@ -192,6 +193,7 @@ export function getHistoryByDate(from, to) {
       },
     },
     order: [["timestamp", "ASC"]],
+    group: ["sensor_id", "timestamp"],
     raw: true,
   }).then((rows) => {
     const result = {};

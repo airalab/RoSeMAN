@@ -4,6 +4,12 @@
   "CHAIN_TYPES": {
     "Record": "Vec<u8>"
   },
+  "DB": {
+    "host": "localhost",
+    "name": "roseman",
+    "user": "root",
+    "password": ""
+  },
   "IPFS_GATEWAY": "https://ipfs.io",
   "TIMEOUT_CAT": "10000",
   "START_TIME": 0,
