@@ -5,10 +5,8 @@
     "Record": "Vec<u8>"
   },
   "DB": {
-    "host": "localhost",
-    "name": "roseman",
-    "user": "root",
-    "password": ""
+    "dialect": "sqlite",
+    "path": "files/database.sqlite"
   },
   "IPFS_GATEWAY": "https://ipfs.io",
   "TIMEOUT_CAT": "10000",

@@ -1,4 +1,3 @@
-import path from "path";
 import config from "../config.json";
 
 export default {
@@ -13,5 +12,4 @@ export default {
     key: process.env.SSL_KEY || "",
     cer: process.env.SSL_CER || "",
   },
-  PATH_DB: path.join(__dirname, "/../files/database.sqlite"),
 };
