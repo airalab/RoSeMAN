@@ -60,6 +60,11 @@ export default {
           header: true,
           delimiter: ";",
           columns: headers,
+          cast: {
+            number: function (value) {
+              return value.toString().replace(".", ",");
+            },
+          },
         },
         function (err, output) {
           res.setHeader("Content-Type", "application/zip");
