@@ -1,14 +1,8 @@
 import moment from "moment";
 import stringify from "csv-stringify";
 import JSZip from "jszip";
-import {
-  getAll,
-  getByType,
-  getBySensor,
-  countTxBySender,
-  countTxAll,
-  getHistoryByDate,
-} from "./table";
+import { getAll, getByType, getBySensor, getHistoryByDate } from "./table";
+import { countTxAll, countTxBySender } from "./chain";
 import logger from "../../services/logger";
 
 export default {

@@ -8,7 +8,8 @@
     "worker": "node dist/worker.js",
     "build": "babel src -d dist --source-maps inline",
     "local": "DEBUG=true nodemon src/index.js --exec babel-node",
-    "local:worker": "DEBUG=true nodemon src/worker.js --exec babel-node",
+    "local:worker": "DEBUG=true nodemon src/services/worker.js --exec babel-node",
+    "local:parser": "DEBUG=true nodemon src/services/parser.js --exec babel-node",
     "lint": "eslint src",
     "pretty": "prettier --write \"./src/**/*.{js,ts,jsx,json}\"",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -26,8 +27,7 @@
     "prettier": "^2.0.5"
   },
   "dependencies": {
-    "@polkadot/api": "^2.10.1",
-    "@polkadot/util": "^4.0.1",
+    "@polkadot/api": "^4.16.2",
     "axios": "^0.19.2",
     "cors": "^2.8.5",
     "csv-stringify": "^5.5.0",

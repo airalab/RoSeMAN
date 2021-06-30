@@ -2,13 +2,10 @@ import moment from "moment";
 import db from "../../models/db";
 
 const Data = db.sequelize.define("data", {
+  chain_id: {
+    type: db.Sequelize.INTEGER,
+  },
   sensor_id: {
-    type: db.Sequelize.STRING,
-  },
-  sender: {
-    type: db.Sequelize.STRING,
-  },
-  resultHash: {
     type: db.Sequelize.STRING,
   },
   model: {
@@ -23,9 +20,6 @@ const Data = db.sequelize.define("data", {
   timestamp: {
     type: db.Sequelize.INTEGER,
   },
-  timechain: {
-    type: db.Sequelize.BIGINT,
-  },
 });
 
 export default Data;
@@ -36,201 +30,183 @@ export async function getAll() {
   return [...model2, ...model3];
 }
 
-export function getLastRecordByModel(model) {
-  return Data.findAll({
-    attributes: [
-      [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
-      "sensor_id",
-      ["sender", "chain_sender"],
-      "model",
-      "data",
-      "geo",
-      ["timechain", "chain_time"],
-      "timestamp",
-    ],
-    where: {
-      timechain: {
-        [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
-      },
-      model: model,
-    },
-    group: ["sensor_id", "timestamp"],
-    raw: true,
-  }).then((rows) => {
-    return rows.map((row) => {
-      const data = JSON.parse(row.data);
+export async function getLastRecordByModel(model) {
+  const sql = `
+    select
+      max(t1.id),
+      t1.sensor_id,
+      t1.model,
+      t1.data,
+      t1.geo,
+      t1.timestamp,
+      t2.sender as chain_sender,
+      t2.timechain as chain_time
+    from data as t1
+    left join chains as t2 on t2.id = t1.chain_id
+    where t2.timechain >= :timechain and t1.model=model
+    group by t1.sensor_id, t1.timestamp
+  `;
+  const replacements = {
+    timechain: moment().subtract(1, "day").format("x"),
+    model: model,
+  };
+  const rows = await db.sequelize.query(sql, {
+    replacements,
+    type: db.sequelize.QueryTypes.SELECT,
+  });
+  return rows.map((row) => {
+    const data = JSON.parse(row.data);
+    return {
+      sensor_id: row.sensor_id,
+      sender: row.chain_sender,
+      model: row.model,
+      geo: row.geo,
+      data: data,
+      timestamp: row.timestamp,
+    };
+  });
+}
+
+export async function getAllByModel(model) {
+  const sql = `
+    select
+      max(t1.id),
+      t1.sensor_id,
+      t1.model,
+      t1.data,
+      t1.geo,
+      t1.timestamp,
+      t2.sender as chain_sender,
+      t2.timechain as chain_time
+    from data as t1
+    left join chains as t2 on t2.id = t1.chain_id
+    where t2.timechain >= :timechain and t1.model=model
+  `;
+  const replacements = {
+    timechain: moment().subtract(1, "day").format("x"),
+    model: model,
+  };
+  const rows = await db.sequelize.query(sql, {
+    replacements,
+    type: db.sequelize.QueryTypes.SELECT,
+  });
+  return rows.map((row) => {
+    const data = JSON.parse(row.data);
+    return {
+      sensor_id: row.sensor_id,
+      sender: row.chain_sender,
+      model: row.model,
+      geo: row.geo,
+      data: data,
+      timestamp: row.timestamp,
+    };
+  });
+}
+
+export async function getByType(type) {
+  const sql = `
+    select
+      max(t1.id),
+      t1.sensor_id,
+      t1.model,
+      t1.data,
+      t1.geo,
+      t1.timestamp,
+      t2.sender as chain_sender,
+      t2.timechain as chain_time
+    from data as t1
+    left join chains as t2 on t2.id = t1.chain_id
+    where t2.timechain >= :timechain
+  `;
+  const replacements = {
+    timechain: moment().subtract(1, "day").format("x"),
+  };
+  const rows = await db.sequelize.query(sql, {
+    replacements,
+    type: db.sequelize.QueryTypes.SELECT,
+  });
+  return rows.map((row) => {
+    const data = JSON.parse(row.data);
+    if (data[type]) {
       return {
         sensor_id: row.sensor_id,
         sender: row.chain_sender,
         model: row.model,
         geo: row.geo,
+        value: data[type],
         data: data,
         timestamp: row.timestamp,
       };
+    }
+    return false;
+  });
+}
+
+export async function getBySensor(sensor_id) {
+  const sql = `
+    select
+      t1.data,
+      t1.timestamp,
+      t2.timechain as chain_time
+    from data as t1
+    left join chains as t2 on t2.id = t1.chain_id
+    where t1.sensor_id = :sensor_id and t2.timechain >= :timechain
+    group by t1.timestamp
+  `;
+  const replacements = {
+    sensor_id: sensor_id,
+    timechain: moment().subtract(1, "day").format("x"),
+  };
+  const rows = await db.sequelize.query(sql, {
+    replacements,
+    type: db.sequelize.QueryTypes.SELECT,
+  });
+  return rows.map((row) => {
+    const data = JSON.parse(row.data);
+    return {
+      data: data,
+      timestamp: row.timestamp,
+    };
+  });
+}
+
+export async function getHistoryByDate(from, to) {
+  const sql = `
+    select
+      t1.sensor_id,
+      t2.sender as chain_sender,
+      t1.model,
+      t1.data,
+      t1.geo,
+      t1.timestamp
+    from data as t1
+    left join chains as t2 on t2.id = t1.chain_id
+    where t1.timestamp between :from and :to
+    group by t1.sensor_id, t1.timestamp
+    order by t1.timestamp asc
+  `;
+  const replacements = {
+    from: from,
+    to: to,
+  };
+  const rows = await db.sequelize.query(sql, {
+    replacements,
+    type: db.sequelize.QueryTypes.SELECT,
+  });
+  const result = {};
+  rows.forEach((row) => {
+    const data = JSON.parse(row.data);
+    if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
+      result[row.sensor_id] = [];
+    }
+    result[row.sensor_id].push({
+      sensor_id: row.sensor_id,
+      sender: row.sender,
+      model: row.model,
+      data: data,
+      geo: row.geo,
+      timestamp: Number(row.timestamp),
     });
   });
-}
-
-export function getAllByModel(model) {
-  return Data.findAll({
-    attributes: [
-      "id",
-      "sensor_id",
-      ["sender", "chain_sender"],
-      "model",
-      "data",
-      "geo",
-      ["timechain", "chain_time"],
-      "timestamp",
-    ],
-    where: {
-      timechain: {
-        [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
-      },
-      model: model,
-    },
-    raw: true,
-  }).then((rows) => {
-    return rows.map((row) => {
-      const data = JSON.parse(row.data);
-      return {
-        sensor_id: row.sensor_id,
-        sender: row.chain_sender,
-        model: row.model,
-        geo: row.geo,
-        data: data,
-        timestamp: row.timestamp,
-      };
-    });
-  });
-}
-
-export function getByType(type) {
-  return Data.findAll({
-    attributes: [
-      [Data.sequelize.fn("max", Data.sequelize.col("id")), "id"],
-      "sensor_id",
-      ["sender", "chain_sender"],
-      "model",
-      "data",
-      "geo",
-      ["timechain", "chain_time"],
-      "timestamp",
-    ],
-    where: {
-      timechain: {
-        [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
-      },
-    },
-    group: ["sensor_id"],
-    raw: true,
-  }).then((rows) => {
-    return rows.map((row) => {
-      const data = JSON.parse(row.data);
-      if (data[type]) {
-        return {
-          sensor_id: row.sensor_id,
-          sender: row.chain_sender,
-          model: row.model,
-          geo: row.geo,
-          value: data[type],
-          data: data,
-          timestamp: row.timestamp,
-        };
-      }
-      return false;
-    });
-  });
-}
-
-export function getBySensor(sensor_id) {
-  return Data.findAll({
-    attributes: ["data", ["timechain", "chain_time"], "timestamp"],
-    where: {
-      sensor_id,
-      timechain: {
-        [db.Sequelize.Op.gte]: moment().subtract(1, "day").format("x"),
-      },
-    },
-    group: ["timestamp"],
-    raw: true,
-  }).then((rows) => {
-    return rows.map((row) => {
-      const data = JSON.parse(row.data);
-      return {
-        data: data,
-        timestamp: row.timestamp,
-      };
-    });
-  });
-}
-
-export function countTxBySender(sender) {
-  return Data.count({
-    where: {
-      sender: sender,
-    },
-    group: ["timestamp", "timechain"],
-  }).then((rows) => {
-    return rows.length;
-  });
-}
-
-export function countTxAll() {
-  return Data.count({
-    group: ["timechain"],
-  }).then((rows) => {
-    return rows.length;
-  });
-}
-
-export function getHistoryByDate(from, to) {
-  return Data.findAll({
-    attributes: ["sensor_id", "sender", "model", "data", "geo", "timestamp"],
-    where: {
-      timestamp: {
-        [db.Sequelize.Op.between]: [from, to],
-      },
-    },
-    order: [["timestamp", "ASC"]],
-    group: ["sensor_id", "timestamp"],
-    raw: true,
-  }).then((rows) => {
-    const result = {};
-    rows.forEach((row) => {
-      const data = JSON.parse(row.data);
-      if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
-        result[row.sensor_id] = [];
-      }
-      result[row.sensor_id].push({
-        sensor_id: row.sensor_id,
-        sender: row.sender,
-        model: row.model,
-        data: data,
-        geo: row.geo,
-        timestamp: Number(row.timestamp),
-      });
-    });
-    return result;
-  });
-}
-
-export function save(list) {
-  if (list.length > 0) {
-    return Data.bulkCreate(list);
-  }
-  return null;
-}
-
-export function getLastTimeBySender(sender) {
-  return Data.findOne({
-    attributes: ["timechain"],
-    where: {
-      sender: sender,
-    },
-    order: [["timechain", "DESC"]],
-    raw: true,
-  }).then((row) => {
-    return row ? row.timechain : null;
-  });
+  return result;
 }
