@@ -33,7 +33,7 @@ export async function getAll() {
 export async function getLastRecordByModel(model) {
   const sql = `
     select
-      max(t1.id),
+      t1.id,
       t1.sensor_id,
       t1.model,
       t1.data,
@@ -43,7 +43,7 @@ export async function getLastRecordByModel(model) {
       t2.timechain as chain_time
     from data as t1
     left join chains as t2 on t2.id = t1.chain_id
-    where t2.timechain >= :timechain and t1.model=model
+    where t2.timechain >= :timechain and t1.model=:model
     group by t1.sensor_id, t1.timestamp
   `;
   const replacements = {
@@ -70,7 +70,7 @@ export async function getLastRecordByModel(model) {
 export async function getAllByModel(model) {
   const sql = `
     select
-      max(t1.id),
+      t1.id,
       t1.sensor_id,
       t1.model,
       t1.data,
@@ -80,7 +80,7 @@ export async function getAllByModel(model) {
       t2.timechain as chain_time
     from data as t1
     left join chains as t2 on t2.id = t1.chain_id
-    where t2.timechain >= :timechain and t1.model=model
+    where t2.timechain >= :timechain and t1.model=:model
   `;
   const replacements = {
     timechain: moment().subtract(1, "day").format("x"),
@@ -106,7 +106,7 @@ export async function getAllByModel(model) {
 export async function getByType(type) {
   const sql = `
     select
-      max(t1.id),
+      t1.id,
       t1.sensor_id,
       t1.model,
       t1.data,
