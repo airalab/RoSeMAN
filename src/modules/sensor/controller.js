@@ -33,7 +33,7 @@ export default {
             if (!Object.prototype.hasOwnProperty.call(headers, key)) {
               headers[key] = key;
             }
-            row[key] = item.data[key];
+            row[key] = Number(item.data[key]);
           }
           result.push(row);
           // result.push({
