@@ -201,7 +201,7 @@ export async function getHistoryByDate(from, to) {
     }
     result[row.sensor_id].push({
       sensor_id: row.sensor_id,
-      sender: row.sender,
+      sender: row.chain_sender,
       model: row.model,
       data: data,
       geo: row.geo,
