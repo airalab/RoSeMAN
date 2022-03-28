@@ -14,7 +14,9 @@ async function parseBlock(api, number) {
       event.event.section === "datalog" &&
       event.event.method === "NewRecord"
     ) {
-      record[event.phase.asApplyExtrinsic.toNumber()] = event.event.data;
+      if (event.event.data[2].toHuman().substring(0, 2) === "Qm") {
+        record[event.phase.asApplyExtrinsic.toNumber()] = event.event.data;
+      }
     } else if (
       event.event.section === "system" &&
       event.event.method === "ExtrinsicSuccess"
@@ -32,16 +34,12 @@ async function parseBlock(api, number) {
 }
 
 async function getLastBlock() {
-  const row = await LastBlock.findOne({
-    attributes: ["block"],
-    order: [["block", "DESC"]],
-    raw: true,
-  });
+  const row = await LastBlock.findOne({});
   if (row) {
     return row.block + 1;
   }
-  await LastBlock.create({ block: 1 });
-  return 1;
+  await LastBlock.create({ block: 331500 });
+  return 331500;
 }
 
 async function worker(api) {
@@ -50,27 +48,43 @@ async function worker(api) {
     const currentBlock = Number(
       (await api.rpc.chain.getBlock()).block.header.number
     );
-    logger.info(`${lastBlock} ${currentBlock}`);
     for (let block = lastBlock; block < currentBlock; block++) {
-      // logger.info(block);
-      // const block = 18783;
       const records = await parseBlock(api, block);
       const list = [];
       for (const record of records) {
-        // logger.info(record);
-        list.push({
-          block,
+        const isRow = await Model.findOne({
+          block: block,
           sender: record[0].toHuman(),
           resultHash: record[2].toHuman(),
           timechain: Number(record[1].toString()),
-          status: 1,
-        });
+        }).lean();
+        if (
+          isRow === null &&
+          list.findIndex((item) => {
+            return (
+              item.block === block &&
+              item.sender === record[0].toHuman() &&
+              item.resultHash === record[2].toHuman() &&
+              item.timechain === Number(record[1].toString())
+            );
+          }) < 0
+        ) {
+          list.push({
+            block,
+            sender: record[0].toHuman(),
+            resultHash: record[2].toHuman(),
+            timechain: Number(record[1].toString()),
+            status: 1,
+          });
+        }
       }
-      await Model.bulkCreate(list);
-      await LastBlock.update({ block }, { where: { id: 1 } });
+      if (list.length > 0) {
+        await Model.insertMany(list);
+      }
+      await LastBlock.updateOne({}, { block: block }).exec();
     }
   } catch (error) {
-    logger.error(error.message);
+    logger.error(`worker ${api.isConnected} | ${error.message}`);
   }
 
   setTimeout(() => {
@@ -83,6 +97,6 @@ export default async function () {
     const api = await getInstance();
     worker(api);
   } catch (error) {
-    logger.error(error.message);
+    logger.error(`worker init ${error.message}`);
   }
 }

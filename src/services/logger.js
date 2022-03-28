@@ -29,8 +29,7 @@ const options = {
   exception: {
     name: "Error Logs",
     filename: path.join(__dirname, "/../../files/logs/errors.log"),
-    zippedArchive: true,
-    maxsize: 1024 * 1024 * 5, // 5MB
+    maxsize: 1024 * 1024 * 5,
     maxFiles: 5,
   },
 };
@@ -53,6 +52,7 @@ const logger = winston.createLogger({
 });
 
 process.on("unhandledRejection", (ex) => {
+  console.log("unhandledRejection log", ex);
   throw ex;
 });
 

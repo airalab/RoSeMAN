@@ -1,39 +1,30 @@
-import db from "../../models/db";
+import mongoose from "mongoose";
 
-const Data = db.sequelize.define("chain", {
-  block: {
-    type: db.Sequelize.INTEGER,
-  },
-  sender: {
-    type: db.Sequelize.STRING,
-  },
-  resultHash: {
-    type: db.Sequelize.STRING,
-  },
-  timechain: {
-    type: db.Sequelize.BIGINT,
-  },
-  status: {
-    type: db.Sequelize.INTEGER,
-    default: 1,
-  },
-});
+const Schema = mongoose.Schema;
 
-export default Data;
+const chainSchema = new Schema(
+  {
+    block: Number,
+    sender: String,
+    resultHash: String,
+    timechain: Number,
+    status: { type: Number, default: 1 },
+  },
+  {
+    timestamps: true,
+  }
+);
 
-export function countTxAll() {
-  return Data.count().then((rows) => {
-    return rows.length;
-  });
+const Chain = mongoose.model("chain", chainSchema);
+
+export default Chain;
+
+export async function countTxAll() {
+  return await Chain.count().exec();
 }
 
-export function countTxBySender(sender) {
-  return Data.count({
-    where: {
-      sender: sender,
-    },
-    group: ["timechain"],
-  }).then((rows) => {
-    return rows.length;
-  });
+export async function countTxBySender(sender) {
+  return await Chain.count({
+    sender: sender,
+  }).exec();
 }

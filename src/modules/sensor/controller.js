@@ -1,7 +1,7 @@
 import moment from "moment";
 import stringify from "csv-stringify";
 import JSZip from "jszip";
-import { getAll, getByType, getBySensor, getHistoryByDate } from "./table";
+import { getHistoryByDate, getAll, getByType, getBySensor } from "./table";
 import { countTxAll, countTxBySender } from "./chain";
 import logger from "../../services/logger";
 
@@ -36,15 +36,6 @@ export default {
             row[key] = Number(item.data[key]);
           }
           result.push(row);
-          // result.push({
-          //   timestamp: moment(item.timestamp, "X").format("DD.MM.YYYY HH:mm"),
-          //   sensor_id: item.sensor_id,
-          //   sender: item.sender,
-          //   geo: item.geo,
-          //   pm10: item.data.pm10,
-          //   pm25: item.data.pm25,
-          //   other: JSON.stringify(item.data),
-          // });
         });
       });
 
@@ -75,19 +66,6 @@ export default {
             .pipe(res);
         }
       );
-
-      // res.setHeader("Content-Type", "text/csv");
-      // res.setHeader(
-      //   "Content-Disposition",
-      //   'attachment; filename="' + "download-" + Date.now() + '.csv"'
-      // );
-      // res.setHeader("Cache-Control", "no-cache");
-      // res.setHeader("Pragma", "no-cache");
-      // stringify(result, {
-      //   header: true,
-      //   delimiter: ";",
-      //   columns: headers,
-      // }).pipe(res);
     } catch (error) {
       logger.error(error.toString());
       res.send({

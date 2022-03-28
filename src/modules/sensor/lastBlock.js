@@ -1,9 +1,16 @@
-import db from "../../models/db";
+import mongoose from "mongoose";
 
-const Data = db.sequelize.define("lastBlock", {
-  block: {
-    type: db.Sequelize.INTEGER,
+const Schema = mongoose.Schema;
+
+const lastBlockSchema = new Schema(
+  {
+    block: Number,
   },
-});
+  {
+    timestamps: true,
+  }
+);
 
-export default Data;
+const LastBlock = mongoose.model("lastBlock", lastBlockSchema);
+
+export default LastBlock;

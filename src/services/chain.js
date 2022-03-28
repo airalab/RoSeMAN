@@ -1,5 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { u8aToString } from "@polkadot/util";
+import logger from "./logger";
 import config from "../config";
 
 let instance = null;
@@ -10,8 +11,14 @@ export function getProvider() {
     return provider;
   }
   provider = new WsProvider(config.CHAIN_API);
-  provider.on("error", () => {
-    console.log("err");
+  provider.on("connected", () => {
+    logger.info("Connected provider");
+  });
+  provider.on("disconnected", () => {
+    logger.warn("Disconnected provider");
+  });
+  provider.on("error", (e) => {
+    logger.error(`Error provider ${e.message}`);
   });
   return provider;
 }
