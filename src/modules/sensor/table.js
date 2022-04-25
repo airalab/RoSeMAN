@@ -62,12 +62,55 @@ export async function getHistoryByDate(from, to) {
   });
   return result;
 }
+export async function getLastValuesByDate(from, to) {
+  const rows = await Data.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$sensor_id",
+        sensor_id: { $first: "$sensor_id" },
+        model: { $first: "$model" },
+        data: { $last: "$data" },
+        geo: { $first: "$geo" },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        model: 1,
+        data: 1,
+        geo: 1,
+      },
+    },
+  ]);
+  const result = {};
+  rows.forEach((row) => {
+    try {
+      result[row.sensor_id] = {
+        sensor_id: row.sensor_id,
+        model: row.model,
+        data: JSON.parse(row.data),
+        geo: row.geo,
+      };
+    } catch (error) {}
+  });
+  return result;
+}
 
-export async function getBySensor(sensor_id) {
+export async function getBySensor(sensor_id, start, end) {
   const rows = await Data.find({
     sensor_id: sensor_id,
-    timechain: {
-      $gt: moment().subtract(1, "day").format("x"),
+    timestamp: {
+      $gt: start,
+      $lt: end,
     },
   }).lean();
   return rows.map((row) => {

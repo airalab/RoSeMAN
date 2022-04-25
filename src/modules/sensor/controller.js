@@ -1,7 +1,13 @@
 import moment from "moment";
 import stringify from "csv-stringify";
 import JSZip from "jszip";
-import { getHistoryByDate, getAll, getByType, getBySensor } from "./table";
+import {
+  getHistoryByDate,
+  getLastValuesByDate,
+  getAll,
+  getByType,
+  getBySensor,
+} from "./table";
 import { countTxAll, countTxBySender } from "./chain";
 import logger from "../../services/logger";
 
@@ -117,9 +123,11 @@ export default {
   },
   async sensor(req, res) {
     const sensor = req.params.sensor;
+    const start = req.params.start;
+    const end = req.params.end;
 
     try {
-      const result = await getBySensor(sensor);
+      const result = await getBySensor(sensor, start, end);
 
       res.send({
         result,
@@ -167,6 +175,22 @@ export default {
 
     try {
       const rows = await getHistoryByDate(start, end);
+      res.send({
+        result: rows,
+      });
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async last(req, res) {
+    const start = req.params.start;
+    const end = req.params.end;
+
+    try {
+      const rows = await getLastValuesByDate(start, end);
       res.send({
         result: rows,
       });
