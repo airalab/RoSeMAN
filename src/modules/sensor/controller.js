@@ -16,6 +16,12 @@ export default {
     const start = Number(req.params.start);
     const end = Number(req.params.end);
 
+    if (end - start > 31 * 24 * 60 * 60) {
+      return res.send({
+        error: "Error. Max period 7 days.",
+      });
+    }
+
     try {
       const rows = await getHistoryByDate(start, end);
       const result = [];
