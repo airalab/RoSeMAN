@@ -43,7 +43,7 @@ node.js software with substrate blockchain sensors data collector function!
 
   Web server launched at http://127.0.0.1:3000
 
-  As a user client, you can connect this service to [sensors map] (https://github.com/airalab/sensors.robonomics.network).
+  As a user client, you can connect this service to [sensors map](https://github.com/airalab/sensors.robonomics.network).
 
 ## Bug Reports
 
