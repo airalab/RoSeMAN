@@ -2,12 +2,12 @@ import express from "express";
 import cors from "cors";
 import Socket from "socket.io";
 import createServer from "./server";
-import sensor from "./modules/sensor/route";
+import sensor from "./api/route";
 import config from "./config";
-import logger from "./services/logger";
-import prom from "./services/prom";
-import worker from "./services/worker";
-import parser from "./services/parser";
+import logger from "./utils/logger";
+import prom from "./utils/prom";
+import worker from "./utils/worker";
+import parser from "./utils/parser";
 import db from "./models/db";
 
 const app = express();
@@ -24,10 +24,8 @@ db().then(() => {
     logger.info("Web listening " + config.HOST + " on port " + config.PORT);
 
     worker();
-    console.log(io._path);
-    parser(() => {});
-    // parser((item) => {
-    //   io.emit("update", item);
-    // });
+    parser((item) => {
+      io.emit("update", item);
+    });
   });
 });

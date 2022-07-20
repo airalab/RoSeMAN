@@ -1,15 +1,18 @@
-import Model from "../modules/sensor/chain";
-import Data from "../modules/sensor/table";
-import { cat } from "../utils";
+import Chain from "../models/chain";
+import Data from "../models/data";
+import { cat } from "./tools";
 import config from "../config";
 import logger from "./logger";
 import agents from "../../agents.json";
 import pinataSDK from "@pinata/sdk";
+import iconv from "iconv-lite";
 
-const pinata = pinataSDK(config.PINATA.apiKey, config.PINATA.secretApiKey);
+const pinata = config.PINATA
+  ? pinataSDK(config.PINATA.apiKey, config.PINATA.secretApiKey)
+  : null;
 
 async function getNewRows() {
-  return await Model.find({ status: 1, sender: agents }, [
+  return await Chain.find({ status: 1, sender: agents }, [
     "id",
     "block",
     "sender",
@@ -45,6 +48,30 @@ function read(ipfshash) {
     });
 }
 
+function mapperJson(data, id) {
+  const list = [];
+  if (
+    Object.prototype.hasOwnProperty.call(data, "model") &&
+    Object.prototype.hasOwnProperty.call(data, "geo") &&
+    Object.prototype.hasOwnProperty.call(data, "timestamp")
+  ) {
+    list.push({
+      chain_id: id,
+      sensor_id:
+        data.sensor_id ||
+        "d32ac7ffaea820d67822f0b9523a2e004abefda646466a92db1bbf7fcb78fa51",
+      model: data.model,
+      data: JSON.stringify({
+        username: data.username,
+        message: iconv.decode(Buffer.from(data.message), "utf8"),
+        timestamp: data.timestamp,
+      }),
+      geo: data.geo,
+      timestamp: data.timestamp,
+    });
+  }
+  return list;
+}
 function mapper(json, id) {
   const list = [];
   for (const sensor_id in json) {
@@ -72,14 +99,8 @@ function mapper(json, id) {
               timestamp: timestamp,
             });
           }
-        } else {
-          // logger.info(
-          //   `skip row. ${meta.chain_result} from ${meta.chain_sender}`
-          // );
         }
       }
-    } else {
-      // logger.info(`skip msg. ${meta.chain_result} from ${meta.chain_sender}`);
     }
   }
   return list;
@@ -90,19 +111,29 @@ export default async function worker(cb = null) {
   for (const row of rows) {
     try {
       logger.info(`read file ${row.resultHash}`);
-      const data = await read(row.resultHash);
-      const list = mapper(data, row._id);
+      let data;
+      if (row.resultHash.substring(0, 2) === "Qm") {
+        data = await read(row.resultHash);
+      } else {
+        data = JSON.parse(row.resultHash);
+      }
+      let list = [];
+      if (data.message) {
+        list = mapperJson(data, row._id);
+      } else {
+        list = mapper(data, row._id);
+      }
       if (list.length > 0) {
         await Data.insertMany(list);
       }
-      await Model.updateOne(
+      await Chain.updateOne(
         {
           _id: row._id,
         },
         { status: 2 }
       ).exec();
 
-      if (row.sender === config.PINATA.sender) {
+      if (pinata && row.sender === config.PINATA.sender) {
         pinata.unpin(row.resultHash).catch((err) => {
           console.log(err);
           logger.warn(`Unpin ${row.resultHash} ${err.message}`);
@@ -111,15 +142,21 @@ export default async function worker(cb = null) {
 
       if (cb) {
         for (const item of list) {
-          cb({
-            ...item,
-            ...row,
-          });
+          try {
+            cb({
+              sensor_id: item.sensor_id,
+              sender: row.sender,
+              model: item.model,
+              data: JSON.parse(item.data),
+              geo: item.geo,
+              timestamp: Number(item.timestamp),
+            });
+            // eslint-disable-next-line no-empty
+          } catch (_) {}
         }
       }
     } catch (error) {
       logger.error(`parser ${error.message}`);
-      // await Model.update({ status: 3 }, { where: { id: row.id } });
     }
   }
   setTimeout(() => {

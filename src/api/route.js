@@ -4,6 +4,7 @@ import controller from "./controller";
 const router = express.Router();
 
 router.get("/last/:start/:end", controller.last);
+router.get("/messages/:start/:end", controller.messages);
 router.get("/history/:start/:end", controller.history);
 router.get("/csv/:start/:end", controller.csv);
 router.get("/count/:sender", controller.countTxBySender);

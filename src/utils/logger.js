@@ -29,7 +29,7 @@ const options = {
   exception: {
     name: "Error Logs",
     filename: path.join(__dirname, "/../../files/logs/errors.log"),
-    maxsize: 1024 * 1024 * 5,
+    maxsize: 1024 * 1024 * 5, // 5MB
     maxFiles: 5,
   },
 };

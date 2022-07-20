@@ -70,6 +70,9 @@ export async function getLastValuesByDate(from, to) {
           $gt: Number(from),
           $lt: Number(to),
         },
+        model: {
+          $ne: 4,
+        },
       },
     },
     {
@@ -100,7 +103,43 @@ export async function getLastValuesByDate(from, to) {
         data: JSON.parse(row.data),
         geo: row.geo,
       };
-    } catch (error) {}
+      // eslint-disable-next-line no-empty
+    } catch (_) {}
+  });
+  return result;
+}
+export async function getMessagesByDate(from, to) {
+  const rows = await Data.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+        model: 4,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        model: 1,
+        data: 1,
+        geo: 1,
+      },
+    },
+  ]);
+  const result = [];
+  rows.forEach((row) => {
+    try {
+      result.push({
+        sensor_id: row.sensor_id,
+        model: row.model,
+        data: JSON.parse(row.data),
+        geo: row.geo,
+      });
+      // eslint-disable-next-line no-empty
+    } catch (_) {}
   });
   return result;
 }

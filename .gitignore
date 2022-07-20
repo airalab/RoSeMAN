@@ -3,6 +3,8 @@ node_modules
 /dist
 /files/**
 /config.json
+/config.*.json
+!/config.template.json
 
 # Log files
 npm-debug.log*

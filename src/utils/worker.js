@@ -1,7 +1,8 @@
 import { getInstance } from "./chain";
-import LastBlock from "../modules/sensor/lastBlock";
-import Model from "../modules/sensor/chain";
+import LastBlock from "../models/lastBlock";
+import Chain from "../models/chain";
 import logger from "./logger";
+import agents from "../../agents.json";
 
 async function parseBlock(api, number) {
   const blockHash = await api.rpc.chain.getBlockHash(number);
@@ -14,7 +15,7 @@ async function parseBlock(api, number) {
       event.event.section === "datalog" &&
       event.event.method === "NewRecord"
     ) {
-      if (event.event.data[2].toHuman().substring(0, 2) === "Qm") {
+      if (agents.includes(event.event.data[0].toString())) {
         record[event.phase.asApplyExtrinsic.toNumber()] = event.event.data;
       }
     } else if (
@@ -38,13 +39,13 @@ async function getLastBlock() {
   if (row) {
     return row.block + 1;
   }
-  await LastBlock.create({ block: 331500 });
-  return 331500;
+  await LastBlock.create({ block: 1 });
+  return 1;
 }
 
-async function worker(api) {
+async function worker(api, startBlock = null) {
   try {
-    const lastBlock = await getLastBlock();
+    const lastBlock = startBlock || (await getLastBlock());
     const currentBlock = Number(
       (await api.rpc.chain.getBlock()).block.header.number
     );
@@ -52,7 +53,7 @@ async function worker(api) {
       const records = await parseBlock(api, block);
       const list = [];
       for (const record of records) {
-        const isRow = await Model.findOne({
+        const isRow = await Chain.findOne({
           block: block,
           sender: record[0].toHuman(),
           resultHash: record[2].toHuman(),
@@ -79,7 +80,7 @@ async function worker(api) {
         }
       }
       if (list.length > 0) {
-        await Model.insertMany(list);
+        await Chain.insertMany(list);
       }
       await LastBlock.updateOne({}, { block: block }).exec();
     }
@@ -95,7 +96,16 @@ async function worker(api) {
 export default async function () {
   try {
     const api = await getInstance();
-    worker(api);
+
+    let startBlock = null;
+    if (process.env.START_BLOCK) {
+      startBlock = Number(process.env.START_BLOCK);
+    } else {
+      startBlock = await getLastBlock();
+    }
+    logger.info(`Start block: ${startBlock}`);
+
+    worker(api, startBlock);
   } catch (error) {
     logger.error(`worker init ${error.message}`);
   }

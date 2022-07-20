@@ -1,7 +1,7 @@
 import IPFS from "ipfs-http-client";
 import axios from "axios";
-import logger from "./services/logger";
-import config from "./config";
+import logger from "./logger";
+import config from "../config";
 
 let ipfs;
 if (config.IPFS) {

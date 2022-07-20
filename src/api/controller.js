@@ -7,9 +7,10 @@ import {
   getAll,
   getByType,
   getBySensor,
-} from "./table";
-import { countTxAll, countTxBySender } from "./chain";
-import logger from "../../services/logger";
+  getMessagesByDate,
+} from "../models/data";
+import { countTxAll, countTxBySender } from "../models/chain";
+import logger from "../utils/logger";
 
 export default {
   async csv(req, res) {
@@ -197,6 +198,22 @@ export default {
 
     try {
       const rows = await getLastValuesByDate(start, end);
+      res.send({
+        result: rows,
+      });
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async messages(req, res) {
+    const start = req.params.start;
+    const end = req.params.end;
+
+    try {
+      const rows = await getMessagesByDate(start, end);
       res.send({
         result: rows,
       });
