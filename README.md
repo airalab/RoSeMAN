@@ -7,7 +7,7 @@ node.js software with substrate blockchain sensors data collector function!
   You need to clone the repository.
 
   ```bash
-  $ https://github.com/airalab/RoSeMAN.git
+  $ git clone https://github.com/airalab/RoSeMAN.git
   ```
 
   Create configuration files.
