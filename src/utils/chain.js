@@ -3,7 +3,7 @@ import { u8aToString } from "@polkadot/util";
 import logger from "./logger";
 import config from "../config";
 
-let instance = null;
+let api = null;
 let provider = null;
 
 export function getProvider() {
@@ -24,18 +24,25 @@ export function getProvider() {
 }
 
 export function getInstance() {
-  if (instance) {
+  if (api) {
     return new Promise(function (resolve) {
-      resolve(instance);
+      resolve(api);
     });
   }
   return ApiPromise.create({
     provider: getProvider(),
     types: config.CHAIN_TYPES,
   }).then((r) => {
-    instance = r;
+    api = r;
     return r;
   });
+}
+
+export async function disconnect() {
+  await api.disconnect();
+  await provider.disconnect();
+  api = null;
+  provider = null;
 }
 
 export function recordToHash(r) {

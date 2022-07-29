@@ -1,4 +1,4 @@
-import { getInstance } from "./chain";
+import { getInstance, disconnect } from "./chain";
 import LastBlock from "../models/lastBlock";
 import Chain from "../models/chain";
 import logger from "./logger";
@@ -86,6 +86,12 @@ async function worker(api, startBlock = null) {
     }
   } catch (error) {
     logger.error(`worker ${api.isConnected} | ${error.message}`);
+    await disconnect();
+    setTimeout(() => {
+      logger.info("Restart worker");
+      main();
+    }, 15000);
+    return;
   }
 
   setTimeout(() => {
@@ -93,7 +99,7 @@ async function worker(api, startBlock = null) {
   }, 15000);
 }
 
-export default async function () {
+export default async function main() {
   try {
     const api = await getInstance();
 
