@@ -50,11 +50,7 @@ function read(ipfshash) {
 
 function mapperJson(data, id) {
   const list = [];
-  if (
-    Object.prototype.hasOwnProperty.call(data, "model") &&
-    Object.prototype.hasOwnProperty.call(data, "geo") &&
-    Object.prototype.hasOwnProperty.call(data, "timestamp")
-  ) {
+  if (data.model && data.geo && data.timestamp) {
     list.push({
       chain_id: id,
       sensor_id:
@@ -76,13 +72,17 @@ function mapper(json, id) {
   const list = [];
   for (const sensor_id in json) {
     const data = json[sensor_id];
-    if (
-      Object.prototype.hasOwnProperty.call(data, "model") &&
-      Object.prototype.hasOwnProperty.call(data, "geo")
-    ) {
+    if (data.model) {
+      let geo;
+      if (data.geo) {
+        geo = data.geo;
+      }
       for (const item of data.measurements) {
-        if (Object.prototype.hasOwnProperty.call(item, "timestamp")) {
-          const { timestamp, ...measurement } = item;
+        if (item.timestamp) {
+          const { timestamp, geo: geoUpdate, ...measurement } = item;
+          if (geoUpdate) {
+            geo = geoUpdate;
+          }
           if (
             list.findIndex((item) => {
               return (
@@ -95,7 +95,7 @@ function mapper(json, id) {
               sensor_id,
               model: data.model,
               data: JSON.stringify(measurement),
-              geo: data.geo,
+              geo: geo,
               timestamp: timestamp,
             });
           }
