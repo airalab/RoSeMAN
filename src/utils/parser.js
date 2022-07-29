@@ -81,7 +81,7 @@ function mapper(json, id) {
         if (item.timestamp) {
           const { timestamp, geo: geoUpdate, ...measurement } = item;
           if (geoUpdate) {
-            geo = geoUpdate;
+            geo = `${geoUpdate[0]},${geoUpdate[1]}`;
           }
           if (
             list.findIndex((item) => {
