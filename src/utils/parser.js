@@ -48,7 +48,7 @@ function read(ipfshash) {
     });
 }
 
-function mapperJson(data, id) {
+function mapperJson(data, id, ipfs) {
   const list = [];
   if (data.model && data.geo && data.timestamp) {
     list.push({
@@ -61,6 +61,8 @@ function mapperJson(data, id) {
         username: data.username,
         message: iconv.decode(Buffer.from(data.message), "utf8"),
         timestamp: data.timestamp,
+        ipfs: ipfs,
+        images: data.images || [],
       }),
       geo: data.geo,
       timestamp: data.timestamp,
@@ -113,13 +115,15 @@ export default async function worker(cb = null) {
       logger.info(`read file ${row.resultHash}`);
       let data;
       if (row.resultHash.substring(0, 2) === "Qm") {
-        data = await read(row.resultHash);
-      } else {
-        data = JSON.parse(row.resultHash);
+        if (config.MESSAGES && row.sender === config.MESSAGES.sender) {
+          data = await read(`${row.resultHash}/data.json`);
+        } else {
+          data = await read(row.resultHash);
+        }
       }
       let list = [];
       if (data.message) {
-        list = mapperJson(data, row._id);
+        list = mapperJson(data, row._id, row.resultHash);
       } else {
         list = mapper(data, row._id);
       }
