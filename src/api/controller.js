@@ -1,5 +1,5 @@
 import moment from "moment";
-import stringify from "csv-stringify";
+import { stringify } from "csv-stringify";
 import JSZip from "jszip";
 import {
   getHistoryByDate,
