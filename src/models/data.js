@@ -63,7 +63,9 @@ export async function getHistoryByDate(from, to) {
   return result;
 }
 export async function getLastValuesByDate(from, to) {
-  const rows = await Data.aggregate([
+  const result = {};
+
+  const rowsStatic = await Data.aggregate([
     {
       $match: {
         timestamp: {
@@ -71,7 +73,7 @@ export async function getLastValuesByDate(from, to) {
           $lt: Number(to),
         },
         model: {
-          $ne: 4,
+          $nin: [3, 4],
         },
       },
     },
@@ -94,18 +96,48 @@ export async function getLastValuesByDate(from, to) {
       },
     },
   ]);
-  const result = {};
-  rows.forEach((row) => {
-    try {
-      result[row.sensor_id] = {
-        sensor_id: row.sensor_id,
-        model: row.model,
-        data: JSON.parse(row.data),
-        geo: row.geo,
-      };
-      // eslint-disable-next-line no-empty
-    } catch (_) {}
-  });
+
+  const rowsMobile = await Data.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+        model: 3,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        model: 1,
+        data: 1,
+        geo: 1,
+      },
+    },
+  ]);
+
+  const iterator = () => {
+    (row) => {
+      if (!result[row.sensor_id]) {
+        result[row.sensor_id] = [];
+      }
+      try {
+        result[row.sensor_id].push({
+          sensor_id: row.sensor_id,
+          model: row.model,
+          data: JSON.parse(row.data),
+          geo: row.geo,
+        });
+        // eslint-disable-next-line no-empty
+      } catch (_) {}
+    };
+  };
+
+  rowsStatic.forEach(iterator);
+  rowsMobile.forEach(iterator);
+
   return result;
 }
 export async function getMessagesByDate(from, to) {
