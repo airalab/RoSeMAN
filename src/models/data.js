@@ -118,21 +118,19 @@ export async function getLastValuesByDate(from, to) {
     },
   ]);
 
-  const iterator = () => {
-    (row) => {
-      if (!result[row.sensor_id]) {
-        result[row.sensor_id] = [];
-      }
-      try {
-        result[row.sensor_id].push({
-          sensor_id: row.sensor_id,
-          model: row.model,
-          data: JSON.parse(row.data),
-          geo: row.geo,
-        });
-        // eslint-disable-next-line no-empty
-      } catch (_) {}
-    };
+  const iterator = (row) => {
+    if (!result[row.sensor_id]) {
+      result[row.sensor_id] = [];
+    }
+    try {
+      result[row.sensor_id].push({
+        sensor_id: row.sensor_id,
+        model: row.model,
+        data: JSON.parse(row.data),
+        geo: row.geo,
+      });
+      // eslint-disable-next-line no-empty
+    } catch (_) {}
   };
 
   rowsStatic.forEach(iterator);
