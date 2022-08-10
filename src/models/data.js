@@ -84,6 +84,7 @@ export async function getLastValuesByDate(from, to) {
         model: { $first: "$model" },
         data: { $last: "$data" },
         geo: { $first: "$geo" },
+        timestamp: { $first: "$timestamp" },
       },
     },
     {
@@ -93,6 +94,7 @@ export async function getLastValuesByDate(from, to) {
         model: 1,
         data: 1,
         geo: 1,
+        timestamp: 1,
       },
     },
   ]);
@@ -114,6 +116,7 @@ export async function getLastValuesByDate(from, to) {
         model: 1,
         data: 1,
         geo: 1,
+        timestamp: 1,
       },
     },
   ]);
@@ -128,6 +131,7 @@ export async function getLastValuesByDate(from, to) {
         model: row.model,
         data: JSON.parse(row.data),
         geo: row.geo,
+        timestamp: row.timestamp,
       });
       // eslint-disable-next-line no-empty
     } catch (_) {}
@@ -187,6 +191,7 @@ export async function getBySensor(sensor_id, start, end) {
     return {
       data: data,
       timestamp: row.timestamp,
+      geo: row.geo,
     };
   });
 }
