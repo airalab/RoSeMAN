@@ -1,4 +1,13 @@
 {
+  "SERVER": {
+    "HOST": "127.0.0.1",
+    "PORT": "3000",
+    "SSL_ENABLE": false,
+    "SSL": {
+      "key": "",
+      "cer": ""
+    }
+  },
   "CHAIN_API": "wss://kusama.rpc.robonomics.network/",
   "CHAIN_TYPES": {},
   "DB": {

@@ -20,8 +20,10 @@ app.use("/api/sensor", sensor);
 prom(app);
 
 db().then(() => {
-  server.listen(config.PORT, config.HOST, () => {
-    logger.info("Web listening " + config.HOST + " on port " + config.PORT);
+  server.listen(config.SERVER.PORT, config.SERVER.HOST, () => {
+    logger.info(
+      "Web listening " + config.SERVER.HOST + " on port " + config.SERVER.PORT
+    );
 
     worker();
     parser((item) => {
