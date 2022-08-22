@@ -185,7 +185,9 @@ export async function getBySensor(sensor_id, start, end) {
       $gt: start,
       $lt: end,
     },
-  }).lean();
+  })
+    .sort({ timestamp: 1 })
+    .lean();
   return rows.map((row) => {
     const data = JSON.parse(row.data);
     return {
