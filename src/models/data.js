@@ -119,6 +119,11 @@ export async function getLastValuesByDate(from, to) {
         timestamp: 1,
       },
     },
+    {
+      $sort: {
+        timestamp: 1,
+      },
+    },
   ]);
 
   const iterator = (row) => {
