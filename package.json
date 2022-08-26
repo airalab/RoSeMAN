@@ -36,7 +36,7 @@
     "ipfs-http-client": "^44.2.0",
     "jszip": "^3.6.0",
     "moment": "^2.25.3",
-    "mongoose": "^6.0.7",
+    "mongoose": "^6.4.6",
     "prom-client": "^14.0.1",
     "socket.io": "2.3.0",
     "winston": "^3.2.1"
