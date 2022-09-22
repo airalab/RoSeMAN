@@ -63,6 +63,7 @@ function mapperJson(data, id, ipfs) {
         timestamp: data.timestamp,
         ipfs: ipfs,
         images: data.images || [],
+        type: data.type || 0,
       }),
       geo: data.geo,
       timestamp: data.timestamp,
