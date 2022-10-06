@@ -10,12 +10,40 @@ import {
   getMessagesByDate,
 } from "../models/data";
 import { countTxAll, countTxBySender } from "../models/chain";
+import City from "../models/city";
 import logger from "../utils/logger";
 
 export default {
+  async cities(req, res) {
+    const rows = await City.aggregate([
+      {
+        $match: {
+          city: {
+            $ne: "",
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$city",
+          city: { $first: "$city" },
+        },
+      },
+      {
+        $sort: {
+          city: 1,
+        },
+      },
+    ]);
+
+    res.send({
+      result: rows.map((item) => item.city),
+    });
+  },
   async csv(req, res) {
     const start = Number(req.params.start);
     const end = Number(req.params.end);
+    const city = req.params.city;
 
     if (end - start > 31 * 24 * 60 * 60) {
       return res.send({
@@ -24,7 +52,7 @@ export default {
     }
 
     try {
-      const rows = await getHistoryByDate(start, end);
+      const rows = await getHistoryByDate(start, end, city);
       const result = [];
       const headers = {
         timestamp: "timestamp",

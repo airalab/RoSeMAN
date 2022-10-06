@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import moment from "moment";
+import City from "./city";
 
 const Schema = mongoose.Schema;
 
@@ -34,8 +35,11 @@ const Data = mongoose.model("data", dataSchema);
 
 export default Data;
 
-export async function getHistoryByDate(from, to) {
+export async function getHistoryByDate(from, to, city) {
+  const sensors = await City.find({ city: city });
+
   const rows = await Data.find({
+    sensor_id: sensors.map((item) => item.sensor_id),
     timestamp: {
       $gt: from,
       $lt: to,

@@ -1,5 +1,6 @@
 import Chain from "../models/chain";
 import Data from "../models/data";
+import { setCitySensor } from "../models/city";
 import { cat } from "./tools";
 import config from "../config";
 import logger from "./logger";
@@ -130,6 +131,9 @@ export default async function worker(cb = null) {
       }
       if (list.length > 0) {
         await Data.insertMany(list);
+        for (const item of list) {
+          await setCitySensor(item.sensor_id, item.geo);
+        }
       }
       await Chain.updateOne(
         {
