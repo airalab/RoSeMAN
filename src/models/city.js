@@ -14,6 +14,12 @@ const citySchema = new Schema(
     city: {
       type: String,
     },
+    state: {
+      type: String,
+    },
+    country: {
+      type: String,
+    },
   },
   {
     timestamps: true,
@@ -24,26 +30,38 @@ const City = mongoose.model("city", citySchema);
 
 export default City;
 
-function getCityByPos(lat, lon, language = "ru") {
-  return axios
-    .get(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=${language}`
-    )
-    .then((r) => {
-      if (r.data.address) {
-        if (r.data.address.city) {
-          return r.data.address.city;
-        } else if (r.data.address.town) {
-          return r.data.address.town;
-        } else if (r.data.address.state) {
-          return r.data.address.state;
-        }
+async function getCityByPos(lat, lon, language = "ru") {
+  if (Number(lat) > 0 && Number(lon) > 0) {
+    try {
+      const r = (
+        await axios.get(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&accept-language=${language}`
+        )
+      ).data;
+      if (r.address) {
+        const city =
+          r.address.city || r.address.village || r.address.town || "";
+        const state =
+          r.address.state ||
+          r.address.county ||
+          r.address.state_district ||
+          r.address.region ||
+          "";
+        const country = r.address.country || "";
+        return {
+          city: city.replace("городской округ ", ""),
+          state,
+          country,
+        };
       }
-      return "";
-    })
-    .catch(() => {
-      return "";
-    });
+      // eslint-disable-next-line no-empty
+    } catch (_) {}
+  }
+  return {
+    city: "",
+    state: "",
+    country: "",
+  };
 }
 
 export async function setCitySensor(sensor_id, geo, update = false) {
@@ -51,17 +69,19 @@ export async function setCitySensor(sensor_id, geo, update = false) {
   if (sensor) {
     if (update) {
       const pos = geo.split(",");
-      const city = await getCityByPos(pos[0], pos[1]);
-      await sensor.update({ geo, city: city.replace("городской округ ", "") });
+      const { city, state, country } = await getCityByPos(pos[0], pos[1]);
+      await sensor.updateOne({ geo, city, state, country });
       return sensor;
     }
     return;
   }
   const pos = geo.split(",");
-  const city = await getCityByPos(pos[0], pos[1]);
+  const { city, state, country } = await getCityByPos(pos[0], pos[1]);
   return await City.create({
     sensor_id,
     geo,
-    city: city.replace("городской округ ", ""),
+    city,
+    state,
+    country,
   });
 }
