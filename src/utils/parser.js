@@ -1,12 +1,12 @@
-import Chain from "../models/chain";
-import Data from "../models/data";
-import { setCitySensor } from "../models/city";
-import { cat } from "./tools";
-import config from "../config";
-import logger from "./logger";
-import agents from "../../agents.json";
 import pinataSDK from "@pinata/sdk";
 import iconv from "iconv-lite";
+import agents from "../../agents.json";
+import config from "../config";
+import Chain from "../models/chain";
+import { setCitySensor } from "../models/city";
+import Data from "../models/data";
+import logger from "./logger";
+import { cat } from "./tools";
 
 const pinata = config.PINATA
   ? pinataSDK(config.PINATA.apiKey, config.PINATA.secretApiKey)
@@ -52,6 +52,7 @@ function read(ipfshash) {
 function mapperJson(data, id, ipfs) {
   const list = [];
   if (data.model && data.geo && data.timestamp) {
+    const [lat, lng] = data.geo.split(",");
     list.push({
       chain_id: id,
       sensor_id:
@@ -67,6 +68,8 @@ function mapperJson(data, id, ipfs) {
         type: data.type || 0,
       }),
       geo: data.geo,
+      lat: Number(lat),
+      lng: Number(lng),
       timestamp: data.timestamp,
     });
   }
@@ -94,12 +97,15 @@ function mapper(json, id) {
               );
             }) < 0
           ) {
+            const [lat, lng] = geo.split(",");
             list.push({
               chain_id: id,
               sensor_id,
               model: data.model,
               data: JSON.stringify(measurement),
               geo: geo,
+              lat: Number(lat),
+              lng: Number(lng),
               timestamp: timestamp,
             });
           }

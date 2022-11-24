@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
 import moment from "moment";
+import mongoose from "mongoose";
 import City from "./city";
 
 const Schema = mongoose.Schema;
@@ -21,6 +21,12 @@ const dataSchema = new Schema(
     },
     geo: {
       type: String,
+    },
+    lat: {
+      type: Number,
+    },
+    lng: {
+      type: Number,
     },
     timestamp: {
       type: Number,

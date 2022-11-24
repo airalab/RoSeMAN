@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
 import axios from "axios";
+import mongoose from "mongoose";
 
 const Schema = mongoose.Schema;
 
@@ -10,6 +10,12 @@ const citySchema = new Schema(
     },
     geo: {
       type: String,
+    },
+    lat: {
+      type: Number,
+    },
+    lng: {
+      type: Number,
     },
     city: {
       type: String,
@@ -68,18 +74,28 @@ export async function setCitySensor(sensor_id, geo, update = false) {
   const sensor = await City.findOne({ sensor_id: sensor_id });
   if (sensor) {
     if (update) {
-      const pos = geo.split(",");
-      const { city, state, country } = await getCityByPos(pos[0], pos[1]);
-      await sensor.updateOne({ geo, city, state, country });
+      const [lat, lng] = geo.split(",");
+      const { city, state, country } = await getCityByPos(lat, lng);
+      await sensor.updateOne({
+        geo,
+        lat: Number(lat),
+        lng: Number(lng),
+        city,
+        state,
+        country,
+      });
       return sensor;
     }
     return;
   }
   const pos = geo.split(",");
   const { city, state, country } = await getCityByPos(pos[0], pos[1]);
+  const [lat, lng] = geo.split(",");
   return await City.create({
     sensor_id,
     geo,
+    lat: Number(lat),
+    lng: Number(lng),
     city,
     state,
     country,
