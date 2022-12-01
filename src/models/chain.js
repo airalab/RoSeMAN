@@ -18,13 +18,3 @@ const chainSchema = new Schema(
 const Chain = mongoose.model("chain", chainSchema);
 
 export default Chain;
-
-export async function countTxAll() {
-  return await Chain.count().exec();
-}
-
-export async function countTxBySender(sender) {
-  return await Chain.count({
-    sender: sender,
-  }).exec();
-}

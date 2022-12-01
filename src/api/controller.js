@@ -1,19 +1,48 @@
-import moment from "moment";
 import { stringify } from "csv-stringify";
 import JSZip from "jszip";
+import moment from "moment";
+import City from "../models/city";
 import {
+  getBySensor,
   getHistoryByDate,
   getLastValuesByDate,
-  getAll,
-  getByType,
-  getBySensor,
   getMessagesByDate,
 } from "../models/data";
-import { countTxAll, countTxBySender } from "../models/chain";
-import City from "../models/city";
 import logger from "../utils/logger";
 
 export default {
+  async last(req, res) {
+    const start = req.params.start;
+    const end = req.params.end;
+
+    try {
+      const rows = await getLastValuesByDate(start, end);
+      res.send({
+        result: rows,
+      });
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async messages(req, res) {
+    const start = req.params.start;
+    const end = req.params.end;
+
+    try {
+      const rows = await getMessagesByDate(start, end);
+      res.send({
+        result: rows,
+      });
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
   async cities(req, res) {
     const rows = await City.aggregate([
       {
@@ -47,7 +76,7 @@ export default {
 
     if (end - start > 31 * 24 * 60 * 60) {
       return res.send({
-        error: "Error. Max period 7 days.",
+        error: "Error. Max period 31 days.",
       });
     }
 
@@ -114,48 +143,6 @@ export default {
       });
     }
   },
-  async all(req, res) {
-    try {
-      const result = await getAll();
-
-      if (result) {
-        res.send({
-          result,
-        });
-        return;
-      }
-      res.send({
-        error: "not sensors",
-      });
-    } catch (error) {
-      logger.error(error.toString());
-      res.send({
-        error: "Error",
-      });
-    }
-  },
-  async allByType(req, res) {
-    const type = req.params.type.toUpperCase();
-
-    try {
-      const result = await getByType(type);
-
-      if (result) {
-        res.send({
-          result,
-        });
-        return;
-      }
-      res.send({
-        error: "not sensors",
-      });
-    } catch (error) {
-      logger.error(error.toString());
-      res.send({
-        error: "Error",
-      });
-    }
-  },
   async sensor(req, res) {
     const sensor = req.params.sensor;
     const start = req.params.start;
@@ -166,84 +153,6 @@ export default {
 
       res.send({
         result,
-      });
-    } catch (error) {
-      logger.error(error.toString());
-      res.send({
-        error: "Error",
-      });
-    }
-  },
-  async countTxBySender(req, res) {
-    const sender = req.params.sender;
-
-    try {
-      const result = await countTxBySender(sender);
-
-      res.send({
-        result,
-      });
-    } catch (error) {
-      logger.error(error.toString());
-      res.send({
-        error: "Error",
-      });
-    }
-  },
-  async countTxAll(req, res) {
-    try {
-      const result = await countTxAll();
-
-      res.send({
-        result,
-      });
-    } catch (error) {
-      logger.error(error.toString());
-      res.send({
-        error: "Error",
-      });
-    }
-  },
-  async history(req, res) {
-    const start = req.params.start;
-    const end = req.params.end;
-
-    try {
-      const rows = await getHistoryByDate(start, end);
-      res.send({
-        result: rows,
-      });
-    } catch (error) {
-      logger.error(error.toString());
-      res.send({
-        error: "Error",
-      });
-    }
-  },
-  async last(req, res) {
-    const start = req.params.start;
-    const end = req.params.end;
-
-    try {
-      const rows = await getLastValuesByDate(start, end);
-      res.send({
-        result: rows,
-      });
-    } catch (error) {
-      logger.error(error.toString());
-      res.send({
-        error: "Error",
-      });
-    }
-  },
-  async messages(req, res) {
-    const start = req.params.start;
-    const end = req.params.end;
-
-    try {
-      const rows = await getMessagesByDate(start, end);
-      res.send({
-        result: rows,
       });
     } catch (error) {
       logger.error(error.toString());

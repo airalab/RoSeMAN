@@ -1,4 +1,3 @@
-import moment from "moment";
 import mongoose from "mongoose";
 import City from "./city";
 
@@ -61,12 +60,13 @@ export async function getHistoryByDate(from, to, city) {
     if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
       result[row.sensor_id] = [];
     }
+    const [lat, lng] = row.geo.split(",");
     result[row.sensor_id].push({
       sensor_id: row.sensor_id,
       sender: row.chain_id.sender,
       model: row.model,
       data: data,
-      geo: row.geo,
+      geo: { lat, lng },
       timestamp: Number(row.timestamp),
     });
   });
@@ -141,11 +141,12 @@ export async function getLastValuesByDate(from, to) {
       result[row.sensor_id] = [];
     }
     try {
+      const [lat, lng] = row.geo.split(",");
       result[row.sensor_id].push({
         sensor_id: row.sensor_id,
         model: row.model,
         data: JSON.parse(row.data),
-        geo: row.geo,
+        geo: { lat, lng },
         timestamp: row.timestamp,
       });
       // eslint-disable-next-line no-empty
@@ -181,11 +182,12 @@ export async function getMessagesByDate(from, to) {
   const result = [];
   rows.forEach((row) => {
     try {
+      const [lat, lng] = row.geo.split(",");
       result.push({
         sensor_id: row.sensor_id,
         model: row.model,
         data: JSON.parse(row.data),
-        geo: row.geo,
+        geo: { lat, lng },
       });
       // eslint-disable-next-line no-empty
     } catch (_) {}
@@ -205,57 +207,11 @@ export async function getBySensor(sensor_id, start, end) {
     .lean();
   return rows.map((row) => {
     const data = JSON.parse(row.data);
+    const [lat, lng] = row.geo.split(",");
     return {
       data: data,
       timestamp: row.timestamp,
-      geo: row.geo,
-    };
-  });
-}
-
-export async function getByType(type) {
-  const rows = await Data.find({
-    timechain: {
-      $gt: moment().subtract(1, "day").format("x"),
-    },
-  })
-    .populate("chain_id", "sender")
-    .lean();
-  return rows.map((row) => {
-    const data = JSON.parse(row.data);
-    if (data[type]) {
-      return {
-        sensor_id: row.sensor_id,
-        sender: row.chain_id.sender,
-        model: row.model,
-        geo: row.geo,
-        value: data[type],
-        data: data,
-        timestamp: row.timestamp,
-      };
-    }
-    return false;
-  });
-}
-
-export async function getAll() {
-  const rows = await Data.find({
-    model: { $or: [2, 3] },
-    timechain: {
-      $gt: moment().subtract(1, "day").format("x"),
-    },
-  })
-    .populate("chain_id", "sender")
-    .lean();
-  return rows.map((row) => {
-    const data = JSON.parse(row.data);
-    return {
-      sensor_id: row.sensor_id,
-      sender: row.chain_id.sender,
-      model: row.model,
-      geo: row.geo,
-      data: data,
-      timestamp: row.timestamp,
+      geo: { lat, lng },
     };
   });
 }
