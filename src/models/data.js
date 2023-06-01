@@ -158,6 +158,104 @@ export async function getLastValuesByDate(from, to) {
 
   return result;
 }
+export async function getMaxValuesByDate(from, to, type) {
+  const result = {};
+
+  const rowsStatic = await Data.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+        model: {
+          $nin: [3, 4],
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        model: 1,
+        data: 1,
+        geo: 1,
+        timestamp: 1,
+      },
+    },
+  ]);
+
+  const rowsMobile = await Data.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+        model: 3,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        model: 1,
+        data: 1,
+        geo: 1,
+        timestamp: 1,
+      },
+    },
+    {
+      $sort: {
+        timestamp: 1,
+      },
+    },
+  ]);
+
+  const iterator = (row) => {
+    if (!result[row.sensor_id]) {
+      result[row.sensor_id] = [];
+    }
+    try {
+      const [lat, lng] = row.geo.split(",");
+      const data = JSON.parse(row.data.toLowerCase());
+      if (row.model === 3) {
+        result[row.sensor_id].push({
+          sensor_id: row.sensor_id,
+          model: row.model,
+          data: data,
+          geo: { lat, lng },
+          timestamp: row.timestamp,
+        });
+      } else {
+        if (result[row.sensor_id].length > 0) {
+          if (data[type] && result[row.sensor_id][0].data[type]) {
+            if (
+              Number(data[type]) <= Number(result[row.sensor_id][0].data[type])
+            ) {
+              return;
+            }
+          } else if (result[row.sensor_id][0].data[type]) {
+            return;
+          }
+        }
+        result[row.sensor_id][0] = {
+          sensor_id: row.sensor_id,
+          model: row.model,
+          data: data,
+          geo: { lat, lng },
+          timestamp: row.timestamp,
+        };
+      }
+      // eslint-disable-next-line no-empty
+    } catch (_) {}
+  };
+
+  rowsStatic.forEach(iterator);
+  rowsMobile.forEach(iterator);
+
+  return result;
+}
 export async function getMessagesByDate(from, to) {
   const rows = await Data.aggregate([
     {

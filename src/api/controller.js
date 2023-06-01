@@ -6,6 +6,7 @@ import {
   getBySensor,
   getHistoryByDate,
   getLastValuesByDate,
+  getMaxValuesByDate,
   getMessagesByDate,
 } from "../models/data";
 import logger from "../utils/logger";
@@ -17,6 +18,23 @@ export default {
 
     try {
       const rows = await getLastValuesByDate(start, end);
+      res.send({
+        result: rows,
+      });
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async max(req, res) {
+    const start = req.params.start;
+    const end = req.params.end;
+    const type = req.params.type;
+
+    try {
+      const rows = await getMaxValuesByDate(start, end, type);
       res.send({
         result: rows,
       });
