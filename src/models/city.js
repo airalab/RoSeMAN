@@ -45,8 +45,7 @@ async function getCityByPos(lat, lon, language = "ru") {
         )
       ).data;
       if (r.address) {
-        const city =
-          r.address.city || r.address.village || r.address.town || "";
+        const city = r.name || "";
         const state =
           r.address.state ||
           r.address.county ||
@@ -55,7 +54,11 @@ async function getCityByPos(lat, lon, language = "ru") {
           "";
         const country = r.address.country || "";
         return {
-          city: city.replace("городской округ ", ""),
+          city: city
+            .replace("городской округ", "")
+            .replace("сельское поселение ", "c. ")
+            .replace("сельское поселение", "")
+            .trim(),
           state,
           country,
         };
