@@ -73,18 +73,33 @@ export default {
       {
         $group: {
           _id: "$city",
+          country: { $first: "$country" },
+          state: { $first: "$state" },
           city: { $first: "$city" },
         },
       },
       {
         $sort: {
+          country: 1,
+          state: 1,
           city: 1,
         },
       },
     ]);
 
+    const list = {};
+    for (const item of rows) {
+      if (!list[item.country]) {
+        list[item.country] = {};
+      }
+      if (!list[item.country][item.state]) {
+        list[item.country][item.state] = [];
+      }
+      list[item.country][item.state].push(item.city);
+    }
+
     res.send({
-      result: rows.map((item) => item.city),
+      result: list,
     });
   },
   async csv(req, res) {
