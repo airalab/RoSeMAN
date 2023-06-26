@@ -20,7 +20,7 @@ async function getNewRows() {
     "resultHash",
     "timechain",
   ])
-    .limit(50)
+    .limit(config.PARSER_LIMIT || 50)
     .sort([["createdAd", -1]])
     .lean();
 }
@@ -68,6 +68,7 @@ function mapperJson(data, id, ipfs) {
         type: data.type || 0,
       }),
       geo: data.geo,
+      donated_by: data.donated_by || "",
       lat: Number(lat),
       lng: Number(lng),
       timestamp: data.timestamp,
@@ -104,6 +105,7 @@ function mapper(json, id) {
               model: data.model,
               data: JSON.stringify(measurement),
               geo: geo,
+              donated_by: data.donated_by || "",
               lat: Number(lat),
               lng: Number(lng),
               timestamp: timestamp,
@@ -127,6 +129,12 @@ export default async function worker(cb = null) {
           data = await read(`${row.resultHash}/data.json`);
         } else {
           data = await read(row.resultHash);
+        }
+      } else {
+        try {
+          data = JSON.parse(row.resultHash);
+        } catch (error) {
+          logger.error(`parser ${error.message}`);
         }
       }
       let list = [];
@@ -164,6 +172,7 @@ export default async function worker(cb = null) {
               model: item.model,
               data: JSON.parse(item.data),
               geo: item.geo,
+              donated_by: item.donated_by,
               timestamp: Number(item.timestamp),
             });
             // eslint-disable-next-line no-empty

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import "./chain";
 import City from "./city";
 
 const Schema = mongoose.Schema;
@@ -19,6 +20,9 @@ const dataSchema = new Schema(
       type: String,
     },
     geo: {
+      type: String,
+    },
+    donated_by: {
       type: String,
     },
     lat: {
@@ -104,6 +108,7 @@ export async function getLastValuesByDate(from, to) {
         model: 1,
         data: 1,
         geo: 1,
+        donated_by: 1,
         timestamp: 1,
       },
     },
@@ -126,6 +131,7 @@ export async function getLastValuesByDate(from, to) {
         model: 1,
         data: 1,
         geo: 1,
+        donated_by: 1,
         timestamp: 1,
       },
     },
@@ -147,6 +153,7 @@ export async function getLastValuesByDate(from, to) {
         model: row.model,
         data: JSON.parse(row.data),
         geo: { lat, lng },
+        donated_by: row.donated_by,
         timestamp: row.timestamp,
       });
       // eslint-disable-next-line no-empty
@@ -180,6 +187,7 @@ export async function getMaxValuesByDate(from, to, type) {
         model: 1,
         data: 1,
         geo: 1,
+        donated_by: 1,
         timestamp: 1,
       },
     },
@@ -202,6 +210,7 @@ export async function getMaxValuesByDate(from, to, type) {
         model: 1,
         data: 1,
         geo: 1,
+        donated_by: 1,
         timestamp: 1,
       },
     },
@@ -225,6 +234,7 @@ export async function getMaxValuesByDate(from, to, type) {
           model: row.model,
           data: data,
           geo: { lat, lng },
+          donated_by: row.donated_by,
           timestamp: row.timestamp,
         });
       } else {
@@ -244,6 +254,7 @@ export async function getMaxValuesByDate(from, to, type) {
           model: row.model,
           data: data,
           geo: { lat, lng },
+          donated_by: row.donated_by,
           timestamp: row.timestamp,
         };
       }
