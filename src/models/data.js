@@ -98,6 +98,7 @@ export async function getLastValuesByDate(from, to) {
         model: { $first: "$model" },
         data: { $last: "$data" },
         geo: { $first: "$geo" },
+        donated_by: { $last: "$donated_by" },
         timestamp: { $first: "$timestamp" },
       },
     },
