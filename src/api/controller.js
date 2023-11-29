@@ -107,7 +107,7 @@ export default {
     const end = Number(req.params.end);
     const city = req.params.city;
 
-    if (end - start > 31 * 24 * 60 * 60) {
+    if (end - start > 32 * 24 * 60 * 60) {
       return res.send({
         error: "Error. Max period 31 days.",
       });
