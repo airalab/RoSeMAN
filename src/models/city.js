@@ -9,13 +9,12 @@ const citySchema = new Schema(
       type: String,
     },
     geo: {
-      type: String,
-    },
-    lat: {
-      type: Number,
-    },
-    lng: {
-      type: Number,
+      lat: {
+        type: Number,
+      },
+      lng: {
+        type: Number,
+      },
     },
     city: {
       type: String,
@@ -77,12 +76,13 @@ export async function setCitySensor(sensor_id, geo, update = false) {
   const sensor = await City.findOne({ sensor_id: sensor_id });
   if (sensor) {
     if (update) {
-      const [lat, lng] = geo.split(",");
+      const { lat, lng } = geo;
       const { city, state, country } = await getCityByPos(lat, lng);
       await sensor.updateOne({
-        geo,
-        lat: Number(lat),
-        lng: Number(lng),
+        geo: {
+          lat: Number(lat),
+          lng: Number(lng),
+        },
         city,
         state,
         country,
@@ -91,14 +91,14 @@ export async function setCitySensor(sensor_id, geo, update = false) {
     }
     return;
   }
-  const pos = geo.split(",");
-  const { city, state, country } = await getCityByPos(pos[0], pos[1]);
-  const [lat, lng] = geo.split(",");
+  const { lat, lng } = geo;
+  const { city, state, country } = await getCityByPos(lat, lng);
   return await City.create({
     sensor_id,
-    geo,
-    lat: Number(lat),
-    lng: Number(lng),
+    geo: {
+      lat: Number(lat),
+      lng: Number(lng),
+    },
     city,
     state,
     country,

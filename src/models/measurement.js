@@ -1,38 +1,39 @@
 import mongoose from "mongoose";
-import "./chain";
 import City from "./city";
+import "./datalog";
 
 const Schema = mongoose.Schema;
 
-const dataSchema = new Schema(
+const measurementSchema = new Schema(
   {
-    chain_id: {
+    datalog_id: {
       type: mongoose.Types.ObjectId,
-      ref: "chain",
+      ref: "datalog",
     },
     sensor_id: {
       type: String,
+      index: true,
     },
     model: {
       type: Number,
     },
-    data: {
-      type: String,
+    measurement: {
+      type: Object,
     },
     geo: {
-      type: String,
+      lat: {
+        type: Number,
+      },
+      lng: {
+        type: Number,
+      },
     },
     donated_by: {
       type: String,
     },
-    lat: {
-      type: Number,
-    },
-    lng: {
-      type: Number,
-    },
     timestamp: {
       type: Number,
+      index: true,
     },
   },
   {
@@ -40,37 +41,34 @@ const dataSchema = new Schema(
   }
 );
 
-const Data = mongoose.model("data", dataSchema);
+const Measurement = mongoose.model("measurement", measurementSchema);
 
-export default Data;
+export default Measurement;
 
 export async function getHistoryByDate(from, to, city) {
   const sensors = await City.find({ city: city });
 
-  const rows = await Data.find({
+  const rows = await Measurement.find({
     sensor_id: sensors.map((item) => item.sensor_id),
     timestamp: {
       $gt: from,
       $lt: to,
     },
   })
-    .populate("chain_id", "sender")
+    .populate("datalog_id", "sender")
     .sort({ timestamp: 1 })
-    // .limit(100)
     .lean();
   const result = {};
   rows.forEach((row) => {
-    const data = JSON.parse(row.data);
     if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
       result[row.sensor_id] = [];
     }
-    const [lat, lng] = row.geo.split(",");
     result[row.sensor_id].push({
       sensor_id: row.sensor_id,
-      sender: row.chain_id.sender,
+      sender: row.datalog_id.sender,
       model: row.model,
-      data: data,
-      geo: { lat, lng },
+      data: row.measurement,
+      geo: row.geo,
       timestamp: Number(row.timestamp),
     });
   });
@@ -79,7 +77,7 @@ export async function getHistoryByDate(from, to, city) {
 export async function getLastValuesByDate(from, to) {
   const result = {};
 
-  const rowsStatic = await Data.aggregate([
+  const rowsStatic = await Measurement.aggregate([
     {
       $match: {
         timestamp: {
@@ -96,9 +94,8 @@ export async function getLastValuesByDate(from, to) {
         _id: "$sensor_id",
         sensor_id: { $first: "$sensor_id" },
         model: { $first: "$model" },
-        data: { $last: "$data" },
+        measurement: { $last: "$measurement" },
         geo: { $first: "$geo" },
-        donated_by: { $last: "$donated_by" },
         timestamp: { $first: "$timestamp" },
       },
     },
@@ -107,7 +104,7 @@ export async function getLastValuesByDate(from, to) {
         _id: 0,
         sensor_id: 1,
         model: 1,
-        data: 1,
+        measurement: 1,
         geo: 1,
         donated_by: 1,
         timestamp: 1,
@@ -115,7 +112,7 @@ export async function getLastValuesByDate(from, to) {
     },
   ]);
 
-  const rowsMobile = await Data.aggregate([
+  const rowsMobile = await Measurement.aggregate([
     {
       $match: {
         timestamp: {
@@ -130,7 +127,7 @@ export async function getLastValuesByDate(from, to) {
         _id: 0,
         sensor_id: 1,
         model: 1,
-        data: 1,
+        measurement: 1,
         geo: 1,
         donated_by: 1,
         timestamp: 1,
@@ -148,12 +145,11 @@ export async function getLastValuesByDate(from, to) {
       result[row.sensor_id] = [];
     }
     try {
-      const [lat, lng] = row.geo.split(",");
       result[row.sensor_id].push({
         sensor_id: row.sensor_id,
         model: row.model,
-        data: JSON.parse(row.data),
-        geo: { lat, lng },
+        data: row.measurement,
+        geo: row.geo,
         donated_by: row.donated_by,
         timestamp: row.timestamp,
       });
@@ -169,7 +165,7 @@ export async function getLastValuesByDate(from, to) {
 export async function getMaxValuesByDate(from, to, type) {
   const result = {};
 
-  const rowsStatic = await Data.aggregate([
+  const rowsStatic = await Measurement.aggregate([
     {
       $match: {
         timestamp: {
@@ -186,7 +182,7 @@ export async function getMaxValuesByDate(from, to, type) {
         _id: 0,
         sensor_id: 1,
         model: 1,
-        data: 1,
+        measurement: 1,
         geo: 1,
         donated_by: 1,
         timestamp: 1,
@@ -194,7 +190,7 @@ export async function getMaxValuesByDate(from, to, type) {
     },
   ]);
 
-  const rowsMobile = await Data.aggregate([
+  const rowsMobile = await Measurement.aggregate([
     {
       $match: {
         timestamp: {
@@ -209,7 +205,7 @@ export async function getMaxValuesByDate(from, to, type) {
         _id: 0,
         sensor_id: 1,
         model: 1,
-        data: 1,
+        measurement: 1,
         geo: 1,
         donated_by: 1,
         timestamp: 1,
@@ -227,22 +223,22 @@ export async function getMaxValuesByDate(from, to, type) {
       result[row.sensor_id] = [];
     }
     try {
-      const [lat, lng] = row.geo.split(",");
-      const data = JSON.parse(row.data.toLowerCase());
+      const measurement = row.measurement;
       if (row.model === 3) {
         result[row.sensor_id].push({
           sensor_id: row.sensor_id,
           model: row.model,
-          data: data,
-          geo: { lat, lng },
+          data: measurement,
+          geo: row.geo,
           donated_by: row.donated_by,
           timestamp: row.timestamp,
         });
       } else {
         if (result[row.sensor_id].length > 0) {
-          if (data[type] && result[row.sensor_id][0].data[type]) {
+          if (measurement[type] && result[row.sensor_id][0].data[type]) {
             if (
-              Number(data[type]) <= Number(result[row.sensor_id][0].data[type])
+              Number(measurement[type]) <=
+              Number(result[row.sensor_id][0].data[type])
             ) {
               return;
             }
@@ -253,8 +249,8 @@ export async function getMaxValuesByDate(from, to, type) {
         result[row.sensor_id][0] = {
           sensor_id: row.sensor_id,
           model: row.model,
-          data: data,
-          geo: { lat, lng },
+          data: measurement,
+          geo: row.geo,
           donated_by: row.donated_by,
           timestamp: row.timestamp,
         };
@@ -269,7 +265,7 @@ export async function getMaxValuesByDate(from, to, type) {
   return result;
 }
 export async function getMessagesByDate(from, to) {
-  const rows = await Data.aggregate([
+  const rows = await Measurement.aggregate([
     {
       $match: {
         timestamp: {
@@ -284,7 +280,7 @@ export async function getMessagesByDate(from, to) {
         _id: 0,
         sensor_id: 1,
         model: 1,
-        data: 1,
+        measurement: 1,
         geo: 1,
       },
     },
@@ -292,12 +288,11 @@ export async function getMessagesByDate(from, to) {
   const result = [];
   rows.forEach((row) => {
     try {
-      const [lat, lng] = row.geo.split(",");
       result.push({
         sensor_id: row.sensor_id,
         model: row.model,
-        data: JSON.parse(row.data),
-        geo: { lat, lng },
+        measurement: row.measurement,
+        geo: row.geo,
       });
       // eslint-disable-next-line no-empty
     } catch (_) {}
@@ -306,7 +301,7 @@ export async function getMessagesByDate(from, to) {
 }
 
 export async function getBySensor(sensor_id, start, end) {
-  const rows = await Data.find({
+  const rows = await Measurement.find({
     sensor_id: sensor_id,
     timestamp: {
       $gt: start,
@@ -316,12 +311,10 @@ export async function getBySensor(sensor_id, start, end) {
     .sort({ timestamp: 1 })
     .lean();
   return rows.map((row) => {
-    const data = JSON.parse(row.data);
-    const [lat, lng] = row.geo.split(",");
     return {
-      data: data,
+      data: row.measurement,
       timestamp: row.timestamp,
-      geo: { lat, lng },
+      geo: row.geo,
     };
   });
 }

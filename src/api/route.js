@@ -3,10 +3,10 @@ import controller from "./controller";
 
 const router = express.Router();
 
-router.get("/last/:start/:end", controller.last);
-router.get("/max/:start/:end/:type", controller.max);
-router.get("/messages/:start/:end", controller.messages);
 router.get("/cities", controller.cities);
+router.get("/last/:start/:end", controller.last);
+router.get("/messages/:start/:end", controller.messages);
+router.get("/max/:start/:end/:type", controller.max);
 router.get("/csv/:start/:end/:city", controller.csv);
 router.get("/:sensor/:start/:end", controller.sensor);
 

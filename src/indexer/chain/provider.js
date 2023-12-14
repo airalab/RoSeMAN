@@ -1,7 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { u8aToString } from "@polkadot/util";
-import logger from "./logger";
-import config from "../config";
+import config from "../../config";
+import logger from "../../utils/logger";
 
 let api = null;
 let provider = null;
@@ -38,13 +37,13 @@ export function getInstance() {
   });
 }
 
+export async function getLastBlock() {
+  return Number((await api.rpc.chain.getBlock()).block.header.number);
+}
+
 export async function disconnect() {
   await api.disconnect();
   await provider.disconnect();
   api = null;
   provider = null;
-}
-
-export function recordToHash(r) {
-  return u8aToString(r);
 }

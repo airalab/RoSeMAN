@@ -25,7 +25,6 @@
     "prettier": "^2.0.5"
   },
   "dependencies": {
-    "@pinata/sdk": "^1.1.23",
     "@polkadot/api": "^8.13.1",
     "@polkadot/util": "^10.0.2",
     "axios": "^0.27.2",
@@ -33,11 +32,9 @@
     "csv-stringify": "^6.2.0",
     "express": "^4.17.1",
     "iconv-lite": "^0.6.3",
-    "ipfs-http-client": "^44.2.0",
     "jszip": "^3.6.0",
     "moment": "^2.25.3",
     "mongoose": "^6.0.7",
-    "prom-client": "^14.0.1",
     "socket.io": "2.3.0",
     "winston": "^3.2.1"
   }

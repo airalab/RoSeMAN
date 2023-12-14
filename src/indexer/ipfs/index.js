@@ -1,19 +1,14 @@
-import pinataSDK from "@pinata/sdk";
 import iconv from "iconv-lite";
-import agents from "../../agents.json";
-import config from "../config";
-import Chain from "../models/chain";
-import { setCitySensor } from "../models/city";
-import Data from "../models/data";
-import logger from "./logger";
+import agents from "../../../config/agents.json";
+import config from "../../config";
+import { setCitySensor } from "../../models/city";
+import Chain, { STATUS } from "../../models/datalog";
+import Measurement from "../../models/measurement";
+import logger from "../../utils/logger";
 import { cat } from "./tools";
 
-const pinata = config.PINATA
-  ? pinataSDK(config.PINATA.apiKey, config.PINATA.secretApiKey)
-  : null;
-
 async function getNewRows() {
-  return await Chain.find({ status: 1, sender: agents }, [
+  return await Chain.find({ status: STATUS.NEW, sender: agents }, [
     "id",
     "block",
     "sender",
@@ -59,18 +54,16 @@ function mapperJson(data, id, ipfs) {
         data.sensor_id ||
         "d32ac7ffaea820d67822f0b9523a2e004abefda646466a92db1bbf7fcb78fa51",
       model: data.model,
-      data: JSON.stringify({
+      measurement: {
         username: data.username,
         message: iconv.decode(Buffer.from(data.message), "utf8"),
         timestamp: data.timestamp,
         ipfs: ipfs,
         images: data.images || [],
         type: data.type || 0,
-      }),
-      geo: data.geo,
+      },
+      geo: { lat: Number(lat), lng: Number(lng) },
       donated_by: data.donated_by || "",
-      lat: Number(lat),
-      lng: Number(lng),
       timestamp: data.timestamp,
     });
   }
@@ -103,11 +96,15 @@ function mapper(json, id) {
               chain_id: id,
               sensor_id,
               model: data.model,
-              data: JSON.stringify(measurement),
-              geo: geo,
+              measurement: Object.keys(measurement).reduce(
+                (accumulator, key) => {
+                  accumulator[key.toLowerCase()] = Number(measurement[key]);
+                  return accumulator;
+                },
+                {}
+              ),
+              geo: { lat: Number(lat), lng: Number(lng) },
               donated_by: data.donated_by || "",
-              lat: Number(lat),
-              lng: Number(lng),
               timestamp: timestamp,
             });
           }
@@ -118,7 +115,7 @@ function mapper(json, id) {
   return list;
 }
 
-export default async function worker(cb = null) {
+export default async function parser(cb = null) {
   const rows = await getNewRows();
   for (const row of rows) {
     try {
@@ -144,7 +141,7 @@ export default async function worker(cb = null) {
         list = mapper(data, row._id);
       }
       if (list.length > 0) {
-        await Data.insertMany(list);
+        await Measurement.insertMany(list);
         for (const item of list) {
           await setCitySensor(item.sensor_id, item.geo);
         }
@@ -153,15 +150,8 @@ export default async function worker(cb = null) {
         {
           _id: row._id,
         },
-        { status: 2 }
+        { status: STATUS.READY }
       ).exec();
-
-      if (pinata && row.sender === config.PINATA.sender) {
-        pinata.unpin(row.resultHash).catch((err) => {
-          console.log(err);
-          logger.warn(`Unpin ${row.resultHash} ${err.message}`);
-        });
-      }
 
       if (cb) {
         for (const item of list) {
@@ -170,7 +160,7 @@ export default async function worker(cb = null) {
               sensor_id: item.sensor_id,
               sender: row.sender,
               model: item.model,
-              data: JSON.parse(item.data),
+              data: JSON.parse(item.measurement),
               geo: item.geo,
               donated_by: item.donated_by,
               timestamp: Number(item.timestamp),
@@ -184,6 +174,6 @@ export default async function worker(cb = null) {
     }
   }
   setTimeout(() => {
-    worker(cb);
+    parser(cb);
   }, 15000);
 }

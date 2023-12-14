@@ -2,9 +2,12 @@
 node_modules
 /dist
 /files/**
-/config.json
-/config.*.json
-!/config.template.json
+/config/config.json
+/config/config.*.json
+!/config/config.template.json
+/config/agents.json
+/config/agents.*.json
+!/config/agents.template.json
 
 # Log files
 npm-debug.log*

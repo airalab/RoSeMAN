@@ -1,6 +1,6 @@
 {
   "SERVER": {
-    "HOST": "127.0.0.1",
+    "HOST": "0.0.0.0",
     "PORT": "3000",
     "SSL_ENABLE": false,
     "SSL": {
@@ -11,8 +11,8 @@
   "CHAIN_API": "wss://kusama.rpc.robonomics.network/",
   "CHAIN_TYPES": {},
   "DB": {
-    "path": "mongodb://localhost:27017/rosemandb"
+    "path": "mongodb://mongo:27017/rosemandb"
   },
-  "IPFS_GATEWAY": "https://ipfs.io",
-  "TIMEOUT_CAT": "10000"
+  "TIMEOUT_CAT": "10000",
+  "PARSER_LIMIT": 50
 }

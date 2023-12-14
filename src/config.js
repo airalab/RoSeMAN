@@ -1,7 +1,9 @@
 import fs from "fs";
 import path from "path";
 
-const file_config = `../config${
+export const PATH_LOGS = path.join(__dirname, "/../files/logs");
+
+const file_config = `../config/config${
   process.env.ENV ? "." + process.env.ENV : ""
 }.json`;
 if (!fs.existsSync(path.resolve(__dirname, file_config))) {
