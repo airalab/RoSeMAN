@@ -1,15 +1,15 @@
 import { stringify } from "csv-stringify";
 import JSZip from "jszip";
 import moment from "moment";
-import City from "../models/city";
+import City from "../../models/city";
 import {
   getBySensor,
   getHistoryByDate,
   getLastValuesByDate,
   getMaxValuesByDate,
   getMessagesByDate,
-} from "../models/measurement";
-import logger from "../utils/logger";
+} from "../../models/measurement";
+import logger from "../../utils/logger";
 
 export default {
   async cities(req, res) {

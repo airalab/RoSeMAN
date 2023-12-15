@@ -1,7 +1,8 @@
 import cors from "cors";
 import express from "express";
 import Socket from "socket.io";
-import sensor from "./api/route";
+import sensor from "./api/sensor/route";
+import status from "./api/status/route";
 import config from "./config";
 import indexer from "./indexer";
 import db from "./models/db";
@@ -13,6 +14,7 @@ const server = createServer(app);
 const io = Socket(server);
 app.use(cors());
 app.use("/api/sensor", sensor);
+app.use("/api/status", status);
 
 db()
   .then(() => {
