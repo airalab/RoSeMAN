@@ -8,6 +8,7 @@ import indexer from "./indexer";
 import db from "./models/db";
 import createServer from "./server";
 import logger from "./utils/logger";
+import { metrics, update } from "./utils/prometheus";
 
 const app = express();
 const server = createServer(app);
@@ -15,6 +16,7 @@ const io = Socket(server);
 app.use(cors());
 app.use("/api/sensor", sensor);
 app.use("/api/status", status);
+app.get("/metrics", metrics);
 
 db()
   .then(() => {
@@ -29,6 +31,7 @@ db()
       } else {
         logger.warn("Indexer disabled");
       }
+      update();
     });
   })
   .catch((e) => {

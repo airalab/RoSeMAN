@@ -2,6 +2,7 @@ import agents from "../../../config/agents.json";
 import Chain, { STATUS } from "../../models/datalog";
 import LastBlock from "../../models/lastBlock";
 import logger from "../../utils/logger";
+import { rosemanBlockRead } from "../../utils/prometheus";
 import { getInstance, getLastBlock } from "./provider";
 
 async function parseBlock(api, number) {
@@ -81,6 +82,7 @@ export async function reader(api, startBlock = null) {
       await Chain.insertMany(list);
     }
     await LastBlock.updateOne({}, { block: block }).exec();
+    rosemanBlockRead.set({ chain: "robonomics" }, block);
   }
 
   setTimeout(() => {
