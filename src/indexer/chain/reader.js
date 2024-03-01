@@ -84,10 +84,10 @@ export async function reader(api, startBlock = null) {
     await LastBlock.updateOne({}, { block: block }).exec();
     rosemanBlockRead.set({ chain: "robonomics" }, block);
   }
-
-  setTimeout(() => {
-    reader(api);
-  }, 15000);
+  await new Promise((r) => {
+    setTimeout(r, 15000);
+  });
+  return reader(api);
 }
 
 export async function init() {
