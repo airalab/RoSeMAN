@@ -49,7 +49,7 @@ function mapperJson(data, id, ipfs) {
   if (data.model && data.geo && data.timestamp) {
     const [lat, lng] = data.geo.split(",");
     list.push({
-      chain_id: id,
+      datalog_id: id,
       sensor_id:
         data.sensor_id ||
         "d32ac7ffaea820d67822f0b9523a2e004abefda646466a92db1bbf7fcb78fa51",
@@ -93,7 +93,7 @@ function mapper(json, id) {
           ) {
             const [lat, lng] = geo.split(",");
             list.push({
-              chain_id: id,
+              datalog_id: id,
               sensor_id,
               model: data.model,
               measurement: Object.keys(measurement).reduce(
