@@ -45,15 +45,28 @@ const Measurement = mongoose.model("measurement", measurementSchema);
 
 export default Measurement;
 
-export async function getHistoryByDate(from, to, city) {
-  const sensors = await City.find({ city: city });
-  const rows = await Measurement.find({
-    sensor_id: sensors.map((item) => item.sensor_id),
+export async function getHistoryByDate(from, to, city, bound) {
+  const filter = {
     timestamp: {
       $gt: from,
       $lt: to,
     },
-  })
+  };
+  if (bound) {
+    filter["geo.lat"] = {
+      $lte: bound.northEast.lat,
+      $gte: bound.southWest.lat,
+    };
+    filter["geo.lng"] = {
+      $lte: bound.northEast.lng,
+      $gte: bound.southWest.lng,
+    };
+  }
+  if (city) {
+    const sensors = await City.find({ city: city });
+    filter.sensor_id = sensors.map((item) => item.sensor_id);
+  }
+  const rows = await Measurement.find(filter)
     .populate("datalog_id", "sender")
     .sort({ timestamp: 1 })
     .lean();
@@ -63,9 +76,7 @@ export async function getHistoryByDate(from, to, city) {
       result[row.sensor_id] = [];
     }
     result[row.sensor_id].push({
-      sensor_id: row.sensor_id,
       sender: row.datalog_id ? row.datalog_id.sender : "",
-      model: row.model,
       data: row.measurement,
       geo: row.geo,
       timestamp: Number(row.timestamp),

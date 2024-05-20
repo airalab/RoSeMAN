@@ -145,7 +145,7 @@ export default {
         rows[sensor].forEach((item) => {
           const row = {
             timestamp: moment(item.timestamp, "X").format("DD.MM.YYYY HH:mm"),
-            sensor_id: item.sensor_id,
+            sensor_id: sensor,
             sender: item.sender,
             geo: item.geo,
           };
@@ -186,6 +186,61 @@ export default {
             .pipe(res);
         }
       );
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async json(req, res) {
+    // http://localhost:3000/api/sensor/json?start=1708041600&end=1708128000&bound=53.54285758961049,49.456501007080085|53.4889647580831,49.291706085205085
+    const start = req.params.start || req.query.start;
+    const end = req.params.end || req.query.end;
+    if (!start) {
+      return res.send({
+        error: "Error. Parameter start is required.",
+      });
+    }
+    if (!end) {
+      return res.send({
+        error: "Error. Parameter end is required.",
+      });
+    }
+    if (end - start > 32 * 24 * 60 * 60) {
+      return res.send({
+        error: "Error. Max period 31 days.",
+      });
+    }
+    const city = req.query.city;
+
+    const boundInput = req.query.bound
+      ? req.query.bound.split("|").map((item) => item.split(","))
+      : undefined;
+    let bound;
+    if (
+      boundInput &&
+      boundInput.length === 2 &&
+      boundInput[0].length === 2 &&
+      boundInput[1].length === 2
+    ) {
+      bound = {
+        northEast: {
+          lat: boundInput[0][0],
+          lng: boundInput[0][1],
+        },
+        southWest: {
+          lat: boundInput[1][0],
+          lng: boundInput[1][1],
+        },
+      };
+    }
+
+    try {
+      const rows = await getHistoryByDate(start, end, city, bound);
+      res.send({
+        result: rows,
+      });
     } catch (error) {
       logger.error(error.toString());
       res.send({
