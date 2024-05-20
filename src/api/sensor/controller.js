@@ -13,40 +13,57 @@ import logger from "../../utils/logger";
 
 export default {
   async cities(req, res) {
-    const rows = await City.aggregate([
-      {
-        $match: {
-          city: {
-            $ne: "",
-          },
-        },
-      },
-      {
-        $group: {
-          _id: "$city",
-          country: { $first: "$country" },
-          state: { $first: "$state" },
-          city: { $first: "$city" },
-        },
-      },
-      {
-        $sort: {
-          country: 1,
-          state: 1,
-          city: 1,
-        },
-      },
-    ]);
+    const start = req.params.start;
+    const end = req.params.end;
 
     const list = {};
-    for (const item of rows) {
-      if (!list[item.country]) {
-        list[item.country] = {};
+
+    try {
+      const filter = [
+        {
+          $match: {
+            city: {
+              $ne: "",
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$city",
+            country: { $first: "$country" },
+            state: { $first: "$state" },
+            city: { $first: "$city" },
+          },
+        },
+        {
+          $sort: {
+            country: 1,
+            state: 1,
+            city: 1,
+          },
+        },
+      ];
+
+      let sensors = [];
+      if (start) {
+        sensors = await getLastValuesByDate(start, end);
+        filter[0].$match.sensor_id = {
+          $in: Object.keys(sensors),
+        };
       }
-      if (!list[item.country][item.state]) {
-        list[item.country][item.state] = [];
+
+      const rows = await City.aggregate(filter);
+      for (const item of rows) {
+        if (!list[item.country]) {
+          list[item.country] = {};
+        }
+        if (!list[item.country][item.state]) {
+          list[item.country][item.state] = [];
+        }
+        list[item.country][item.state].push(item.city);
       }
-      list[item.country][item.state].push(item.city);
+    } catch (error) {
+      console.log(error);
     }
 
     res.send({
