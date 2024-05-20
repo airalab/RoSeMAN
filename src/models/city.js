@@ -35,7 +35,7 @@ const City = mongoose.model("city", citySchema);
 
 export default City;
 
-async function getCityByPos(lat, lon, language = "ru") {
+async function getCityByPos(lat, lon, language = "en") {
   if (Number(lat) > 0 && Number(lon) > 0) {
     try {
       const r = (
