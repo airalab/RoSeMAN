@@ -160,7 +160,7 @@ export default async function parser(cb = null) {
               sensor_id: item.sensor_id,
               sender: row.sender,
               model: item.model,
-              data: JSON.parse(item.measurement),
+              data: item.measurement,
               geo: item.geo,
               donated_by: item.donated_by,
               timestamp: Number(item.timestamp),

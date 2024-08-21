@@ -172,6 +172,57 @@ export async function getLastValuesByDate(from, to) {
 
   return result;
 }
+export async function getLastValueTypeByDate(from, to, type) {
+  const result = {};
+
+  const rows = await Measurement.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+        [`measurement.${type}`]: { $exists: true },
+      },
+    },
+    {
+      $group: {
+        _id: "$sensor_id",
+        value: { $last: `$measurement.${type}` },
+      },
+    },
+  ]);
+  const rowsAll = await Measurement.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$sensor_id",
+        model: { $first: "$model" },
+        geo: { $first: "$geo" },
+      },
+    },
+  ]);
+
+  for (const item of rowsAll) {
+    const value = rows.find((row) => row._id === item._id);
+    result[item._id] = [
+      {
+        ...item,
+        sensor_id: item._id,
+        data: value ? { [type]: value.value } : {},
+      },
+    ];
+  }
+
+  return result;
+}
 export async function getMaxValuesByDate(from, to, type) {
   const result = {};
 
