@@ -379,3 +379,22 @@ export async function getBySensor(sensor_id, start, end) {
     };
   });
 }
+
+export async function getMeasurements(start, end) {
+  const rows = await Measurement.find(
+    {
+      timestamp: {
+        $gt: start,
+        $lt: end,
+      },
+    },
+    { measurement: 1 }
+  ).lean();
+  let res = [];
+  for (const item of rows) {
+    if (item.measurement) {
+      res = [...new Set([...res, ...Object.keys(item.measurement)])];
+    }
+  }
+  return res;
+}

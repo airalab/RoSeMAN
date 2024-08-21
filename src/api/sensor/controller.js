@@ -5,9 +5,10 @@ import City from "../../models/city";
 import {
   getBySensor,
   getHistoryByDate,
-  getLastValuesByDate,
   getLastValueTypeByDate,
+  getLastValuesByDate,
   getMaxValuesByDate,
+  getMeasurements,
   getMessagesByDate,
 } from "../../models/measurement";
 import logger from "../../utils/logger";
@@ -273,6 +274,23 @@ export default {
 
     try {
       const result = await getBySensor(sensor, start, end);
+
+      res.send({
+        result,
+      });
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async measurements(req, res) {
+    const start = req.params.start;
+    const end = req.params.end;
+
+    try {
+      const result = await getMeasurements(start, end);
 
       res.send({
         result,
