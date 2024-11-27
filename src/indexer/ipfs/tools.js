@@ -5,7 +5,7 @@ import logger from "../../utils/logger";
 const listGateways = (config.listOfGateways || ["https://ipfs.io"]).reduce(
   (gateways, curr) => {
     if (typeof curr === "string") {
-      gateways[curr] = {
+      gateways[`${curr}/ipfs/`] = {
         url: `${curr}/ipfs/`,
         method: "get",
         options: {},
