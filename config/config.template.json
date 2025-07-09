@@ -14,5 +14,9 @@
     "path": "mongodb://mongo:27017/rosemandb"
   },
   "TIMEOUT_CAT": "10000",
-  "PARSER_LIMIT": 50
+  "PARSER_LIMIT": 50,
+  "onlyApi": false,
+  "INDEX_CHAIN": true,
+  "INDEX_IPFS": true,
+  "listOfGateways": ["https://ipfs.io", "https://gateway.ipfs.io"]
 }

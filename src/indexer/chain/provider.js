@@ -2,48 +2,48 @@ import { ApiPromise, WsProvider } from "@polkadot/api";
 import config from "../../config";
 import logger from "../../utils/logger";
 
-let api = null;
-let provider = null;
-
-export function getProvider() {
-  if (provider) {
-    return provider;
+export class Instance {
+  constructor(endpoint) {
+    this.provider = null;
+    this.api = null;
+    this.endpoint = endpoint;
   }
-  provider = new WsProvider(config.CHAIN_API);
-  provider.on("connected", () => {
-    logger.info("Connected provider");
-  });
-  provider.on("disconnected", () => {
-    logger.warn("Disconnected provider");
-  });
-  provider.on("error", (e) => {
-    logger.error(`Error provider ${e.message}`);
-  });
-  return provider;
-}
 
-export function getInstance() {
-  if (api) {
-    return new Promise(function (resolve) {
-      resolve(api);
+  setProvider() {
+    if (this.provider) {
+      return;
+    }
+    this.provider = new WsProvider(this.endpoint);
+    this.provider.on("connected", () => {
+      logger.info(`Connected provider ${this.endpoint}`);
+    });
+    this.provider.on("disconnected", () => {
+      logger.warn(`Disconnected provider ${this.endpoint}`);
+    });
+    this.provider.on("error", (e) => {
+      logger.error(`Error provider ${this.endpoint}: ${e.message}`);
     });
   }
-  return ApiPromise.create({
-    provider: getProvider(),
-    types: config.CHAIN_TYPES,
-  }).then((r) => {
-    api = r;
-    return r;
-  });
-}
 
-export async function getLastBlock() {
-  return Number((await api.rpc.chain.getBlock()).block.header.number);
-}
+  async create() {
+    if (this.api) {
+      return;
+    }
+    this.setProvider();
+    this.api = await ApiPromise.create({
+      provider: this.provider,
+      types: config.CHAIN_TYPES,
+    });
+  }
 
-export async function disconnect() {
-  await api.disconnect();
-  await provider.disconnect();
-  api = null;
-  provider = null;
+  async getLastBlock() {
+    return Number((await this.api.rpc.chain.getBlock()).block.header.number);
+  }
+
+  async disconnect() {
+    await this.api.disconnect();
+    await this.provider.disconnect();
+    this.api = null;
+    this.provider = null;
+  }
 }

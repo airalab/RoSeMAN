@@ -1,107 +1,98 @@
-import agents from "../../../config/agents.json";
-import Chain, { STATUS } from "../../models/datalog";
-import LastBlock from "../../models/lastBlock";
 import logger from "../../utils/logger";
-import { rosemanBlockRead } from "../../utils/prometheus";
-import { getInstance, getLastBlock } from "./provider";
 
-async function parseBlock(api, number) {
+async function parseBlock(api, number, filter) {
+  const result = [];
   const blockHash = await api.rpc.chain.getBlockHash(number);
   const allRecords = await api.query.system.events.at(blockHash);
+  const signedBlock = await api.rpc.chain.getBlock(blockHash);
+  const extrinsics = signedBlock.block.extrinsics.toArray();
 
-  const success = [];
-  const record = {};
-  for (const event of allRecords) {
+  for (const index in extrinsics) {
+    const extrinsic = extrinsics[index];
+    const {
+      isSigned,
+      method: { args, method, section },
+    } = extrinsic;
+
     if (
-      event.event.section === "datalog" &&
-      event.event.method === "NewRecord"
+      !filter.extrinsic.includes(section) &&
+      !filter.extrinsic.includes(`${section}/${method}`)
     ) {
-      if (agents.includes(event.event.data[0].toString())) {
-        record[event.phase.asApplyExtrinsic.toNumber()] = event.event.data;
-      }
-    } else if (
-      event.event.section === "system" &&
-      event.event.method === "ExtrinsicSuccess"
-    ) {
-      success.push(event.phase.asApplyExtrinsic.toNumber());
+      continue;
     }
-  }
-  const records = [];
-  for (const index in record) {
-    if (success.includes(Number(index))) {
-      records.push(record[index]);
+
+    let signer;
+    if (isSigned) {
+      signer = extrinsic.signer.toString();
     }
-  }
-  return records;
-}
 
-export async function getLastParsedBlock() {
-  const row = await LastBlock.findOne({});
-  if (row) {
-    return row.block + 1;
-  }
-  const currentBlock = await getLastBlock();
-  await LastBlock.create({ block: currentBlock });
-  return currentBlock;
-}
+    const item = {
+      block: number,
+      index,
+      signer,
+      args,
+      method,
+      section,
+      isSuccess: false,
+      events: [],
+    };
 
-export async function reader(api, startBlock = null) {
-  const lastBlock = startBlock || (await getLastParsedBlock());
-  const currentBlock = await getLastBlock();
-  for (let block = lastBlock; block < currentBlock; block++) {
-    const records = await parseBlock(api, block);
-    const list = [];
+    const events = [];
+    const records = allRecords.filter(
+      ({ phase }) => phase.isApplyExtrinsic && phase.asApplyExtrinsic.eq(index)
+    );
     for (const record of records) {
-      const isRow = await Chain.findOne({
-        block: block,
-        sender: record[0].toHuman(),
-        resultHash: record[2].toHuman(),
-        timechain: Number(record[1].toString()),
-      }).lean();
-      if (
-        isRow === null &&
-        list.findIndex((item) => {
-          return (
-            item.block === block &&
-            item.sender === record[0].toHuman() &&
-            item.resultHash === record[2].toHuman() &&
-            item.timechain === Number(record[1].toString())
-          );
-        }) < 0
-      ) {
-        list.push({
-          block,
-          sender: record[0].toHuman(),
-          resultHash: record[2].toHuman(),
-          timechain: Number(record[1].toString()),
-          status: STATUS.NEW,
-        });
+      if (api.events.system.ExtrinsicSuccess.is(record.event)) {
+        item.isSuccess = true;
+      } else if (api.events.system.ExtrinsicFailed.is(record.event)) {
+        item.isSuccess = false;
+      } else {
+        if (
+          filter.event &&
+          Array.isArray(filter.event) &&
+          (filter.event.includes(record.event.section) ||
+            filter.event.includes(
+              `${record.event.section}/${record.event.method}`
+            ))
+        ) {
+          events.push(record.event);
+        }
       }
     }
-    if (list.length > 0) {
-      await Chain.insertMany(list);
+    item.events = events;
+    result.push(item);
+  }
+  return result;
+}
+
+async function extrinsicHandler(extrinsic, handlers) {
+  for (const section in handlers) {
+    if (
+      section === extrinsic.section ||
+      section === `${extrinsic.section}/${extrinsic.method}`
+    ) {
+      for (const handler of handlers[section]) {
+        await handler(extrinsic);
+      }
     }
-    await LastBlock.updateOne({}, { block: block }).exec();
-    rosemanBlockRead.set({ chain: "robonomics" }, block);
+  }
+}
+
+export async function reader(instance, startBlock, filter, handlers, cb) {
+  const currentBlock = await instance.getLastBlock();
+  logger.debug(`Blocks: ${startBlock} - ${currentBlock}`);
+  for (let block = startBlock; block < currentBlock; block++) {
+    logger.debug(`Block: ${block}`);
+    const extrinsics = await parseBlock(instance.api, block, filter);
+    for (const extrinsic of extrinsics) {
+      await extrinsicHandler(extrinsic, handlers);
+    }
+    if (cb) {
+      await cb(block);
+    }
   }
   await new Promise((r) => {
     setTimeout(r, 15000);
   });
-  return reader(api);
-}
-
-export async function init() {
-  const api = await getInstance();
-  let startBlock = null;
-  if (process.env.START_BLOCK) {
-    if (process.env.START_BLOCK === "last") {
-      startBlock = await getLastBlock();
-    } else {
-      startBlock = Number(process.env.START_BLOCK);
-    }
-  } else {
-    startBlock = await getLastParsedBlock();
-  }
-  logger.info(`Start block: ${startBlock}`);
-  return { api, startBlock };
+  return reader(instance, currentBlock, filter, handlers, cb);
 }
