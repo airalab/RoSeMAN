@@ -11,6 +11,7 @@ import {
   getMeasurements,
   getMessagesByDate,
 } from "../../models/measurement";
+import Subscription from "../../models/subscription";
 import logger from "../../utils/logger";
 
 export default {
@@ -275,8 +276,19 @@ export default {
     try {
       const result = await getBySensor(sensor, start, end);
 
+      let owner;
+      const subscription = await Subscription.findOne({
+        account: sensor,
+      }).lean();
+      if (subscription) {
+        owner = subscription.owner;
+      }
+
       res.send({
         result,
+        sensor: {
+          owner,
+        },
       });
     } catch (error) {
       logger.error(error.toString());
@@ -294,6 +306,33 @@ export default {
 
       res.send({
         result,
+      });
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
+  async info(req, res) {
+    const sensor = req.params.sensor;
+    console.log(sensor);
+
+    try {
+      let owner;
+      const subscription = await Subscription.findOne({
+        account: sensor,
+      }).lean();
+      if (subscription) {
+        owner = subscription.owner;
+      }
+
+      console.log({ owner });
+
+      res.send({
+        sensor: {
+          owner: owner,
+        },
       });
     } catch (error) {
       logger.error(error.toString());
