@@ -1,5 +1,6 @@
 import agents from "../../../config/agents.json";
 import Chain, { STATUS } from "../../models/datalog";
+import DigitalTwin from "../../models/digitalTwin";
 import Subscription from "../../models/subscription";
 
 export async function rwsOwner(extrinsic) {
@@ -64,6 +65,26 @@ export async function sensors(extrinsic) {
             });
           }
         }
+      }
+    }
+  }
+}
+
+export async function dtwin(extrinsic) {
+  if (
+    (extrinsic.section === "rws" || extrinsic.section === "digitalTwin") &&
+    extrinsic.isSuccess
+  ) {
+    for (const event of extrinsic.events) {
+      if (event.section === "digitalTwin" && event.method === "TopicChanged") {
+        const record = event.data;
+        await DigitalTwin.create({
+          block: extrinsic.block,
+          owner: record[0].toHuman(),
+          index: Number(record[1].toString()),
+          topic: record[2].toHuman(),
+          source: record[3].toHex(),
+        });
       }
     }
   }

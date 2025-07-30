@@ -2,8 +2,9 @@ import config from "../config";
 import LastBlock from "../models/lastBlock";
 import { rosemanBlockRead } from "../utils/prometheus";
 import chain, { BLOCK } from "./chain";
-import { rwsOwner, sensors } from "./chain/handlers";
-import ipfs from "./ipfs";
+import { dtwin, rwsOwner, sensors } from "./chain/handlers";
+import { parser as parserDTwins } from "./ipfs/dtwin";
+import { parser as parserSensors } from "./ipfs/sensors";
 
 export default function (cb) {
   if (config.INDEX_CHAIN) {
@@ -32,11 +33,15 @@ export default function (cb) {
     chain(
       config.CHAIN_API_POLKADOT,
       BLOCK.LAST,
-      { extrinsic: ["rws"] },
-      { rws: [rwsOwner] }
+      {
+        extrinsic: ["rws", "digitalTwin/setSource"],
+        event: ["digitalTwin/TopicChanged"],
+      },
+      { rws: [rwsOwner, dtwin], "digitalTwin/setSource": [dtwin] }
     );
   }
   if (config.INDEX_IPFS) {
-    ipfs(cb);
+    parserSensors(cb);
+    parserDTwins();
   }
 }

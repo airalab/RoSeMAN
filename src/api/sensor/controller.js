@@ -1,7 +1,10 @@
+import { decodeAddress } from "@polkadot/util-crypto";
+import { u8aToHex } from "@polkadot/util/u8a/toHexBuffer";
 import { stringify } from "csv-stringify";
 import JSZip from "jszip";
 import moment from "moment";
 import City from "../../models/city";
+import DigitalTwin from "../../models/digitalTwin";
 import {
   getBySensor,
   getHistoryByDate,
@@ -316,24 +319,75 @@ export default {
   },
   async info(req, res) {
     const sensor = req.params.sensor;
-    console.log(sensor);
-
     try {
       let owner;
+      let index;
+      let data;
       const subscription = await Subscription.findOne({
         account: sensor,
       }).lean();
       if (subscription) {
         owner = subscription.owner;
+        const twins = await DigitalTwin.aggregate([
+          {
+            $match: {
+              owner: owner,
+            },
+          },
+          {
+            $group: {
+              _id: {
+                index: "$index",
+                topic: "$topic",
+              },
+              index: {
+                $last: "$index",
+              },
+              topic: {
+                $last: "$topic",
+              },
+              source: {
+                $last: "$source",
+              },
+              data: {
+                $last: "$data",
+              },
+            },
+          },
+          {
+            $match: {
+              source: u8aToHex(decodeAddress(sensor)),
+              "data.key": "altruist",
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              index: 1,
+              topic: 1,
+              source: 1,
+              data: 1,
+            },
+          },
+        ]);
+        if (twins && twins.length > 0) {
+          console.log(twins);
+
+          index = twins[0].index;
+          data = twins[0].data.data;
+        }
+        res.send({
+          sensor: {
+            owner: owner,
+            index: index,
+            data: data,
+          },
+        });
+      } else {
+        res.send({
+          error: "Error: Altruist not found",
+        });
       }
-
-      console.log({ owner });
-
-      res.send({
-        sensor: {
-          owner: owner,
-        },
-      });
     } catch (error) {
       logger.error(error.toString());
       res.send({
