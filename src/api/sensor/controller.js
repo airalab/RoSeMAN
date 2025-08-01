@@ -395,4 +395,41 @@ export default {
       });
     }
   },
+  async sensors(req, res) {
+    const owner = req.params.owner;
+    try {
+      const subscriptions = (
+        await Subscription.find(
+          {
+            owner: owner,
+          },
+          { _id: 0, account: 1 }
+        ).lean()
+      ).map((item) => item.account);
+      if (subscriptions.length) {
+        const sensors = (
+          await City.find(
+            {
+              sensor_id: {
+                $in: subscriptions,
+              },
+            },
+            { _id: 0, sensor_id: 1 }
+          ).lean()
+        ).map((item) => item.sensor_id);
+        res.send({
+          sensors: sensors,
+        });
+      } else {
+        res.send({
+          sensors: [],
+        });
+      }
+    } catch (error) {
+      logger.error(error.toString());
+      res.send({
+        error: "Error",
+      });
+    }
+  },
 };

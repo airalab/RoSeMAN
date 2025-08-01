@@ -13,5 +13,6 @@ router.get("/json/:start?/:end?", controller.json);
 router.get("/measurements/:start/:end", controller.measurements);
 router.get("/info/:sensor", controller.info);
 router.get("/:sensor/:start/:end", controller.sensor);
+router.get("/:sensors/:owner", controller.sensors);
 
 export default router;
