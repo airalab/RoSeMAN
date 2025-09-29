@@ -36,35 +36,33 @@ const City = mongoose.model("city", citySchema);
 export default City;
 
 async function getCityByPos(lat, lon, language = "en") {
-  if (Number(lat) > 0 && Number(lon) > 0) {
-    try {
-      const r = (
-        await axios.get(
-          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&accept-language=${language}`
-        )
-      ).data;
-      if (r.address) {
-        const city = r.name || "";
-        const state =
-          r.address.state ||
-          r.address.county ||
-          r.address.state_district ||
-          r.address.region ||
-          "";
-        const country = r.address.country || "";
-        return {
-          city: city
-            .replace("городской округ", "")
-            .replace("сельское поселение ", "c. ")
-            .replace("сельское поселение", "")
-            .trim(),
-          state,
-          country,
-        };
-      }
-      // eslint-disable-next-line no-empty
-    } catch (_) {}
-  }
+  try {
+    const r = (
+      await axios.get(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&accept-language=${language}`
+      )
+    ).data;
+    if (r.address) {
+      const city = r.name || "";
+      const state =
+        r.address.state ||
+        r.address.county ||
+        r.address.state_district ||
+        r.address.region ||
+        "";
+      const country = r.address.country || "";
+      return {
+        city: city
+          .replace("городской округ", "")
+          .replace("сельское поселение ", "c. ")
+          .replace("сельское поселение", "")
+          .trim(),
+        state,
+        country,
+      };
+    }
+    // eslint-disable-next-line no-empty
+  } catch (_) {}
   return {
     city: "",
     state: "",
