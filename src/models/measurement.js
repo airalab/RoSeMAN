@@ -45,6 +45,12 @@ const Measurement = mongoose.model("measurement", measurementSchema);
 
 export default Measurement;
 
+const MODEL = {
+  STATIC: 2,
+  MOVE: 3,
+  MESSAGE: 4,
+};
+
 export async function getHistoryByDate(from, to, city, bound) {
   const filter = {
     timestamp: {
@@ -322,6 +328,51 @@ export async function getMaxValuesByDate(from, to, type) {
 
   rowsStatic.forEach(iterator);
   rowsMobile.forEach(iterator);
+
+  return result;
+}
+export async function getMaxValuesByDateV2(from, to, type) {
+  const rows = await Measurement.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(from),
+          $lt: Number(to),
+        },
+        model: MODEL.STATIC,
+      },
+    },
+    {
+      $group: {
+        _id: "$sensor_id",
+        sensor_id: { $first: "$sensor_id" },
+        model: { $first: "$model" },
+        value: { $max: "$measurement." + type },
+        geo: { $first: "$geo" },
+        timestamp: { $first: "$timestamp" },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        model: 1,
+        value: 1,
+        geo: 1,
+        timestamp: 1,
+      },
+    },
+  ]);
+
+  const result = {};
+  for (const row of rows) {
+    result[row.sensor_id] = {
+      model: row.model,
+      geo: row.geo,
+      timestamp: row.timestamp,
+      value: row.value,
+    };
+  }
 
   return result;
 }
