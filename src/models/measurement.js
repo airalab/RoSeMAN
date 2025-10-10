@@ -457,6 +457,7 @@ export async function getListSensorsV2(start, end) {
           $gt: Number(start),
           $lt: Number(end),
         },
+        $or: [{ model: MODEL.STATIC }, { model: MODEL.MOVE }],
       },
     },
     {
