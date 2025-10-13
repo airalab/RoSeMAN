@@ -483,3 +483,40 @@ export async function getListSensorsV2(start, end) {
   ]);
   return rows;
 }
+export async function getMessagesByDateV2(start, end) {
+  const rows = await Measurement.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(start),
+          $lt: Number(end),
+        },
+        model: MODEL.MESSAGE,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        measurement: 1,
+        geo: 1,
+      },
+    },
+  ]);
+  const result = [];
+  rows.forEach((row) => {
+    try {
+      result.push({
+        id: row.sensor_id,
+        message: row.measurement?.message,
+        timestamp: row.measurement?.timestamp,
+        geo: row.geo,
+        author: row.measurement?.username,
+        images: row.measurement?.images,
+      });
+    } catch (error) {
+      console.log(error);
+    }
+  });
+  return result;
+}
