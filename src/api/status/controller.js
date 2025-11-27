@@ -5,7 +5,8 @@ import logger from "../../utils/logger";
 export default {
   async lastBlock(req, res) {
     try {
-      const row = await LastBlock.findOne({});
+      const chain = req?.query?.chain || "polkadot_robonomics";
+      const row = await LastBlock.findOne({ chain });
       res.send({
         result: row.block,
       });

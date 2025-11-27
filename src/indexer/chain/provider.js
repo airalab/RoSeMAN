@@ -3,10 +3,11 @@ import config from "../../config";
 import logger from "../../utils/logger";
 
 export class Instance {
-  constructor(endpoint) {
+  constructor(endpoint, chainName = '') {
     this.provider = null;
     this.api = null;
     this.endpoint = endpoint;
+    this.chainName = chainName;
   }
 
   setProvider() {

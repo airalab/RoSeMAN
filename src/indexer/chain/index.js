@@ -19,21 +19,28 @@ async function getStartBlock(start, instance) {
     startBlock = Number(process.env.START_BLOCK);
   } else if (start === BLOCK.DB) {
     logger.info("Start block DB");
-    const row = await LastBlock.findOne({});
+    const row = await LastBlock.findOne({ chain: instance.chainName });
     if (row) {
       startBlock = row.block + 1;
     } else {
       logger.warn("LASTBLOCK NOT FOUND");
       startBlock = await instance.getLastBlock();
-      await LastBlock.create({ block: startBlock });
+      await LastBlock.create({ block: startBlock, chain: instance.chainName });
     }
   }
   return startBlock;
 }
 
-export default async function chain(endpoint, start, filter, handlers, cb) {
+export default async function chain(
+  endpoint,
+  chainName,
+  start,
+  filter,
+  handlers,
+  cb
+) {
   try {
-    const instance = new Instance(endpoint);
+    const instance = new Instance(endpoint, chainName);
     try {
       await instance.create();
       const startBlock = await getStartBlock(start, instance);
