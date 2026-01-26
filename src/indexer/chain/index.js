@@ -51,7 +51,7 @@ export default async function chain(
       await instance.disconnect();
       setTimeout(() => {
         logger.info(`Restart reader: ${endpoint}`);
-        chain(endpoint, start, filter, handlers, cb);
+        chain(endpoint, chainName, start, filter, handlers, cb);
       }, 15000);
     }
   } catch (error) {
