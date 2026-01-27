@@ -413,15 +413,26 @@ export async function getMessagesByDate(from, to) {
 }
 
 export async function getBySensor(sensor_id, start, end) {
-  const rows = await Measurement.find({
-    sensor_id: sensor_id,
-    timestamp: {
-      $gt: start,
-      $lt: end,
+  const rows = await Measurement.aggregate([
+    {
+      $match: {
+        sensor_id: sensor_id,
+        timestamp: {
+          $gt: Number(start),
+          $lt: Number(end),
+        },
+      },
     },
-  })
-    .sort({ timestamp: 1 })
-    .lean();
+    { $sort: { timestamp: 1 } },
+    {
+      $project: {
+        _id: 0,
+        measurement: 1,
+        timestamp: 1,
+        geo: 1,
+      },
+    },
+  ]);
   return rows.map((row) => {
     return {
       data: row.measurement,
