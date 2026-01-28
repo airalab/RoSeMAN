@@ -68,25 +68,62 @@ export async function getHistoryByDate(from, to, city, bound) {
       $gte: bound.southWest.lng,
     };
   }
+
+  let sensor_ids = undefined;
   if (city) {
     const sensors = await City.find({ city: city });
-    filter.sensor_id = sensors.map((item) => item.sensor_id);
+    sensor_ids = [];
+    sensor_ids = sensors.map((item) => item.sensor_id);
   }
-  const rows = await Measurement.find(filter)
-    .populate("datalog_id", "sender")
-    .sort({ timestamp: 1 })
-    .lean();
+
+  const rows = await Measurement.aggregate([
+    {
+      $match: filter,
+    },
+    // { $sort: { timestamp: 1 } },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        measurement: 1,
+        timestamp: 1,
+        geo: 1,
+        datalog_id: 1,
+      },
+    },
+    {
+      $lookup: {
+        from: "datalogs",
+        localField: "datalog_id",
+        foreignField: "_id",
+        as: "datalog",
+      },
+    },
+    {
+      $project: {
+        sensor_id: 1,
+        measurement: 1,
+        timestamp: 1,
+        geo: 1,
+        datalog: {
+          sender: 1,
+        },
+      },
+    },
+  ]);
   const result = {};
   rows.forEach((row) => {
-    if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
-      result[row.sensor_id] = [];
+    if (sensor_ids && sensor_ids.includes(row.sensor_id)) {
+      if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
+        result[row.sensor_id] = [];
+      }
+      result[row.sensor_id].push({
+        sender: row.datalog && row.datalog[0] ? row.datalog[0].sender : "",
+        data: row.measurement,
+        geo: row.geo,
+        timestamp: Number(row.timestamp),
+      });
     }
-    result[row.sensor_id].push({
-      sender: row.datalog_id ? row.datalog_id.sender : "",
-      data: row.measurement,
-      geo: row.geo,
-      timestamp: Number(row.timestamp),
-    });
   });
   return result;
 }
