@@ -38,7 +38,7 @@ const measurementSchema = new Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const Measurement = mongoose.model("measurement", measurementSchema);
@@ -91,25 +91,25 @@ export async function getHistoryByDate(from, to, city, bound) {
         datalog_id: 1,
       },
     },
-    {
-      $lookup: {
-        from: "datalogs",
-        localField: "datalog_id",
-        foreignField: "_id",
-        as: "datalog",
-      },
-    },
-    {
-      $project: {
-        sensor_id: 1,
-        measurement: 1,
-        timestamp: 1,
-        geo: 1,
-        datalog: {
-          sender: 1,
-        },
-      },
-    },
+    // {
+    //   $lookup: {
+    //     from: "datalogs",
+    //     localField: "datalog_id",
+    //     foreignField: "_id",
+    //     as: "datalog",
+    //   },
+    // },
+    // {
+    //   $project: {
+    //     sensor_id: 1,
+    //     measurement: 1,
+    //     timestamp: 1,
+    //     geo: 1,
+    //     datalog: {
+    //       sender: 1,
+    //     },
+    //   },
+    // },
   ]);
   const result = {};
   rows.forEach((row) => {
@@ -118,7 +118,7 @@ export async function getHistoryByDate(from, to, city, bound) {
         result[row.sensor_id] = [];
       }
       result[row.sensor_id].push({
-        sender: row.datalog && row.datalog[0] ? row.datalog[0].sender : "",
+        // sender: row.datalog && row.datalog[0] ? row.datalog[0].sender : "",
         data: row.measurement,
         geo: row.geo,
         timestamp: Number(row.timestamp),
@@ -487,7 +487,7 @@ export async function getMeasurements(start, end) {
         $lt: end,
       },
     },
-    { measurement: 1 }
+    { measurement: 1 },
   ).lean();
   let res = [];
   for (const item of rows) {
