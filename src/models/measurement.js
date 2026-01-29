@@ -38,7 +38,7 @@ const measurementSchema = new Schema(
   },
   {
     timestamps: true,
-  },
+  }
 );
 
 const Measurement = mongoose.model("measurement", measurementSchema);
@@ -68,19 +68,14 @@ export async function getHistoryByDate(from, to, city, bound) {
       $gte: bound.southWest.lng,
     };
   }
-
-  let sensor_ids = undefined;
   if (city) {
     const sensors = await City.find({ city: city });
-    sensor_ids = [];
-    sensor_ids = sensors.map((item) => item.sensor_id);
+    filter.sensor_id = { $in: sensors.map((item) => item.sensor_id) };
   }
-
   const rows = await Measurement.aggregate([
     {
       $match: filter,
     },
-    // { $sort: { timestamp: 1 } },
     {
       $project: {
         _id: 0,
@@ -91,39 +86,17 @@ export async function getHistoryByDate(from, to, city, bound) {
         datalog_id: 1,
       },
     },
-    // {
-    //   $lookup: {
-    //     from: "datalogs",
-    //     localField: "datalog_id",
-    //     foreignField: "_id",
-    //     as: "datalog",
-    //   },
-    // },
-    // {
-    //   $project: {
-    //     sensor_id: 1,
-    //     measurement: 1,
-    //     timestamp: 1,
-    //     geo: 1,
-    //     datalog: {
-    //       sender: 1,
-    //     },
-    //   },
-    // },
   ]);
   const result = {};
   rows.forEach((row) => {
-    if (sensor_ids && sensor_ids.includes(row.sensor_id)) {
-      if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
-        result[row.sensor_id] = [];
-      }
-      result[row.sensor_id].push({
-        // sender: row.datalog && row.datalog[0] ? row.datalog[0].sender : "",
-        data: row.measurement,
-        geo: row.geo,
-        timestamp: Number(row.timestamp),
-      });
+    if (!Object.prototype.hasOwnProperty.call(result, row.sensor_id)) {
+      result[row.sensor_id] = [];
     }
+    result[row.sensor_id].push({
+      data: row.measurement,
+      geo: row.geo,
+      timestamp: Number(row.timestamp),
+    });
   });
   return result;
 }
@@ -487,7 +460,7 @@ export async function getMeasurements(start, end) {
         $lt: end,
       },
     },
-    { measurement: 1 },
+    { measurement: 1 }
   ).lean();
   let res = [];
   for (const item of rows) {

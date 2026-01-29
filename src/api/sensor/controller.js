@@ -159,7 +159,6 @@ export default {
       const headers = {
         timestamp: "timestamp",
         sensor_id: "sensor_id",
-        // sender: "sender",
         geo: "geo",
         pm10: "pm10",
         pm25: "pm25",
@@ -169,7 +168,6 @@ export default {
           const row = {
             timestamp: moment(item.timestamp, "X").format("DD.MM.YYYY HH:mm"),
             sensor_id: sensor,
-            // sender: item.sender,
             geo: item.geo,
           };
           for (const key in item.data) {
@@ -198,7 +196,7 @@ export default {
           res.setHeader("Content-Type", "application/zip");
           res.setHeader(
             "Content-disposition",
-            'attachment; filename="download-' + Date.now() + '.zip"',
+            'attachment; filename="download-' + Date.now() + '.zip"'
           );
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Pragma", "no-cache");
@@ -207,7 +205,7 @@ export default {
           zip
             .generateNodeStream({ compression: "DEFLATE", streamFiles: true })
             .pipe(res);
-        },
+        }
       );
     } catch (error) {
       logger.error(error.toString());
@@ -403,7 +401,7 @@ export default {
           {
             owner: owner,
           },
-          { _id: 0, account: 1 },
+          { _id: 0, account: 1 }
         ).lean()
       ).map((item) => item.account);
       if (subscriptions.length) {
@@ -414,7 +412,7 @@ export default {
                 $in: subscriptions,
               },
             },
-            { _id: 0, sensor_id: 1 },
+            { _id: 0, sensor_id: 1 }
           ).lean()
         ).map((item) => item.sensor_id);
         res.send({
