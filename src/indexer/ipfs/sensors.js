@@ -193,8 +193,12 @@ export async function parser(cb = null) {
         let status = STATUS.ERROR;
         if (error.type && error.type === "NOT_FOUND") {
           status = STATUS.ERROR_NOT_FOUND;
+          logger.warning(`parser skip NOT_FOUND ${row._id}`);
         } else if (error.type && error.type === "JSON_PARSE") {
           status = STATUS.ERROR_JSON_PARSE;
+          logger.warning(`parser skip JSON_PARSE ${row._id}`);
+        } else {
+          logger.warning(`parser skip COMMON ${row._id}`);
         }
         await Chain.updateOne(
           {
@@ -208,6 +212,7 @@ export async function parser(cb = null) {
         } else {
           skipChainItem.set(row._id, skipChainItem.get(row._id) + 1);
         }
+        logger.warning(`parser INC ${row._id} ${skipChainItem.get(row._id)}`);
       }
     }
   }
