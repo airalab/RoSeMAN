@@ -188,17 +188,18 @@ export async function parser(cb = null) {
       }
     } catch (error) {
       logger.error(`parser ${error.message}`);
-      if (skipChainItem.has(row._id) && skipChainItem.get(row._id) >= 10) {
-        skipChainItem.delete(row._id);
+      const _id = row._id.toString();
+      if (skipChainItem.has(_id) && skipChainItem.get(_id) >= 10) {
+        skipChainItem.delete(_id);
         let status = STATUS.ERROR;
         if (error.type && error.type === "NOT_FOUND") {
           status = STATUS.ERROR_NOT_FOUND;
-          logger.warning(`parser skip NOT_FOUND ${row._id}`);
+          logger.warn(`parser skip NOT_FOUND ${_id}`);
         } else if (error.type && error.type === "JSON_PARSE") {
           status = STATUS.ERROR_JSON_PARSE;
-          logger.warning(`parser skip JSON_PARSE ${row._id}`);
+          logger.warn(`parser skip JSON_PARSE ${_id}`);
         } else {
-          logger.warning(`parser skip COMMON ${row._id}`);
+          logger.warn(`parser skip COMMON ${_id}`);
         }
         await Chain.updateOne(
           {
@@ -207,12 +208,14 @@ export async function parser(cb = null) {
           { status: status }
         ).exec();
       } else {
-        if (!skipChainItem.has(row._id)) {
-          skipChainItem.set(row._id, 1);
+        if (!skipChainItem.has(_id)) {
+          skipChainItem.set(_id, 1);
+          logger.debug(`parser SKIP INIT ${_id}`);
         } else {
-          skipChainItem.set(row._id, skipChainItem.get(row._id) + 1);
+          skipChainItem.set(_id, skipChainItem.get(_id) + 1);
+          logger.debug(`parser SKIP INC ${_id}`);
         }
-        logger.warning(`parser INC ${row._id} ${skipChainItem.get(row._id)}`);
+        logger.debug(`parser SKIP COUNT ${_id} ${skipChainItem.get(_id)}`);
       }
     }
   }
