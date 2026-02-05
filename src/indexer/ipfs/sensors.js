@@ -16,7 +16,7 @@ async function getNewRows() {
     "timechain",
   ])
     .limit(config.PARSER_LIMIT || 50)
-    .sort([["createdAd", -1]])
+    .sort({ timestamp: -1 })
     .lean();
 }
 
