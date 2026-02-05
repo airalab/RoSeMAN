@@ -7,17 +7,34 @@ import Measurement from "../../models/measurement";
 import logger from "../../utils/logger";
 import { cat } from "./tools";
 
+const skipChainItem = new Map();
+
 async function getNewRows() {
-  return await Chain.find({ status: STATUS.NEW, sender: agents }, [
-    "id",
-    "block",
-    "sender",
-    "resultHash",
-    "timechain",
-  ])
-    .sort({ createdAd: -1 })
-    .limit(config.PARSER_LIMIT || 50)
-    .lean();
+  return await Chain.aggregate([
+    {
+      $match: {
+        status: STATUS.NEW,
+        sender: { $in: agents },
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        block: 1,
+        sender: 1,
+        resultHash: 1,
+        timechain: 1,
+      },
+    },
+    {
+      $sort: {
+        timechain: -1,
+      },
+    },
+    {
+      $limit: config.PARSER_LIMIT || 50,
+    },
+  ]);
 }
 
 function read(ipfshash) {
@@ -171,6 +188,27 @@ export async function parser(cb = null) {
       }
     } catch (error) {
       logger.error(`parser ${error.message}`);
+      if (skipChainItem.has(row._id) && skipChainItem.get(row._id) >= 10) {
+        skipChainItem.delete(row._id);
+        let status = STATUS.ERROR;
+        if (error.type && error.type === "NOT_FOUND") {
+          status = STATUS.ERROR_NOT_FOUND;
+        } else if (error.type && error.type === "JSON_PARSE") {
+          status = STATUS.ERROR_JSON_PARSE;
+        }
+        await Chain.updateOne(
+          {
+            _id: row._id,
+          },
+          { status: status }
+        ).exec();
+      } else {
+        if (!skipChainItem.has(row._id)) {
+          skipChainItem.set(row._id, 1);
+        } else {
+          skipChainItem.set(row._id, skipChainItem.get(row._id) + 1);
+        }
+      }
     }
   }
   setTimeout(() => {
