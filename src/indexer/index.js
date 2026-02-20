@@ -43,17 +43,6 @@ export default function (cb) {
 
     // chain(
     //   config.CHAIN_API_POLKADOT,
-    //   // BLOCK.ENV,
-    //   BLOCK.LAST,
-    //   {
-    //     extrinsic: ["rws", "digitalTwin/setSource"],
-    //     event: ["digitalTwin/TopicChanged"],
-    //   },
-    //   { rws: [rwsOwner, dtwin], "digitalTwin/setSource": [dtwin] }
-    // );
-
-    // chain(
-    //   config.CHAIN_API_POLKADOT,
     //   CHAIN_NAME.POLKADOT,
     //   start,
     //   {

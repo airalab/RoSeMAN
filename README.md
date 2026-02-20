@@ -89,6 +89,64 @@ $ yarn start
 
 Web server launched at http://127.0.0.1:3000
 
+## How to switch indexer between parachains / chains
+
+RoSeMAN indexer supports indexing data from different Substrate-based chains (e.g. Robonomics parachains on Polkadot or Kusama).
+
+Configuration is done in the file:
+[`src/indexer/index.js`](https://github.com/airalab/RoSeMAN/blob/master/src/indexer/index.js)
+
+You need to call the `chain()` function with appropriate parameters for each network you want to index.
+
+### Example: Robonomics Parachain on Polkadot
+
+```js
+chain(
+  config.CHAIN_API_POLKADOT,
+  CHAIN_NAME.POLKADOT,
+  start,
+  {
+    extrinsic: ["datalog", "rws", "digitalTwin/setSource"],
+    event: ["datalog/NewRecord", "digitalTwin/TopicChanged"],
+  },
+  {
+    rws: [rwsOwner, sensors, dtwin],
+    datalog: [sensors],
+    "digitalTwin/setSource": [dtwin],
+  },
+  async (block) => {
+    await LastBlock.updateOne(
+      { chain: CHAIN_NAME.POLKADOT },
+      { block: block }
+    ).exec();
+    rosemanBlockRead.set({ chain: "robonomics" }, block);
+  }
+);
+```
+
+### Example: Robonomics Parachain on Kusama
+
+```js
+chain(
+  config.CHAIN_API_KUSAMA,
+  CHAIN_NAME.KUSAMA,
+  start,
+  { extrinsic: ["datalog"], event: ["datalog/NewRecord"] },
+  { rws: [rwsOwner, sensors], datalog: [sensors] },
+  async (block) => {
+    await LastBlock.updateOne(
+      { chain: CHAIN_NAME.KUSAMA },
+      { block: block }
+    ).exec();
+    rosemanBlockRead.set({ chain: "robonomics" }, block);
+  }
+);
+```
+> ***Tip***:
+> Most often you need only one chain() call active. Comment out or remove the block for the chain you don't want to index at the moment.
+
+After changing the code → restart the indexer.
+
 As a user client, you can connect this service to [sensors map](https://github.com/airalab/sensors.robonomics.network).
 
 ## Bug Reports
