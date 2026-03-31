@@ -45,10 +45,11 @@ const Measurement = mongoose.model("measurement", measurementSchema);
 
 export default Measurement;
 
-const MODEL = {
+export const MODEL = {
   STATIC: 2,
   MOVE: 3,
   MESSAGE: 4,
+  STORY: 5,
 };
 
 export async function getHistoryByDate(from, to, city, bound) {

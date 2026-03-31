@@ -1,7 +1,10 @@
 import agents from "../../../config/agents.json";
 import Chain, { STATUS } from "../../models/datalog";
 import DigitalTwin from "../../models/digitalTwin";
+import { MODEL } from "../../models/measurement";
+import Story from "../../models/story";
 import Subscription from "../../models/subscription";
+import logger from "../../utils/logger";
 
 export async function rwsOwner(extrinsic) {
   if (extrinsic.section === "rws" && extrinsic.isSuccess) {
@@ -63,6 +66,49 @@ export async function sensors(extrinsic) {
               timechain: Number(record[1].toString()),
               status: STATUS.NEW,
             });
+          }
+        }
+      }
+    }
+  }
+}
+
+export async function story(extrinsic) {
+  if (extrinsic.section === "rws" || extrinsic.section === "datalog") {
+    const subscriptions = await Subscription.find(
+      {},
+      { _id: 0, owner: 1 }
+    ).lean();
+    const owners = [...new Set(subscriptions.map((item) => item.owner))];
+    // TODO: needs to be filtered to only those that are authorized
+
+    for (const event of extrinsic.events) {
+      if (event.section === "datalog" && event.method === "NewRecord") {
+        if (owners.includes(extrinsic.signer)) {
+          const record = event.data;
+          let data = null;
+          try {
+            data = JSON.parse(record[2].toHuman());
+          } catch (error) {
+            logger.error(`parser ${error.message}`);
+          }
+          if (
+            data &&
+            data.model &&
+            data.model === MODEL.STORY &&
+            data.sensor &&
+            data.message &&
+            data.timestamp
+          ) {
+            const story = {
+              block: extrinsic.block,
+              author: record[0].toHuman(),
+              timechain: Number(record[1].toString()),
+              sensor_id: data.sensor,
+              message: data.message,
+              timestamp: data.timestamp,
+            };
+            await Story.create(story);
           }
         }
       }

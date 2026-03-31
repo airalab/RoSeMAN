@@ -2,7 +2,7 @@ import config from "../config";
 import LastBlock from "../models/lastBlock";
 import { rosemanBlockRead } from "../utils/prometheus";
 import chain, { BLOCK } from "./chain";
-import { rwsOwner, sensors } from "./chain/handlers";
+import { rwsOwner, sensors, story } from "./chain/handlers";
 // import { dtwin, rwsOwner, sensors } from "./chain/handlers";
 import { parser as parserDTwins } from "./ipfs/dtwin";
 import { parser as parserSensors } from "./ipfs/sensors";
@@ -30,8 +30,8 @@ export default function (cb) {
       config.CHAIN_API_KUSAMA,
       CHAIN_NAME.KUSAMA,
       start,
-      { extrinsic: ["datalog"], event: ["datalog/NewRecord"] },
-      { rws: [rwsOwner, sensors], datalog: [sensors] },
+      { extrinsic: ["datalog", "rws"], event: ["datalog/NewRecord"] },
+      { rws: [rwsOwner, sensors, story], datalog: [sensors] },
       async (block) => {
         await LastBlock.updateOne(
           { chain: CHAIN_NAME.KUSAMA },

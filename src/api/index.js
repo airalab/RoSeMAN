@@ -2,6 +2,7 @@ import auth from "./auth/route";
 import sensor from "./sensor/route";
 import status from "./status/route";
 import sensorV2 from "./v2/sensor/route";
+import story from "./v2/story/route";
 
 export function api(app) {
   app.use("/api/sensor", sensor);
@@ -9,4 +10,5 @@ export function api(app) {
   app.use("/api/status", status);
 
   app.use("/api/v2/sensor", sensorV2);
+  app.use("/api/v2/story", story);
 }
