@@ -20,7 +20,10 @@ RoSeMAN is the bridge between on-chain sensor datalogs and the user-facing senso
 [9] RoSeMAN serves measurements via REST API + socket.io
 ```
 
-**RoSeMAN handles steps 6-9**: indexing chain events, fetching IPFS data, storing measurements, and serving them to frontends. Steps 1-5 are handled by [altruist-firmware](https://github.com/airalab/altruist-firmware) and [sensors-connectivity](https://github.com/airalab/sensors-connectivity).
+**RoSeMAN handles steps 6-9**: indexing chain events, fetching IPFS data, storing measurements, and serving them to frontends.
+
+- **Steps 1-5** (device → chain): see [altruist-firmware](https://github.com/airalab/altruist-firmware) and [sensors-connectivity](https://github.com/airalab/sensors-connectivity)
+- **Steps 8-9** (frontend): see [sensors.social](https://github.com/airalab/sensors.social)
 
 ## How It Works
 
