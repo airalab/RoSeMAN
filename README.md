@@ -4,22 +4,26 @@
 
 ## Architecture
 
-RoSeMAN is the bridge between on-chain sensor datalogs and the user-facing sensors map. It performs steps 6-9 in the Robonomics sensors data pipeline:
-
-- **Step 6**: Retrieves events containing data hashes from Robonomics parachain (polls blocks every 15s)
-- **Step 7**: Fetches sensor data from IPFS gateways, stores in MongoDB
-- **Steps 8-9**: Serves historical data to sensors.social frontend and Robonomics dApp via REST API + socket.io
+RoSeMAN is the bridge between on-chain sensor datalogs and the user-facing sensors map. Here is the full Robonomics sensors data pipeline:
 
 ```
-Robonomics Parachain (Kusama / Polkadot)
-  |
-  v  Block reader (every 15s)
-RoSeMAN Indexer
-  |-- Filter: only datalogs from whitelisted agents (config/agents.json)
-  |-- Fetch: IPFS hash -> HTTP gateways (ipfs.io, gateway.ipfs.io) with retry x10
-  |-- Store: MongoDB (measurement collection)
-  +-- Serve: REST API + socket.io -> sensors.social / Robonomics dApp
+[1] User activates RWS subscription via Robonomics dApp
+
+[2] Altruist (ESP32) --> signed extrinsic --> Robonomics Parachain
+[3] Altruist (ESP32) --> signed msg HTTP:65 --> Sensors Connectivity Provider
+[4] Connectivity validates (ED25519 + RWS subscription)
+[5] Connectivity pins data to IPFS, writes hash as datalog to Parachain
+
+[6] RoSeMAN reads chain blocks, finds datalog events     <-- starts here
+[7] RoSeMAN fetches sensor data from IPFS --> MongoDB
+[8] sensors.social / dApp requests historical data
+[9] RoSeMAN serves measurements via REST API + socket.io
 ```
+
+**RoSeMAN handles steps 6-9**: indexing chain events, fetching IPFS data, storing measurements, and serving them to frontends.
+
+- **Steps 1-5** (device → chain): see [altruist-firmware](https://github.com/airalab/altruist-firmware) and [sensors-connectivity](https://github.com/airalab/sensors-connectivity)
+- **Steps 8-9** (frontend): see [sensors.social](https://github.com/airalab/sensors.social)
 
 ## How It Works
 
