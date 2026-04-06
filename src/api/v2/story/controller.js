@@ -72,6 +72,7 @@ export default {
           sensor_id: 1,
           message: 1,
           icon: 1,
+          timestamp: 1,
         },
         { sort: { timestamp: -1 }, skip: skip, limit: limit }
       ).lean();
