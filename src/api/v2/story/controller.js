@@ -19,7 +19,12 @@ export default {
 
       if (story) {
         res.send({
-          result: { message: story.message, timestamp: story.timestamp },
+          result: {
+            author: story.author,
+            message: story.message,
+            timestamp: story.timestamp,
+            icon: story.icon,
+          },
         });
       } else {
         res.send({
