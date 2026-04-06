@@ -106,6 +106,7 @@ export async function story(extrinsic) {
               timechain: Number(record[1].toString()),
               sensor_id: data.sensor,
               message: data.message,
+              icon: data.i || "",
               timestamp: data.timestamp,
             };
             await Story.create(story);

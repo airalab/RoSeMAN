@@ -17,6 +17,9 @@ const storySchema = new Schema(
     message: {
       type: String,
     },
+    icon: {
+      type: String,
+    },
     timestamp: {
       type: Number,
       index: true,
