@@ -1,12 +1,43 @@
-# Robonomics Sensors Measure Analytics and Archive Node (RoSeMAN)
+# RoSeMAN
 
-node.js software with substrate blockchain sensors data collector function!
+**Robonomics Sensors Measure Analytics and Archive Node** -- the indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN watches the Robonomics parachain for sensor datalogs, fetches measurement data from IPFS, and serves it via REST API and socket.io.
 
-## Running with Docker
+## Architecture
 
-Required. Docker must be installed.
+RoSeMAN is the bridge between on-chain sensor datalogs and the user-facing sensors map. Here is the full Robonomics sensors data pipeline:
 
-You need to run the following command
+```
+[1] User activates RWS subscription via Robonomics dApp
+
+[2] Altruist (ESP32) --> signed extrinsic --> Robonomics Parachain
+[3] Altruist (ESP32) --> signed msg HTTP:65 --> Sensors Connectivity Provider
+[4] Connectivity validates (ED25519 + RWS subscription)
+[5] Connectivity pins data to IPFS, writes hash as datalog to Parachain
+
+[6] RoSeMAN reads chain blocks, finds datalog events     <-- starts here
+[7] RoSeMAN fetches sensor data from IPFS --> MongoDB
+[8] sensors.social / dApp requests historical data
+[9] RoSeMAN serves measurements via REST API + socket.io
+```
+
+**RoSeMAN handles steps 6-9**: indexing chain events, fetching IPFS data, storing measurements, and serving them to frontends.
+
+- **Steps 1-5** (device → chain): see [altruist-firmware](https://github.com/airalab/altruist-firmware) and [sensors-connectivity](https://github.com/airalab/sensors-connectivity)
+- **Steps 8-9** (frontend): see [sensors.social](https://github.com/airalab/sensors.social)
+
+## How It Works
+
+**Indexer** connects to a Substrate-based chain (Robonomics on Kusama or Polkadot) and subscribes to new blocks. It filters extrinsics for `datalog` calls from whitelisted SS58 addresses listed in `config/agents.json`.
+
+**IPFS fetch** takes the data hash from each datalog record and retrieves the payload from HTTP IPFS gateways. Gateways are load-balanced by success rate, with up to 10 retries per hash.
+
+**Two data formats** are supported: sensor measurements (multi-sensor batches with PM, temperature, humidity, etc.) and messages (single geo+timestamp entries).
+
+**Real-time updates** are pushed to connected clients via socket.io `update` event whenever new measurements are stored.
+
+## Quick Start with Docker
+
+Required: Docker must be installed.
 
 ```bash
 mkdir config
@@ -14,13 +45,11 @@ curl -o ./config/agents.json https://raw.githubusercontent.com/airalab/RoSeMAN/m
 curl -o ./config/config.json https://raw.githubusercontent.com/airalab/RoSeMAN/master/config/config.template.json
 ```
 
-Make a white list of addresses, parachane accounts, from which we will collect data in the `/config/agents.json` file.
+Edit `config/agents.json` to whitelist the parachain addresses you want to index.
 
-If necessary, change the configuration file `/config/config.json`.
+Create a `docker-compose.yml` file:
 
-Create a `docker-compose.yml` file with content
-
-```
+```yaml
 version: "3.8"
 services:
   app:
@@ -38,67 +67,40 @@ services:
     image: mongo
 ```
 
-Run server
-
 ```bash
 docker compose up -d
 ```
 
-Web server launched at http://127.0.0.1:3000
-
-As a user client, you can connect this service to [sensors map](https://github.com/airalab/sensors.robonomics.network).
+Server runs at http://127.0.0.1:3000
 
 ## Running with Node.js
 
-You need to clone the repository.
+Requires MongoDB running separately.
 
 ```bash
-$ git clone https://github.com/airalab/RoSeMAN.git
+git clone https://github.com/airalab/RoSeMAN.git
+cd RoSeMAN
+cp config/config.template.json config/config.json
+cp config/agents.template.json config/agents.json
 ```
 
-Create configuration files.
+Edit `config/agents.json` to set whitelisted addresses. Edit `config/config.json` to configure MongoDB connection if needed.
 
 ```bash
-$ cp config/config.template.json config.json
-$ cp config/agents.template.json agents.json
+yarn install
+yarn build
+yarn start
 ```
 
-!!! The work requires the Mongodb Database server.
+Server runs at http://127.0.0.1:3000
 
-If necessary, change access to the database in the configuration file `/config/config.json`.
+## Configuration
 
-Make a white list of addresses, parachane accounts, from which we will collect data in the `/config/agents.json` file.
+### Chain Selection
 
-Install requirements.
+Chain is configured in [`src/indexer/index.js`](https://github.com/airalab/RoSeMAN/blob/master/src/indexer/index.js) via `chain()` calls. Each call specifies the RPC endpoint, chain name, extrinsic/event filters, and address lists.
 
-```bash
-$ yarn install
-```
-
-## Building
-
-```bash
-$ yarn build
-```
-
-## Run server
-
-```bash
-$ yarn start
-```
-
-Web server launched at http://127.0.0.1:3000
-
-## How to switch indexer between parachains / chains
-
-RoSeMAN indexer supports indexing data from different Substrate-based chains (e.g. Robonomics parachains on Polkadot or Kusama).
-
-Configuration is done in the file:
-[`src/indexer/index.js`](https://github.com/airalab/RoSeMAN/blob/master/src/indexer/index.js)
-
-You need to call the `chain()` function with appropriate parameters for each network you want to index.
-
-### Example: Robonomics Parachain on Polkadot
+Example for Robonomics on Polkadot:
 
 ```js
 chain(
@@ -124,35 +126,34 @@ chain(
 );
 ```
 
-### Example: Robonomics Parachain on Kusama
+To switch chains, comment out the `chain()` call you don't need and restart the indexer.
 
-```js
-chain(
-  config.CHAIN_API_KUSAMA,
-  CHAIN_NAME.KUSAMA,
-  start,
-  { extrinsic: ["datalog"], event: ["datalog/NewRecord"] },
-  { rws: [rwsOwner, sensors], datalog: [sensors] },
-  async (block) => {
-    await LastBlock.updateOne(
-      { chain: CHAIN_NAME.KUSAMA },
-      { block: block }
-    ).exec();
-    rosemanBlockRead.set({ chain: "robonomics" }, block);
-  }
-);
-```
-> ***Tip***:
-> Most often you need only one chain() call active. Comment out or remove the block for the chain you don't want to index at the moment.
+### Agent Whitelist
 
-After changing the code → restart the indexer.
+`config/agents.json` contains the list of SS58 addresses whose datalogs will be indexed. Only data from these addresses is processed; everything else is ignored.
 
-As a user client, you can connect this service to [sensors map](https://github.com/airalab/sensors.robonomics.network).
+### IPFS Gateways
+
+IPFS data is fetched via HTTP gateways (ipfs.io, gateway.ipfs.io). Gateways are selected based on success rate and each fetch is retried up to 10 times.
+
+## API Reference
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/sensor/last` | Latest measurement for a sensor |
+| `GET /api/sensor/history` | Historical measurements |
+| `GET /api/sensor/csv` | Export measurements as CSV |
+| `GET /api/v2/sensor/list` | List all known sensors |
+| `socket.io "update"` | Real-time push on new measurements |
+
+Connect this service to [sensors.social](https://sensors.social) or the [sensors map](https://github.com/airalab/sensors.robonomics.network) frontend.
 
 ## Bug Reports
 
-See https://github.com/airalab/RoSeMAN/issues
+https://github.com/airalab/RoSeMAN/issues
 
-## Learn
+## Links
 
-[Wiki](https://wiki.robonomics.network/)
+- [Robonomics Wiki](https://wiki.robonomics.network/)
+- [sensors.social](https://sensors.social)
+- [Sensors Map Frontend](https://github.com/airalab/sensors.robonomics.network)
