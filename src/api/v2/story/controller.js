@@ -22,6 +22,7 @@ export default {
           result: {
             author: story.author,
             message: story.message,
+            date: story.date,
             timestamp: story.timestamp,
             icon: story.icon,
           },
@@ -78,6 +79,7 @@ export default {
           message: 1,
           icon: 1,
           timestamp: 1,
+          date: 1,
         },
         { sort: { timestamp: -1 }, skip: skip, limit: limit }
       ).lean();

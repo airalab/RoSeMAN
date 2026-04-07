@@ -108,6 +108,7 @@ export async function story(extrinsic) {
               message: data.message,
               icon: data.i || "",
               timestamp: data.timestamp,
+              date: data.date || null,
             };
             await Story.create(story);
           }

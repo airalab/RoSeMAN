@@ -13,6 +13,7 @@ const storySchema = new Schema(
     },
     sensor_id: {
       type: String,
+      index: true,
     },
     message: {
       type: String,
@@ -26,6 +27,9 @@ const storySchema = new Schema(
     },
     timechain: {
       type: Number,
+    },
+    date: {
+      type: String,
     },
   },
   {
