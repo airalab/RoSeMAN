@@ -2,8 +2,7 @@ import config from "../config";
 import LastBlock from "../models/lastBlock";
 import { rosemanBlockRead } from "../utils/prometheus";
 import chain, { BLOCK } from "./chain";
-import { rwsOwner, sensors, story } from "./chain/handlers";
-// import { dtwin, rwsOwner, sensors } from "./chain/handlers";
+import { dtwin, rwsOwner, sensors, story } from "./chain/handlers";
 import { parser as parserDTwins } from "./ipfs/dtwin";
 import { parser as parserSensors } from "./ipfs/sensors";
 
@@ -41,27 +40,28 @@ export default function (cb) {
       }
     );
 
-    // chain(
-    //   config.CHAIN_API_POLKADOT,
-    //   CHAIN_NAME.POLKADOT,
-    //   start,
-    //   {
-    //     extrinsic: ["datalog", "rws", "digitalTwin/setSource"],
-    //     event: ["datalog/NewRecord", "digitalTwin/TopicChanged"],
-    //   },
-    //   {
-    //     rws: [rwsOwner, sensors, dtwin],
-    //     datalog: [sensors],
-    //     "digitalTwin/setSource": [dtwin],
-    //   },
-    //   async (block) => {
-    //     await LastBlock.updateOne(
-    //       { chain: CHAIN_NAME.POLKADOT },
-    //       { block: block }
-    //     ).exec();
-    //     rosemanBlockRead.set({ chain: "robonomics" }, block);
-    //   }
-    // );
+    chain(
+      config.CHAIN_API_POLKADOT,
+      CHAIN_NAME.POLKADOT,
+      start,
+      {
+        extrinsic: ["datalog", "rws", "digitalTwin/setSource"],
+        event: ["datalog/NewRecord", "digitalTwin/TopicChanged"],
+      },
+      {
+        // rws: [rwsOwner, sensors, story, dtwin],
+        // datalog: [sensors],
+        rws: [rwsOwner, story, dtwin],
+        "digitalTwin/setSource": [dtwin],
+      },
+      async (block) => {
+        await LastBlock.updateOne(
+          { chain: CHAIN_NAME.POLKADOT },
+          { block: block }
+        ).exec();
+        // rosemanBlockRead.set({ chain: "robonomics" }, block);
+      }
+    );
   }
   if (config.INDEX_IPFS) {
     parserSensors(cb);
