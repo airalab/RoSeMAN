@@ -7,7 +7,11 @@ import Subscription from "../../models/subscription";
 import logger from "../../utils/logger";
 
 export async function rwsOwner(extrinsic) {
-  if (extrinsic.section === "rws" && extrinsic.isSuccess) {
+  if (
+    extrinsic.section === "rws" &&
+    extrinsic.method === "call" &&
+    extrinsic.isSuccess
+  ) {
     const result = await Subscription.findOne({
       account: extrinsic.signer,
     });
