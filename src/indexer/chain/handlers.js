@@ -1,3 +1,4 @@
+import { hexToString, isHex } from "@polkadot/util";
 import agents from "../../../config/agents.json";
 import Chain, { STATUS } from "../../models/datalog";
 import DigitalTwin from "../../models/digitalTwin";
@@ -92,7 +93,11 @@ export async function story(extrinsic) {
           const record = event.data;
           let data = null;
           try {
-            data = JSON.parse(record[2].toHuman());
+            if (isHex(record[2].toHuman())) {
+              data = JSON.parse(hexToString(record[2].toHuman()));
+            } else {
+              data = JSON.parse(record[2].toHuman());
+            }
           } catch (error) {
             logger.error(`parser ${error.message}`);
           }
