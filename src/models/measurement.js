@@ -505,6 +505,46 @@ export async function getListSensorsV2(start, end) {
   ]);
   return rows;
 }
+export async function getListSensorsUrban(start, end) {
+  const rows = await Measurement.aggregate([
+    {
+      $match: {
+        timestamp: {
+          $gt: Number(start),
+          $lt: Number(end),
+        },
+        $or: [{ model: MODEL.STATIC }, { model: MODEL.MOVE }],
+      },
+    },
+    {
+      $group: {
+        _id: "$sensor_id",
+        sensor_id: { $first: "$sensor_id" },
+        model: { $first: "$model" },
+        geo: { $first: "$geo" },
+        donated_by: { $first: "$donated_by" },
+        timestamp: { $first: "$timestamp" },
+        measurement: { $first: "$measurement" },
+      },
+    },
+    {
+      $match: {
+        "measurement.co2": { $exists: false },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        sensor_id: 1,
+        model: 1,
+        geo: 1,
+        donated_by: 1,
+        timestamp: 1,
+      },
+    },
+  ]);
+  return rows;
+}
 export async function getMessagesByDateV2(start, end) {
   const rows = await Measurement.aggregate([
     {
