@@ -1,0 +1,65 @@
+services:
+
+  mongodb:
+    image: mongo:8
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-secret}
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongodb-data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  rest-api:
+    image: vol4/roseman:v0.1.0
+    restart: unless-stopped
+    volumes:
+      - ./.env:/app/.env:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  indexer-polkadot:
+    image: vol4/roseman:v0.1.0
+    restart: unless-stopped
+    environment:
+      DOTENV_CONFIG_PATH: /app/.env.polkadot
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./.env.polkadot:/app/.env.polkadot:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  indexer-kusama:
+    image: vol4/roseman:v0.1.0
+    restart: unless-stopped
+    environment:
+      DOTENV_CONFIG_PATH: /app/.env.kusama
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./.env.kusama:/app/.env.kusama:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

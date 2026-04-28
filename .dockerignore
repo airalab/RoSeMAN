@@ -1,0 +1,35 @@
+# Зависимости — устанавливаются внутри контейнера
+node_modules/
+
+# Логи
+logs/
+*.log
+npm-debug.log*
+
+# Переменные окружения (не копируем в образ)
+.env*
+env/
+
+# Данные MongoDB
+mongodb-data/
+
+# Git
+.git/
+.gitignore
+
+# Docker файлы
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Временные файлы и IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+tmp/
+temp/
+
+# Тесты (не нужны в production образе)
+test/
