@@ -1,159 +1,116 @@
 # RoSeMAN
 
-**Robonomics Sensors Measure Analytics and Archive Node** -- the indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN watches the Robonomics parachain for sensor datalogs, fetches measurement data from IPFS, and serves it via REST API and socket.io.
+**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode -- the indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN watches the Robonomics parachain for sensor datalogs, fetches measurement data from IPFS, and serves it via REST API.
 
-## Architecture
+## Features
 
-RoSeMAN is the bridge between on-chain sensor datalogs and the user-facing sensors map. Here is the full Robonomics sensors data pipeline:
+- **Robonomics blockchain indexer** (Polkadot/Kusama) — reads finalized blocks and processes `datalog.NewRecord` events and RWS extrinsics.
+- **IPFS loader** — asynchronous processing of `datalog` records with CIDs: fetches JSON via a list of gateways with fallback, parses it and stores sensor measurements.
+- **Reverse geocoding** — derives country/region/city from sensor coordinates.
+- **REST API** — sensor data (V1/V2), story list, indexer status. See [docs/api_endpoints.md](./docs/api_endpoints.md).
+- **Prometheus metrics** at `/metrics`.
+- **Flexible composition** — every functional module (`API`, `INDEXER`, `MEASUREMENT`, `GEOCODING`) is toggled by environment flags, which makes it possible to run the REST API, indexer and IPFS processor as separate instances.
+
+## Stack
+
+- **NestJS 11** + TypeScript (ESM)
+- **MongoDB** via **Mongoose**
+- **@polkadot/api**
+- ESLint + Prettier
+
+A detailed description of the indexer, data formats and DB schemas is in [docs/indexer.md](./docs/indexer.md).
+
+## Project structure
 
 ```
-[1] User activates RWS subscription via Robonomics dApp
-
-[2] Altruist (ESP32) --> signed extrinsic --> Robonomics Parachain
-[3] Altruist (ESP32) --> signed msg HTTP:65 --> Sensors Connectivity Provider
-[4] Connectivity validates (ED25519 + RWS subscription)
-[5] Connectivity pins data to IPFS, writes hash as datalog to Parachain
-
-[6] RoSeMAN reads chain blocks, finds datalog events     <-- starts here
-[7] RoSeMAN fetches sensor data from IPFS --> MongoDB
-[8] sensors.social / dApp requests historical data
-[9] RoSeMAN serves measurements via REST API + socket.io
+src/
+├── api/                  REST controllers: sensor (V1/V2), story, status
+├── robonomics/           chain connection, BlockIndexerService, handlers/
+├── measurement/          IPFS fetcher and measurement processor
+├── geocoding/            sensor reverse geocoding
+├── metrics/              Prometheus metrics
+├── database/
+│   ├── schemas/          Mongoose schemas
+│   └── repositories/     DB access (Repository pattern)
+├── config/               configs (app, robonomics, ipfs, geocoding)
+├── common/               constants and utilities
+└── app.module.ts         dynamic module composition driven by env flags
 ```
-
-**RoSeMAN handles steps 6-9**: indexing chain events, fetching IPFS data, storing measurements, and serving them to frontends.
-
-- **Steps 1-5** (device → chain): see [altruist-firmware](https://github.com/airalab/altruist-firmware) and [sensors-connectivity](https://github.com/airalab/sensors-connectivity)
-- **Steps 8-9** (frontend): see [sensors.social](https://github.com/airalab/sensors.social)
-
-## How It Works
-
-**Indexer** connects to a Substrate-based chain (Robonomics on Kusama or Polkadot) and subscribes to new blocks. It filters extrinsics for `datalog` calls from whitelisted SS58 addresses listed in `config/agents.json`.
-
-**IPFS fetch** takes the data hash from each datalog record and retrieves the payload from HTTP IPFS gateways. Gateways are load-balanced by success rate, with up to 10 retries per hash.
-
-**Two data formats** are supported: sensor measurements (multi-sensor batches with PM, temperature, humidity, etc.) and messages (single geo+timestamp entries).
-
-**Real-time updates** are pushed to connected clients via socket.io `update` event whenever new measurements are stored.
-
-## Quick Start with Docker
-
-Required: Docker must be installed.
-
-```bash
-mkdir config
-curl -o ./config/agents.json https://raw.githubusercontent.com/airalab/RoSeMAN/master/config/agents.template.json
-curl -o ./config/config.json https://raw.githubusercontent.com/airalab/RoSeMAN/master/config/config.template.json
-```
-
-Edit `config/agents.json` to whitelist the parachain addresses you want to index.
-
-Create a `docker-compose.yml` file:
-
-```yaml
-version: "3.8"
-services:
-  app:
-    container_name: roseman_app
-    image: vol4/roseman
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./config:/app/config
-    depends_on:
-      - mongo
-
-  mongo:
-    container_name: mongo
-    image: mongo
-```
-
-```bash
-docker compose up -d
-```
-
-Server runs at http://127.0.0.1:3000
-
-## Running with Node.js
-
-Requires MongoDB running separately.
-
-```bash
-git clone https://github.com/airalab/RoSeMAN.git
-cd RoSeMAN
-cp config/config.template.json config/config.json
-cp config/agents.template.json config/agents.json
-```
-
-Edit `config/agents.json` to set whitelisted addresses. Edit `config/config.json` to configure MongoDB connection if needed.
-
-```bash
-yarn install
-yarn build
-yarn start
-```
-
-Server runs at http://127.0.0.1:3000
 
 ## Configuration
 
-### Chain Selection
+Environment files:
 
-Chain is configured in [`src/indexer/index.js`](https://github.com/airalab/RoSeMAN/blob/master/src/indexer/index.js) via `chain()` calls. Each call specifies the RPC endpoint, chain name, extrinsic/event filters, and address lists.
+- `.env` — shared settings + REST API (see [.env.example](./.env.example))
+- `.env.polkadot` — Polkadot indexer (see [.env.polkadot.example](./.env.polkadot.example))
+- `.env.kusama` — Kusama indexer (see [.env.kusama.example](./.env.kusama.example))
 
-Example for Robonomics on Polkadot:
+Key flags for splitting processes:
 
-```js
-chain(
-  config.CHAIN_API_POLKADOT,
-  CHAIN_NAME.POLKADOT,
-  start,
-  {
-    extrinsic: ["datalog", "rws", "digitalTwin/setSource"],
-    event: ["datalog/NewRecord", "digitalTwin/TopicChanged"],
-  },
-  {
-    rws: [rwsOwner, sensors, dtwin],
-    datalog: [sensors],
-    "digitalTwin/setSource": [dtwin],
-  },
-  async (block) => {
-    await LastBlock.updateOne(
-      { chain: CHAIN_NAME.POLKADOT },
-      { block: block }
-    ).exec();
-    rosemanBlockRead.set({ chain: "robonomics" }, block);
-  }
-);
+| Variable               | Purpose                                                          |
+|------------------------|------------------------------------------------------------------|
+| `API_ENABLED`          | REST API + Prometheus                                            |
+| `INDEXER_ENABLED`      | Robonomics block scanner                                         |
+| `MEASUREMENT_ENABLED`  | IPFS_PENDING polling and measurement parsing                     |
+| `GEOCODING_ENABLED`    | Reverse geocoding                                                |
+| `ENABLED_HANDLERS`     | Allowlist of indexer handlers (comma-separated)                  |
+| `DISABLED_HANDLERS`    | Denylist of handlers (applied on top of the allowlist)           |
+
+The full list of variables and defaults is in the `*.example` files and in [docs/indexer.md](./docs/indexer.md).
+
+## Running
+
+### Locally (dev)
+
+```bash
+npm install
+npm run start:dev                  # API + all modules from .env
+npm run start:dev:polkadot         # Polkadot indexer (.env.polkadot)
+npm run start:dev:kusama           # Kusama indexer  (.env.kusama)
 ```
 
-To switch chains, comment out the `chain()` call you don't need and restart the indexer.
+### Production
 
-### Agent Whitelist
+```bash
+npm run build
+npm run start:prod                 # API
+npm run start:polkadot             # Polkadot indexer
+npm run start:kusama               # Kusama indexer
+```
 
-`config/agents.json` contains the list of SS58 addresses whose datalogs will be indexed. Only data from these addresses is processed; everything else is ignored.
+### Docker
 
-### IPFS Gateways
+The [`docker-compose.yml`](./docker-compose.yml) ships MongoDB and three application instances: REST API, Polkadot indexer, Kusama indexer. Configuration is supplied to the containers via bind-mounts of the corresponding `.env` files.
 
-IPFS data is fetched via HTTP gateways (ipfs.io, gateway.ipfs.io). Gateways are selected based on success rate and each fetch is retried up to 10 times.
+```bash
+cp .env.example .env
+cp .env.polkadot.example .env.polkadot
+cp .env.kusama.example .env.kusama
+docker compose up -d
+```
 
-## API Reference
+REST API will be available at `http://localhost:3000/api`, metrics — at `/metrics`.
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/sensor/last` | Latest measurement for a sensor |
-| `GET /api/sensor/history` | Historical measurements |
-| `GET /api/sensor/csv` | Export measurements as CSV |
-| `GET /api/v2/sensor/list` | List all known sensors |
-| `socket.io "update"` | Real-time push on new measurements |
+## npm scripts
 
-Connect this service to [sensors.social](https://sensors.social) or the [sensors map](https://github.com/airalab/sensors.robonomics.network) frontend.
+| Command           | Description                           |
+|-------------------|---------------------------------------|
+| `build`           | Build via `nest build`                |
+| `start` / `start:dev` | Run (with watch in dev)           |
+| `start:prod`      | Run the built `dist/main`             |
+| `format`          | Prettier over `src/` and `test/`      |
+| `lint`            | ESLint with autofix                   |
+| `test`            | Jest (unit)                           |
+| `test:e2e`        | Jest with the config from `test/`     |
 
-## Bug Reports
+## Documentation
 
-https://github.com/airalab/RoSeMAN/issues
+The full documentation lives in **[docs/](./docs/README.md)**:
 
-## Links
-
-- [Robonomics Wiki](https://wiki.robonomics.network/)
-- [sensors.social](https://sensors.social)
-- [Sensors Map Frontend](https://github.com/airalab/sensors.robonomics.network)
+- [Architecture](./docs/architecture.md) — modules, run modes, data flow
+- [Deployment](./docs/deployment.md) — npm/Docker, multi-instance setup
+- [Indexer](./docs/indexer.md) — `BlockIndexer`, handlers, IPFS, geocoding, DB schemas, configuration
+- [REST API](./docs/api.md) — HTTP layer design, validation, error handling
+- [Endpoint reference](./docs/api_endpoints.md) — REST endpoint reference
+- [Database](./docs/database.md) — Repository pattern, repositories overview
+- [Metrics](./docs/metrics.md) — Prometheus `/metrics` endpoint
