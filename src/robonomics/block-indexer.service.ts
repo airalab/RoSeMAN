@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { ApiPromise } from '@polkadot/api';
 import type { Event, Header } from '@polkadot/types/interfaces';
+import { START_BLOCK_LATEST } from '../config/robonomics.config.js';
 import { IndexStateRepository } from '../database/repositories/index-state.repository.js';
 import { EVENT_HANDLERS, EXTRINSIC_HANDLERS } from './constants.js';
 import type { ChainEventHandler } from './interfaces/chain-event-handler.interface.js';
@@ -75,17 +77,39 @@ export class BlockIndexerService implements OnModuleInit {
   private async start(): Promise<void> {
     const api = await this.robonomics.getApi();
 
-    const startBlock = this.config.get<number>('robonomics.startBlock') ?? 0;
+    const startBlock =
+      this.config.get<number | typeof START_BLOCK_LATEST>(
+        'robonomics.startBlock',
+      ) ?? START_BLOCK_LATEST;
+    const startBlockForce =
+      this.config.get<boolean>('robonomics.startBlockForce') ?? false;
     const savedBlock = await this.indexStateRepo.getValue(this.stateKey);
-    let from = savedBlock !== null ? savedBlock + 1 : startBlock;
+
+    if (startBlockForce) {
+      this.logger.warn(
+        'ROBONOMICS_START_BLOCK_FORCE=true — indexing is forcibly started ' +
+          'from the ROBONOMICS_START_BLOCK value, the block saved in the DB ' +
+          'is ignored. Do not forget to disable it (false) after launch, ' +
+          'otherwise it will trigger on every restart.',
+      );
+    }
+
+    let from: number;
+    if (savedBlock !== null && !startBlockForce) {
+      from = savedBlock + 1;
+    } else if (startBlock === START_BLOCK_LATEST) {
+      // Первый запуск без сохранённого состояния: стартуем с текущего
+      // финализированного блока в чейне, а не с самого начала истории.
+      from = await this.getFinalizedBlock(api);
+    } else {
+      from = startBlock;
+    }
 
     this.logger.log(`Starting catch-up from block ${from}`);
 
     // Catch-up loop
     while (true) {
-      const finalizedHash = await api.rpc.chain.getFinalizedHead();
-      const finalizedHeader = await api.rpc.chain.getHeader(finalizedHash);
-      const finalized = finalizedHeader.number.toNumber();
+      const finalized = await this.getFinalizedBlock(api);
 
       if (from > finalized) break;
 
@@ -256,6 +280,17 @@ export class BlockIndexerService implements OnModuleInit {
         }
       }
     }
+  }
+
+  /**
+   * Возвращает номер последнего финализированного блока в чейне.
+   * @param api - подключённый экземпляр ApiPromise
+   * @returns номер финализированного блока
+   */
+  private async getFinalizedBlock(api: ApiPromise): Promise<number> {
+    const finalizedHash = await api.rpc.chain.getFinalizedHead();
+    const finalizedHeader = await api.rpc.chain.getHeader(finalizedHash);
+    return finalizedHeader.number.toNumber();
   }
 
   /** @param ms - время ожидания в миллисекундах */

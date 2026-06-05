@@ -1,4 +1,5 @@
 export enum SensorModel {
+  PING = 1,
   STATIC = 2,
   MOVE = 3,
   MESSAGE = 4,
