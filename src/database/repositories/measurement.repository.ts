@@ -117,8 +117,10 @@ export class MeasurementRepository {
   }
 
   /**
-   * Возвращает список уникальных сенсоров, у которых НЕТ измерений co2
-   * в указанном временном диапазоне.
+   * Возвращает список уникальных Urban-сенсоров в указанном временном диапазоне.
+   * Urban-сенсором считается тот, у которого поле device_model содержит
+   * строку "urban" (регистронезависимо) либо device_model не указан.
+   * device_model берётся из самого свежего измерения сенсора.
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
    */
@@ -141,15 +143,18 @@ export class MeasurementRepository {
             model: { $first: '$model' },
             geo: { $first: '$geo' },
             donated_by: { $first: { $ifNull: ['$donated_by', ''] } },
+            device_model: { $first: { $ifNull: ['$device_model', ''] } },
             timestamp: { $first: '$timestamp' },
-            hasCo2: {
-              $max: {
-                $cond: [{ $ifNull: ['$measurement.co2', false] }, 1, 0],
-              },
-            },
           },
         },
-        { $match: { hasCo2: 0 } },
+        {
+          $match: {
+            $or: [
+              { device_model: '' },
+              { device_model: { $regex: 'urban', $options: 'i' } },
+            ],
+          },
+        },
         {
           $project: {
             _id: 0,

@@ -18,6 +18,8 @@ interface RawSensorEntry {
   model?: number;
   geo?: string;
   donated_by?: string;
+  device_model?: string;
+  owner?: string;
   measurements?: RawReading[];
 }
 
@@ -35,6 +37,8 @@ interface RawMessageEntry {
   sensor_id?: string;
   username?: string;
   donated_by?: string;
+  device_model?: string;
+  owner?: string;
   images?: string[];
   type?: number;
 }
@@ -226,6 +230,8 @@ export class MeasurementProcessorService
         },
         geo,
         donated_by: data.donated_by || undefined,
+        device_model: data.device_model || undefined,
+        owner: data.owner || undefined,
         timestamp: data.timestamp,
       },
     ];
@@ -242,6 +248,8 @@ export class MeasurementProcessorService
       measurement: Record<string, unknown>;
       geo: { lat: number; lng: number };
       donated_by?: string;
+      device_model?: string;
+      owner?: string;
       timestamp: number;
     }> = [];
 
@@ -290,6 +298,8 @@ export class MeasurementProcessorService
           measurement: measurementFields,
           geo,
           donated_by: entry.donated_by || undefined,
+          device_model: entry.device_model || undefined,
+          owner: entry.owner || undefined,
           timestamp,
         });
       }

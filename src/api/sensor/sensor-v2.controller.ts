@@ -60,7 +60,8 @@ export class SensorV2Controller {
   }
 
   /**
-   * Возвращает список сенсоров без измерений co2 в указанном временном диапазоне.
+   * Возвращает список Urban-сенсоров в указанном временном диапазоне.
+   * Urban определяется по полю device_model (содержит "urban" или не указан).
    * GET /api/v2/sensor/urban/:start/:end
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)

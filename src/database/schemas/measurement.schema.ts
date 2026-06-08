@@ -23,6 +23,12 @@ export class Measurement {
   @Prop({ type: String })
   donated_by?: string;
 
+  @Prop({ type: String })
+  device_model?: string;
+
+  @Prop({ type: String })
+  owner?: string;
+
   @Prop({ required: true, type: Number, index: true })
   timestamp!: number;
 }
