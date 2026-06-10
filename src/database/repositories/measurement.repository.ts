@@ -237,6 +237,46 @@ export class MeasurementRepository {
   }
 
   /**
+   * Возвращает device_model для каждого из указанных сенсоров за период.
+   * device_model берётся из самого свежего измерения сенсора; сенсоры,
+   * у которых device_model не указан (пустой или отсутствует), в карту
+   * не попадают.
+   * @param sensorIds - идентификаторы сенсоров
+   * @param start - начало диапазона (unix timestamp)
+   * @param end - конец диапазона (unix timestamp)
+   * @returns карта sensor_id → device_model
+   */
+  async getDeviceModelsBySensorIds(
+    sensorIds: string[],
+    start: number,
+    end: number,
+  ): Promise<Map<string, string>> {
+    if (sensorIds.length === 0) return new Map();
+
+    const docs = await this.model
+      .aggregate<{ _id: string; device_model: string }>([
+        {
+          $match: {
+            model: { $in: SENSOR_DATA_MODELS },
+            sensor_id: { $in: sensorIds },
+            timestamp: { $gte: start, $lte: end },
+          },
+        },
+        { $sort: { timestamp: -1 } },
+        {
+          $group: {
+            _id: '$sensor_id',
+            device_model: { $first: { $ifNull: ['$device_model', ''] } },
+          },
+        },
+        { $match: { device_model: { $ne: '' } } },
+      ])
+      .exec();
+
+    return new Map(docs.map((doc) => [doc._id, doc.device_model]));
+  }
+
+  /**
    * Возвращает измерения за указанный временной диапазон,
    * сгруппированные по sensor_id.
    * Фильтрация по GPS-области (bound) или списку sensor_id.

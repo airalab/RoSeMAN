@@ -231,7 +231,7 @@ export class SensorService {
       const values = allMeasurementKeys.map((key) => {
         const v = doc.measurement[key];
         if (v == null) return '';
-        return typeof v === 'object' ? JSON.stringify(v) : String(v as number);
+        return typeof v === 'object' ? JSON.stringify(v) : String(v);
       });
 
       return [formattedDate, doc.sensor_id, geo, ...values].join('\t');
@@ -295,6 +295,7 @@ export class SensorService {
   /**
    * Возвращает данные сенсора за период, а также данные всех сенсоров того же owner.
    * Если у сенсора нет owner — возвращает только data основного сенсора.
+   * Каждый элемент списка sensors содержит device_model, если он указан у сенсора.
    * @param sensorId - идентификатор запрашиваемого сенсора
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
@@ -311,7 +312,7 @@ export class SensorService {
     }>;
     sensor: {
       owner: string;
-      sensors: string[];
+      sensors: Array<{ sensor_id: string; device_model?: string }>;
       data: Record<
         string,
         Array<{
@@ -337,7 +338,7 @@ export class SensorService {
       return { result, sensor: null };
     }
 
-    const sensors = await this.subscriptionRepo.findAccountsByOwner(owner);
+    const sensorIds = await this.subscriptionRepo.findAccountsByOwner(owner);
     const data: Record<
       string,
       Array<{
@@ -347,15 +348,25 @@ export class SensorService {
       }>
     > = {};
 
-    await Promise.all(
-      sensors.map(async (id) => {
-        data[id] = await this.measurementRepo.findBySensorInRange(
-          id,
-          start,
-          end,
-        );
-      }),
-    );
+    const [, deviceModels] = await Promise.all([
+      Promise.all(
+        sensorIds.map(async (id) => {
+          data[id] = await this.measurementRepo.findBySensorInRange(
+            id,
+            start,
+            end,
+          );
+        }),
+      ),
+      this.measurementRepo.getDeviceModelsBySensorIds(sensorIds, start, end),
+    ]);
+
+    const sensors = sensorIds.map((id) => {
+      const deviceModel = deviceModels.get(id);
+      return deviceModel !== undefined
+        ? { sensor_id: id, device_model: deviceModel }
+        : { sensor_id: id };
+    });
 
     return {
       result,
