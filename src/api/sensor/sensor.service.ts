@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
   MeasurementRepository,
+  type OwnedSensorEntry,
   type SensorListEntry,
 } from '../../database/repositories/measurement.repository.js';
 import { SensorRepository } from '../../database/repositories/sensor.repository.js';
-import { SubscriptionRepository } from '../../database/repositories/subscription.repository.js';
 import { type GeoBound } from './dto/sensor-json-query.dto.js';
 
 interface MaxDataEntry {
@@ -22,6 +22,11 @@ interface SensorListItem extends SensorListEntry {
 interface MarkerSensorItem extends SensorListEntry {
   device_model: string;
   owner?: string;
+  /**
+   * Сенсоры того же владельца (другие урбаны и инсайты, без самого себя).
+   * Добавляется только к урбан-сенсорам (включая с пустым device_model).
+   */
+  sensors?: Array<{ sensor_id: string; device_model?: string }>;
 }
 
 /** Признак insight-сенсора по полю device_model (регистронезависимо). */
@@ -35,7 +40,6 @@ export class SensorService {
   constructor(
     private readonly measurementRepo: MeasurementRepository,
     private readonly sensorRepo: SensorRepository,
-    private readonly subscriptionRepo: SubscriptionRepository,
   ) {}
 
   /**
@@ -68,7 +72,7 @@ export class SensorService {
 
   /**
    * Возвращает список сенсоров, имеющих данные в указанном временном диапазоне.
-   * Для сенсоров с подпиской добавляет поле owner.
+   * Для сенсоров с указанным owner добавляет поле owner.
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
    */
@@ -80,7 +84,7 @@ export class SensorService {
   /**
    * Возвращает список Urban-сенсоров за указанный временной диапазон.
    * Urban-сенсор определяется по полю device_model (содержит "urban"
-   * или не указан). Для сенсоров с подпиской добавляет поле owner.
+   * или не указан). Для сенсоров с указанным owner добавляет поле owner.
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
    */
@@ -105,6 +109,9 @@ export class SensorService {
    * Каждый элемент содержит device_model, а если в измерении указан
    * owner — также поле owner. Информация о владельце берётся из поля
    * owner коллекции measurement (не из подписок).
+   * К урбан-сенсорам (пункты 1–2) добавляется поле sensors — список
+   * сенсоров того же владельца (другие урбаны и инсайты, включая
+   * инсайты, отфильтрованные из пункта 3; без самого сенсора).
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
    */
@@ -118,50 +125,64 @@ export class SensorService {
     );
     if (sensors.length === 0) return [];
 
-    // Владельцы, у которых есть urban-сенсор или сенсор без device_model.
-    // Insight-сенсоры таких владельцев в результат не попадают.
+    // Владельцы, у которых есть urban-сенсор или сенсор без device_model
+    // (insight-сенсоры таких владельцев в результат не попадают), и
+    // группировка всех кандидатов по владельцу для поля sensors.
     const urbanOwners = new Set<string>();
+    const sensorsByOwner = new Map<
+      string,
+      Array<{ sensor_id: string; device_model?: string }>
+    >();
     for (const sensor of sensors) {
-      if (INSIGHT_REGEX.test(sensor.device_model)) continue;
-      if (sensor.owner) urbanOwners.add(sensor.owner);
+      if (!sensor.owner) continue;
+      if (!INSIGHT_REGEX.test(sensor.device_model)) {
+        urbanOwners.add(sensor.owner);
+      }
+      const siblings = sensorsByOwner.get(sensor.owner) ?? [];
+      siblings.push(
+        sensor.device_model
+          ? { sensor_id: sensor.sensor_id, device_model: sensor.device_model }
+          : { sensor_id: sensor.sensor_id },
+      );
+      sensorsByOwner.set(sensor.owner, siblings);
     }
 
     const result: MarkerSensorItem[] = [];
     for (const sensor of sensors) {
-      if (
-        INSIGHT_REGEX.test(sensor.device_model) &&
-        sensor.owner &&
-        urbanOwners.has(sensor.owner)
-      ) {
+      const isInsight = INSIGHT_REGEX.test(sensor.device_model);
+      if (isInsight && sensor.owner && urbanOwners.has(sensor.owner)) {
         // insight включаем, только если у его владельца нет urban-сенсора
         continue;
       }
 
       // owner отдаётся только если он указан в измерении
       const { owner, ...entry } = sensor;
-      result.push(owner ? { ...entry, owner } : entry);
+      const item: MarkerSensorItem = owner ? { ...entry, owner } : entry;
+
+      // У урбан-сенсоров — список сенсоров того же владельца (без самого себя)
+      if (!isInsight) {
+        item.sensors = owner
+          ? (sensorsByOwner.get(owner) ?? []).filter(
+              (s) => s.sensor_id !== sensor.sensor_id,
+            )
+          : [];
+      }
+
+      result.push(item);
     }
 
     return result;
   }
 
   /**
-   * Добавляет поле owner к сенсорам, у которых есть подписка.
-   * @param sensors - список сенсоров
+   * Превращает записи с owner (из поля owner коллекции measurement)
+   * в элементы списка: поле owner остаётся только если оно непустое.
+   * @param sensors - список сенсоров с owner
    */
-  private async attachOwners(
-    sensors: SensorListEntry[],
-  ): Promise<SensorListItem[]> {
-    if (sensors.length === 0) return [];
-
-    const sensorIds = sensors.map((s) => s.sensor_id);
-    const ownerMap =
-      await this.subscriptionRepo.findOwnersByAccounts(sensorIds);
-
-    return sensors.map((sensor) => {
-      const owner = ownerMap.get(sensor.sensor_id);
-      return owner ? { ...sensor, owner } : sensor;
-    });
+  private attachOwners(sensors: OwnedSensorEntry[]): SensorListItem[] {
+    return sensors.map(({ owner, ...entry }) =>
+      owner ? { ...entry, owner } : entry,
+    );
   }
 
   /**
@@ -353,6 +374,8 @@ export class SensorService {
 
   /**
    * Возвращает данные сенсора за период, а также данные всех сенсоров того же owner.
+   * owner и состав сенсоров владельца определяются по полю owner коллекции
+   * measurement (по самым свежим измерениям за период), а не по подпискам.
    * Если у сенсора нет owner — возвращает только data основного сенсора.
    * Каждый элемент списка sensors содержит device_model, если он указан у сенсора.
    * @param sensorId - идентификатор запрашиваемого сенсора
@@ -388,16 +411,21 @@ export class SensorService {
       end,
     );
 
-    const ownerMap = await this.subscriptionRepo.findOwnersByAccounts([
+    const owner = await this.measurementRepo.getOwnerBySensorId(
       sensorId,
-    ]);
-    const owner = ownerMap.get(sensorId);
+      start,
+      end,
+    );
 
     if (!owner) {
       return { result, sensor: null };
     }
 
-    const sensorIds = await this.subscriptionRepo.findAccountsByOwner(owner);
+    const sensorIds = await this.measurementRepo.findSensorIdsByOwner(
+      owner,
+      start,
+      end,
+    );
     const data: Record<
       string,
       Array<{

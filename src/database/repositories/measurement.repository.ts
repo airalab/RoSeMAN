@@ -27,14 +27,21 @@ export interface SensorListEntry {
 }
 
 /**
+ * Запись сенсора с его owner. owner берётся из самого свежего измерения
+ * сенсора (поле owner коллекции measurement) и равен пустой строке, если
+ * в измерении не указан.
+ */
+export interface OwnedSensorEntry extends SensorListEntry {
+  owner: string;
+}
+
+/**
  * Запись сенсора с его device_model и owner. Используется для построения
  * списка маркеров: device_model и owner берутся из самого свежего измерения
- * и нужны для фильтрации insight-сенсоров по владельцу. owner — пустая
- * строка, если в измерении не указан.
+ * и нужны для фильтрации insight-сенсоров по владельцу.
  */
-export interface MarkerSensorEntry extends SensorListEntry {
+export interface MarkerSensorEntry extends OwnedSensorEntry {
   device_model: string;
-  owner: string;
 }
 
 /**
@@ -87,16 +94,17 @@ export class MeasurementRepository {
   /**
    * Возвращает список уникальных сенсоров, имеющих измерения
    * в указанном временном диапазоне.
-   * Для каждого сенсора берётся последняя запись по timestamp.
+   * Для каждого сенсора берётся последняя запись по timestamp; owner
+   * берётся из этого же свежего измерения.
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
    */
   async findSensorsInRange(
     start: number,
     end: number,
-  ): Promise<SensorListEntry[]> {
+  ): Promise<OwnedSensorEntry[]> {
     return this.model
-      .aggregate<SensorListEntry>([
+      .aggregate<OwnedSensorEntry>([
         {
           $match: {
             model: { $in: SENSOR_DATA_MODELS },
@@ -110,6 +118,7 @@ export class MeasurementRepository {
             model: { $first: '$model' },
             geo: { $first: '$geo' },
             donated_by: { $first: { $ifNull: ['$donated_by', ''] } },
+            owner: { $first: { $ifNull: ['$owner', ''] } },
             timestamp: { $first: '$timestamp' },
           },
         },
@@ -120,6 +129,7 @@ export class MeasurementRepository {
             model: 1,
             geo: 1,
             donated_by: 1,
+            owner: 1,
             timestamp: 1,
           },
         },
@@ -131,16 +141,16 @@ export class MeasurementRepository {
    * Возвращает список уникальных Urban-сенсоров в указанном временном диапазоне.
    * Urban-сенсором считается тот, у которого поле device_model содержит
    * строку "urban" (регистронезависимо) либо device_model не указан.
-   * device_model берётся из самого свежего измерения сенсора.
+   * device_model и owner берутся из самого свежего измерения сенсора.
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
    */
   async findUrbanSensorsInRange(
     start: number,
     end: number,
-  ): Promise<SensorListEntry[]> {
+  ): Promise<OwnedSensorEntry[]> {
     return this.model
-      .aggregate<SensorListEntry>([
+      .aggregate<OwnedSensorEntry>([
         {
           $match: {
             model: { $in: SENSOR_DATA_MODELS },
@@ -155,6 +165,7 @@ export class MeasurementRepository {
             geo: { $first: '$geo' },
             donated_by: { $first: { $ifNull: ['$donated_by', ''] } },
             device_model: { $first: { $ifNull: ['$device_model', ''] } },
+            owner: { $first: { $ifNull: ['$owner', ''] } },
             timestamp: { $first: '$timestamp' },
           },
         },
@@ -173,6 +184,7 @@ export class MeasurementRepository {
             model: 1,
             geo: 1,
             donated_by: 1,
+            owner: 1,
             timestamp: 1,
           },
         },
@@ -304,6 +316,78 @@ export class MeasurementRepository {
           geo: doc.geo,
         })),
       );
+  }
+
+  /**
+   * Возвращает owner указанного сенсора, взятый из его самого свежего
+   * измерения за период. Пустая строка — если измерений нет либо owner
+   * в них не указан.
+   * @param sensorId - идентификатор сенсора
+   * @param start - начало диапазона (unix timestamp)
+   * @param end - конец диапазона (unix timestamp)
+   */
+  async getOwnerBySensorId(
+    sensorId: string,
+    start: number,
+    end: number,
+  ): Promise<string> {
+    const docs = await this.model
+      .aggregate<{ owner: string }>([
+        {
+          $match: {
+            model: { $in: SENSOR_DATA_MODELS },
+            sensor_id: sensorId,
+            timestamp: { $gte: start, $lte: end },
+          },
+        },
+        { $sort: { timestamp: -1 } },
+        {
+          $group: {
+            _id: '$sensor_id',
+            owner: { $first: { $ifNull: ['$owner', ''] } },
+          },
+        },
+      ])
+      .exec();
+
+    return docs[0]?.owner ?? '';
+  }
+
+  /**
+   * Возвращает идентификаторы сенсоров, принадлежащих указанному владельцу
+   * за период. Принадлежность определяется по owner из самого свежего
+   * измерения сенсора.
+   * @param owner - адрес владельца
+   * @param start - начало диапазона (unix timestamp)
+   * @param end - конец диапазона (unix timestamp)
+   */
+  async findSensorIdsByOwner(
+    owner: string,
+    start: number,
+    end: number,
+  ): Promise<string[]> {
+    if (!owner) return [];
+
+    const docs = await this.model
+      .aggregate<{ _id: string }>([
+        {
+          $match: {
+            model: { $in: SENSOR_DATA_MODELS },
+            timestamp: { $gte: start, $lte: end },
+          },
+        },
+        { $sort: { timestamp: -1 } },
+        {
+          $group: {
+            _id: '$sensor_id',
+            owner: { $first: { $ifNull: ['$owner', ''] } },
+          },
+        },
+        { $match: { owner } },
+      ])
+      .exec();
+
+    return docs.map((doc) => doc._id);
   }
 
   /**
