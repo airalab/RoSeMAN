@@ -18,6 +18,15 @@ interface SensorListItem extends SensorListEntry {
   owner?: string;
 }
 
+/** Элемент списка маркеров: запись с device_model и опциональным owner. */
+interface MarkerSensorItem extends SensorListEntry {
+  device_model: string;
+  owner?: string;
+}
+
+/** Признак insight-сенсора по полю device_model (регистронезависимо). */
+const INSIGHT_REGEX = /insight/i;
+
 /**
  * Сервис для агрегации данных сенсоров.
  */
@@ -84,6 +93,56 @@ export class SensorService {
       end,
     );
     return this.attachOwners(sensors);
+  }
+
+  /**
+   * Возвращает список сенсоров для отображения маркеров за указанный
+   * временной диапазон. В результат попадают:
+   * 1. все urban-сенсоры (device_model содержит "urban");
+   * 2. все сенсоры без указанного device_model;
+   * 3. insight-сенсоры, у владельца которых нет ни одного сенсора из
+   *    пунктов 1–2 (insight без владельца также включается).
+   * Каждый элемент содержит device_model, а если в измерении указан
+   * owner — также поле owner. Информация о владельце берётся из поля
+   * owner коллекции measurement (не из подписок).
+   * @param start - начало диапазона (unix timestamp)
+   * @param end - конец диапазона (unix timestamp)
+   */
+  async getMarkerSensorList(
+    start: number,
+    end: number,
+  ): Promise<MarkerSensorItem[]> {
+    const sensors = await this.measurementRepo.findMarkerSensorsInRange(
+      start,
+      end,
+    );
+    if (sensors.length === 0) return [];
+
+    // Владельцы, у которых есть urban-сенсор или сенсор без device_model.
+    // Insight-сенсоры таких владельцев в результат не попадают.
+    const urbanOwners = new Set<string>();
+    for (const sensor of sensors) {
+      if (INSIGHT_REGEX.test(sensor.device_model)) continue;
+      if (sensor.owner) urbanOwners.add(sensor.owner);
+    }
+
+    const result: MarkerSensorItem[] = [];
+    for (const sensor of sensors) {
+      if (
+        INSIGHT_REGEX.test(sensor.device_model) &&
+        sensor.owner &&
+        urbanOwners.has(sensor.owner)
+      ) {
+        // insight включаем, только если у его владельца нет urban-сенсора
+        continue;
+      }
+
+      // owner отдаётся только если он указан в измерении
+      const { owner, ...entry } = sensor;
+      result.push(owner ? { ...entry, owner } : entry);
+    }
+
+    return result;
   }
 
   /**

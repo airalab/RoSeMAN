@@ -27,6 +27,17 @@ export interface SensorListEntry {
 }
 
 /**
+ * Запись сенсора с его device_model и owner. Используется для построения
+ * списка маркеров: device_model и owner берутся из самого свежего измерения
+ * и нужны для фильтрации insight-сенсоров по владельцу. owner — пустая
+ * строка, если в измерении не указан.
+ */
+export interface MarkerSensorEntry extends SensorListEntry {
+  device_model: string;
+  owner: string;
+}
+
+/**
  * Репозиторий для работы с коллекцией measurement.
  */
 @Injectable()
@@ -162,6 +173,65 @@ export class MeasurementRepository {
             model: 1,
             geo: 1,
             donated_by: 1,
+            timestamp: 1,
+          },
+        },
+      ])
+      .exec();
+  }
+
+  /**
+   * Возвращает список уникальных сенсоров для отображения маркеров
+   * в указанном временном диапазоне: urban-сенсоры (device_model содержит
+   * "urban" либо не указан) и insight-сенсоры (device_model содержит
+   * "insight"). device_model и owner берутся из самого свежего измерения
+   * сенсора и возвращаются вместе с записью для последующей фильтрации
+   * insight по владельцу.
+   * @param start - начало диапазона (unix timestamp)
+   * @param end - конец диапазона (unix timestamp)
+   */
+  async findMarkerSensorsInRange(
+    start: number,
+    end: number,
+  ): Promise<MarkerSensorEntry[]> {
+    return this.model
+      .aggregate<MarkerSensorEntry>([
+        {
+          $match: {
+            model: { $in: SENSOR_DATA_MODELS },
+            timestamp: { $gte: start, $lte: end },
+          },
+        },
+        { $sort: { timestamp: -1 } },
+        {
+          $group: {
+            _id: '$sensor_id',
+            model: { $first: '$model' },
+            geo: { $first: '$geo' },
+            donated_by: { $first: { $ifNull: ['$donated_by', ''] } },
+            device_model: { $first: { $ifNull: ['$device_model', ''] } },
+            owner: { $first: { $ifNull: ['$owner', ''] } },
+            timestamp: { $first: '$timestamp' },
+          },
+        },
+        {
+          $match: {
+            $or: [
+              { device_model: '' },
+              { device_model: { $regex: 'urban', $options: 'i' } },
+              { device_model: { $regex: 'insight', $options: 'i' } },
+            ],
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            sensor_id: '$_id',
+            model: 1,
+            geo: 1,
+            donated_by: 1,
+            device_model: 1,
+            owner: 1,
             timestamp: 1,
           },
         },

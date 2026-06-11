@@ -77,6 +77,24 @@ export class SensorV2Controller {
   }
 
   /**
+   * Возвращает список сенсоров для отображения маркеров в указанном
+   * временном диапазоне: urban-сенсоры, сенсоры без device_model и
+   * insight-сенсоры, у владельца которых нет urban-сенсора.
+   * GET /api/v2/sensor/markers/:start/:end
+   * @param start - начало диапазона (unix timestamp)
+   * @param end - конец диапазона (unix timestamp)
+   */
+  @Get('markers/:start/:end')
+  @UseGuards(DateRangeGuard)
+  async getMarkerSensorList(
+    @Param('start', ParseIntPipe) start: number,
+    @Param('end', ParseIntPipe) end: number,
+  ): Promise<{ result: unknown[] }> {
+    const result = await this.sensorService.getMarkerSensorList(start, end);
+    return { result };
+  }
+
+  /**
    * Возвращает данные указанного сенсора за период,
    * а также данные всех сенсоров того же owner.
    * GET /api/v2/sensor/:sensor/:start/:end
