@@ -50,6 +50,18 @@ npm run start:kusama       # Kusama indexer  (.env.kusama)
 
 `start:polkadot` and `start:kusama` propagate `DOTENV_CONFIG_PATH` via `dotenv` and start `dist/main`. See `package.json`.
 
+### Indexes on first deploy
+
+Automatic index creation is **disabled by default** (`autoIndex: false`), so on a fresh database apply the indexes explicitly once after deploy:
+
+```bash
+npm run sync-indexes
+# per environment / database, if they differ:
+DOTENV_CONFIG_PATH=.env.kusama npm run sync-indexes
+```
+
+For large collections, create indexes manually via `mongosh` instead (online build, no drops). See [database.md → Index management](./database.md#index-management).
+
 ## Docker
 
 The repository root contains `Dockerfile` and `docker-compose.yml`.

@@ -48,6 +48,7 @@ function buildImports(): Array<
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
         uri: cfg.get<string>('app.mongodbUri'),
+        autoIndex: cfg.get<boolean>('app.autoIndex'),
       }),
     }),
     DatabaseModule,

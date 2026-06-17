@@ -25,6 +25,40 @@ MongooseModule.forRootAsync({
 
 The URI comes from `MONGODB_URI` (default `mongodb://localhost:27017/roseman`).
 
+## Index management
+
+Indexes are declared in the schemas (`@Prop({ index: true })` and `Schema.index(...)`), but **automatic creation on startup is disabled by default**: the connection is opened with `autoIndex: false` (see `app.module.ts`, driven by the `app.autoIndex` config). This avoids spontaneous, foreground index builds on large hot collections every time a process boots.
+
+`autoIndex` is controlled by `MONGODB_AUTO_INDEX` (default `false`). For local development you may set `MONGODB_AUTO_INDEX=true` so Mongoose creates missing indexes on startup.
+
+In production, apply indexes explicitly as a deploy step. Two options:
+
+### 1. `npm run sync-indexes`
+
+Runs `src/scripts/sync-indexes.ts`: boots a minimal context (DB connection + all schemas, **no** HTTP server / indexer / pollers) and calls `Model.syncIndexes()` for every model.
+
+```bash
+npm run sync-indexes
+# for another environment / database:
+DOTENV_CONFIG_PATH=.env.kusama npm run sync-indexes
+```
+
+⚠️ `syncIndexes()` makes the collection match the schema exactly — it creates missing indexes **and drops indexes that are no longer declared**. Review the schemas before running it in production.
+
+### 2. Manually via `mongosh` (recommended for large collections)
+
+Gives full control and avoids dropping anything. Since MongoDB 4.2 index builds are effectively online (the legacy `{ background: true }` option is accepted but a no-op):
+
+```js
+// create the new owner lookup index without blocking writes
+db.measurements.createIndex({ owner: 1, sensor_id: 1 }, { background: true })
+
+// verify
+db.measurements.getIndexes()
+```
+
+> Tip: a `unique` index (e.g. `{ sensor_id: 1, timestamp: 1 }`) will fail to build if the collection already contains duplicates (`E11000`). Resolve duplicates first, then create the index.
+
 ## Collections and repositories
 
 | Mongoose class    | Collection       | Repository               | Where it is used                                  |

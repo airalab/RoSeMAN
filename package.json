@@ -17,6 +17,7 @@
     "start:kusama": "npm run build && DOTENV_CONFIG_PATH=.env.kusama node dist/main",
     "start:dev:polkadot": "DOTENV_CONFIG_PATH=.env.polkadot nest start --watch",
     "start:dev:kusama": "DOTENV_CONFIG_PATH=.env.kusama nest start --watch",
+    "sync-indexes": "npm run build && node dist/scripts/sync-indexes.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
