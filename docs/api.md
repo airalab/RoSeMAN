@@ -33,7 +33,7 @@ Current controllers (`src/api/`):
 |----------------------|---------------------|-----------------------------------------------------|
 | `StatusController`   | `/api/status`       | Indexer state (agents, last-block)                  |
 | `SensorController`   | `/api/sensor`       | V1 — sensor data, cities, messages                  |
-| `SensorV2Controller` | `/api/v2/sensor`    | V2 — `maxdata`, aggregated lists, `urban`           |
+| `SensorV2Controller` | `/api/v2/sensor`    | V2 — `maxdata`, aggregated lists (`list`/`urban`/`markers`), `owner/:owner` |
 | `StoryController`    | `/api/v2/story`     | Stories (`list`, `last/:sensor_id`)                 |
 
 Versioning is done **through the path, not via `enableVersioning()`** — V2 lives in a separate controller with the `v2/...` prefix. This allows V1 and V2 to share a common service (`SensorService`) while exposing different endpoint signatures.

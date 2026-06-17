@@ -58,6 +58,7 @@ Without claiming a complete list (each file is worth reading in full), here are 
 ### MeasurementRepository
 - `insertManyIgnoreDuplicates(docs)` — `bulkWrite` with `ordered: false`; duplicates by the unique `{sensor_id, timestamp}` are silently ignored.
 - Time-range and filter queries for the V1/V2 controllers (`getMaxData`, `getSensorList`, etc.).
+- `findCurrentSensorIdsByOwner(owner)` — sensor IDs whose current owner is the given one (powers `GET /api/v2/sensor/owner/:owner`). Two-stage to avoid a full collection scan: a covered `distinct` over the `{owner, sensor_id}` index narrows candidates, then an aggregation keeps only those whose latest measurement still has that owner.
 - Filtering by `model` via the `SENSOR_DATA_MODELS` constant from `src/common/constants/sensor-model.enum.ts`.
 
 ### SensorRepository

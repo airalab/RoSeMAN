@@ -46,7 +46,7 @@ export class StoryRepository {
       .findOne({ sensor_id: sensorId })
       .sort({ timestamp: -1 })
       .lean()
-      .exec() as Promise<StoryDocument | null>;
+      .exec();
   }
 
   /**

@@ -186,6 +186,16 @@ export class SensorService {
   }
 
   /**
+   * Возвращает отсортированный список идентификаторов сенсоров, текущим
+   * владельцем которых является указанный. Текущий владелец определяется по
+   * полю owner самого свежего измерения сенсора в коллекции measurement.
+   * @param owner - адрес владельца
+   */
+  async getSensorIdsByOwner(owner: string): Promise<string[]> {
+    return this.measurementRepo.findCurrentSensorIdsByOwner(owner);
+  }
+
+  /**
    * Возвращает список городов, сгруппированных по странам и регионам.
    */
   async getCitiesGrouped(): Promise<Record<string, Record<string, string[]>>> {

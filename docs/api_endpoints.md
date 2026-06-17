@@ -36,6 +36,8 @@
 | GET | `/api/v2/sensor/maxdata/:type/:start/:end` | `getMaxData()` | Maximum measurement values of the given type for each sensor in the period. `:type` is validated by `/^[a-z0-9_]+$/`. Guard: `DateRangeGuard` |
 | GET | `/api/v2/sensor/list/:start/:end` | `getSensorList()` | List of sensors with data for the given period. Guard: `DateRangeGuard` |
 | GET | `/api/v2/sensor/urban/:start/:end` | `getUrbanSensorList()` | List of sensors without `co2` measurements for the period (same as `list`, but filtered). Guard: `DateRangeGuard` |
+| GET | `/api/v2/sensor/markers/:start/:end` | `getMarkerSensorList()` | List of sensors for map markers in the period: urban sensors, sensors without `device_model`, and insight sensors whose owner has no urban sensor. Urban entries also carry a `sensors` array of the owner's other sensors. Guard: `DateRangeGuard` |
+| GET | `/api/v2/sensor/owner/:owner` | `getSensorsByOwner()` | List of sensor IDs whose **current** owner is the given one (the `owner` field of the sensor's latest measurement in the `measurements` collection). Response: `{ result: string[] }` (sorted) |
 | GET | `/api/v2/sensor/:sensor/:start/:end` | `getSensorDataWithOwner()` | Sensor data for the period + data of all sensors with the same owner. Response: `{ result, sensor: { owner, sensors, data } }`. Guard: `DateRangeGuard` |
 
 ## Story Controller (V2)
@@ -50,7 +52,7 @@
 
 ## Summary
 
-- **Total endpoints:** 14
+- **Total endpoints:** 16
 - **All methods:** GET only
 - **Versioning:** V2 is implemented in a separate controller with the `v2/sensor` prefix
 - **Controllers with endpoints** live in `StatusModule`, `SensorModule`, `StoryModule`

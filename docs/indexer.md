@@ -326,9 +326,11 @@ Indexes: unique `{block, sender, resultHash}`, plus single-field indexes on `blo
 | `measurement` | Object   | Reading data (arbitrary JSON)                  |
 | `geo`         | Object   | `{ lat: Number, lng: Number }`                 |
 | `donated_by`  | String   | Donor (optional)                               |
+| `device_model`| String   | Device model (optional)                        |
+| `owner`       | String   | Sensor owner address (optional)                |
 | `timestamp`   | Number   | Unix timestamp of the reading, seconds *(indexed)* |
 
-Indexes: unique compound `{sensor_id, timestamp}` (deduplication).
+Indexes: unique compound `{sensor_id, timestamp}` (deduplication); compound `{owner, sensor_id}` (selecting sensors by owner — `GET /api/v2/sensor/owner/:owner`).
 
 ### Collection `cities` (Sensor)
 

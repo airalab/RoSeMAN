@@ -391,6 +391,48 @@ export class MeasurementRepository {
   }
 
   /**
+   * Возвращает идентификаторы сенсоров, текущим владельцем которых является
+   * указанный (без ограничения по времени). Текущий владелец сенсора — это
+   * owner из его самого свежего измерения; сенсоры, ранее принадлежавшие
+   * владельцу, но сменившие его, в результат не попадают.
+   *
+   * Запрос двухэтапный, чтобы избежать полного скана коллекции:
+   * 1. distinct по covered-индексу `{owner, sensor_id}` — кандидаты, которые
+   *    хоть раз принадлежали владельцу;
+   * 2. для каждого кандидата берётся owner из последнего по timestamp
+   *    измерения и сверяется с указанным.
+   * @param owner - адрес владельца
+   * @returns отсортированный список уникальных sensor_id
+   */
+  async findCurrentSensorIdsByOwner(owner: string): Promise<string[]> {
+    if (!owner) return [];
+
+    // Этап 1: кандидаты — сенсоры, у которых хоть раз встречался этот owner.
+    const candidates = await this.model
+      .distinct<string>('sensor_id', { owner })
+      .exec();
+
+    if (candidates.length === 0) return [];
+
+    // Этап 2: оставляем только тех, у кого owner свежего измерения совпадает.
+    const docs = await this.model
+      .aggregate<{ _id: string }>([
+        { $match: { sensor_id: { $in: candidates } } },
+        { $sort: { timestamp: -1 } },
+        {
+          $group: {
+            _id: '$sensor_id',
+            owner: { $first: { $ifNull: ['$owner', ''] } },
+          },
+        },
+        { $match: { owner } },
+      ])
+      .exec();
+
+    return docs.map((doc) => doc._id).sort();
+  }
+
+  /**
    * Возвращает device_model для каждого из указанных сенсоров за период.
    * device_model берётся из самого свежего измерения сенсора; сенсоры,
    * у которых device_model не указан (пустой или отсутствует), в карту

@@ -36,3 +36,7 @@ export class Measurement {
 export const MeasurementSchema = SchemaFactory.createForClass(Measurement);
 
 MeasurementSchema.index({ sensor_id: 1, timestamp: 1 }, { unique: true });
+
+// Индекс для выборки сенсоров по владельцу (GET /api/v2/sensor/owner/:owner).
+// Составной owner + sensor_id делает distinct по sensor_id covered-запросом.
+MeasurementSchema.index({ owner: 1, sensor_id: 1 });

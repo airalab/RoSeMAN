@@ -95,6 +95,20 @@ export class SensorV2Controller {
   }
 
   /**
+   * Возвращает список идентификаторов всех сенсоров указанного владельца.
+   * Владелец определяется по полю owner коллекции measurement.
+   * GET /api/v2/sensor/owner/:owner
+   * @param owner - адрес владельца
+   */
+  @Get('owner/:owner')
+  async getSensorsByOwner(
+    @Param('owner') owner: string,
+  ): Promise<{ result: string[] }> {
+    const result = await this.sensorService.getSensorIdsByOwner(owner);
+    return { result };
+  }
+
+  /**
    * Возвращает данные указанного сенсора за период,
    * а также данные всех сенсоров того же owner.
    * GET /api/v2/sensor/:sensor/:start/:end
