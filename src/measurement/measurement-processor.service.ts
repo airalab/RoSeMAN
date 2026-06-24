@@ -102,7 +102,7 @@ export class MeasurementProcessorService
         : this.parseSensorData(data as Record<string, RawSensorEntry>, doc._id);
 
       if (measurements.length > 0) {
-        await this.measurementRepo.insertManyIgnoreDuplicates(measurements);
+        await this.measurementRepo.upsertMany(measurements);
         await this.upsertSensors(measurements);
       }
 

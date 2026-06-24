@@ -398,9 +398,15 @@ export class MeasurementRepository {
    *
    * Запрос двухэтапный, чтобы избежать полного скана коллекции:
    * 1. distinct по covered-индексу `{owner, sensor_id}` — кандидаты, которые
-   *    хоть раз принадлежали владельцу;
-   * 2. для каждого кандидата берётся owner из последнего по timestamp
+   *    хоть раз принадлежали владельцу (их немного — это сенсоры владельца);
+   * 2. для каждого кандидата берётся owner из его последнего по timestamp
    *    измерения и сверяется с указанным.
+   *
+   * Этап 2 НЕ агрегирует все измерения кандидатов (их могут быть миллионы за
+   * всю историю), а делает по одному точечному `findOne` на сенсор: equality
+   * по `sensor_id` + обратная сортировка по `timestamp` обслуживаются индексом
+   * `{sensor_id, timestamp}` — один index-seek и одно чтение документа на
+   * сенсор, без сортировки большого набора.
    * @param owner - адрес владельца
    * @returns отсортированный список уникальных sensor_id
    */
@@ -414,22 +420,21 @@ export class MeasurementRepository {
 
     if (candidates.length === 0) return [];
 
-    // Этап 2: оставляем только тех, у кого owner свежего измерения совпадает.
-    const docs = await this.model
-      .aggregate<{ _id: string }>([
-        { $match: { sensor_id: { $in: candidates } } },
-        { $sort: { timestamp: -1 } },
-        {
-          $group: {
-            _id: '$sensor_id',
-            owner: { $first: { $ifNull: ['$owner', ''] } },
-          },
-        },
-        { $match: { owner } },
-      ])
-      .exec();
+    // Этап 2: owner из последнего измерения каждого кандидата (index-seek по
+    // {sensor_id, timestamp}), вместо чтения и сортировки всей их истории.
+    const latest = await Promise.all(
+      candidates.map((sensorId) =>
+        this.model
+          .findOne({ sensor_id: sensorId }, { _id: 0, owner: 1 })
+          .sort({ timestamp: -1 })
+          .lean()
+          .exec(),
+      ),
+    );
 
-    return docs.map((doc) => doc._id).sort();
+    return candidates
+      .filter((_sensorId, i) => (latest[i]?.owner ?? '') === owner)
+      .sort();
   }
 
   /**
@@ -610,12 +615,27 @@ export class MeasurementRepository {
   }
 
   /**
+   * Вставляет массив документов, используя upsert для предотвращения дублей.
+   * Если запись с таким sensor_id и timestamp уже существует, она будет обновлена.
+   * @param docs - массив документов для вставки
+   */
+  async upsertMany(docs: Measurement[]): Promise<void> {
+    const operations = docs.map((doc) => ({
+      updateOne: {
+        filter: { sensor_id: doc.sensor_id, timestamp: doc.timestamp },
+        update: { $set: doc },
+        upsert: true,
+      },
+    }));
+
+    await this.model.bulkWrite(operations, { ordered: false });
+  }
+
+  /**
    * Вставляет массив документов, игнорируя ошибки дублирования (code 11000).
    * @param docs - массив документов для вставки
    */
-  async insertManyIgnoreDuplicates(
-    docs: Parameters<Model<MeasurementDocument>['insertMany']>[0],
-  ): Promise<void> {
+  async insertManyIgnoreDuplicates(docs: Measurement[]): Promise<void> {
     await this.model
       .insertMany(docs, { ordered: false })
       .catch((err: unknown) => {
