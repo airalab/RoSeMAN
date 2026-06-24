@@ -133,11 +133,10 @@ export class BlockIndexerService implements OnModuleInit {
       async (header: Header) => {
         const blockNum = header.number.toNumber();
         try {
-          await this.processBlock(blockNum);
-          await this.indexStateRepo.upsertValue(this.stateKey, blockNum);
+          await this.processNewFinalizedBlock(blockNum);
         } catch (err) {
           this.logger.error(
-            `Error processing block ${blockNum}`,
+            `Error processing finalized head ${blockNum}`,
             err instanceof Error ? err.stack : err,
           );
         }
@@ -280,6 +279,32 @@ export class BlockIndexerService implements OnModuleInit {
         }
       }
     }
+  }
+
+  /**
+   * Обрабатывает новый финализированный заголовок и все блоки между
+   * последним сохранённым и полученным, чтобы не пропускать блоки
+   * при пропущенных уведомлениях подписки.
+   * @param api - подключённый экземпляр ApiPromise
+   * @param blockNum - номер блока из уведомления подписки
+   */
+  private async processNewFinalizedBlock(blockNum: number): Promise<void> {
+    const savedBlock = await this.indexStateRepo.getValue(this.stateKey);
+    const lastProcessed = savedBlock ?? blockNum - 1;
+
+    if (blockNum > lastProcessed + 1) {
+      this.logger.warn(
+        `Detected skipped finalized blocks between ${lastProcessed + 1} and ${blockNum - 1}, catching up`,
+      );
+
+      for (let num = lastProcessed + 1; num < blockNum; num++) {
+        await this.processBlock(num);
+        await this.indexStateRepo.upsertValue(this.stateKey, num);
+      }
+    }
+
+    await this.processBlock(blockNum);
+    await this.indexStateRepo.upsertValue(this.stateKey, blockNum);
   }
 
   /**
