@@ -24,6 +24,31 @@ export class BlockIndexerService implements OnModuleInit {
   private readonly stateKey: string;
   private reconnecting = false;
   private unsubscribeHeads?: () => void;
+  /**
+   * Отписка от событий текущего ApiPromise. Хранится, чтобы при
+   * переподключении не срабатывали обработчики уже отключённого соединения.
+   */
+  private unsubscribeApiEvents?: () => void;
+  /**
+   * Актуальный экземпляр ApiPromise, используемый в текущем цикле.
+   * При реконнекте RobonomicsService создаёт новый API, а старый,
+   * отключаемый экземпляр может продолжать эмитить `disconnected`.
+   * Проверка по ссылке защищает от запуска лишнего переподключения.
+   */
+  private currentApi?: ApiPromise;
+  /**
+   * Очередь номеров блоков, поступивших из подписки на финализированные
+   * заголовки. Обработка ведётся строго последовательно в одном рабочем
+   * цикле, что исключает параллельную/двойную обработку одного блока.
+   */
+  private readonly realtimeQueue: number[] = [];
+  private realtimeProcessing = false;
+  /**
+   * Промис текущего рабочего цикла очереди. Даёт возможность дождаться
+   * завершения обработки в `cleanup()` перед переподключением, чтобы
+   * старый цикл не пересекался с новым catch-up.
+   */
+  private realtimeProcessingPromise: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly robonomics: RobonomicsService,
@@ -44,29 +69,15 @@ export class BlockIndexerService implements OnModuleInit {
 
   /**
    * Обёртка над start() с автоматическим переподключением при ошибках.
-   * При падении ждёт RECONNECT_DELAY, переподключается к чейну и перезапускает индексатор.
+   * При падении запускает единый отложенный реконнект.
    */
   private run(): void {
-    this.start().catch(async (err) => {
+    this.start().catch((err) => {
       this.logger.error(
         'Indexer error',
         err instanceof Error ? err.stack : err,
       );
-      this.logger.warn(`Reconnecting in ${RECONNECT_DELAY / 1000}s...`);
-
-      this.cleanup();
-      await this.sleep(RECONNECT_DELAY);
-
-      try {
-        await this.robonomics.reconnect();
-      } catch (reconnectErr) {
-        this.logger.error(
-          'Reconnect failed',
-          reconnectErr instanceof Error ? reconnectErr.stack : reconnectErr,
-        );
-      }
-
-      this.run();
+      this.scheduleReconnect();
     });
   }
 
@@ -76,6 +87,7 @@ export class BlockIndexerService implements OnModuleInit {
    */
   private async start(): Promise<void> {
     const api = await this.robonomics.getApi();
+    this.currentApi = api;
 
     const startBlock =
       this.config.get<number | typeof START_BLOCK_LATEST>(
@@ -130,42 +142,63 @@ export class BlockIndexerService implements OnModuleInit {
 
     // Realtime subscription
     this.unsubscribeHeads = await api.rpc.chain.subscribeFinalizedHeads(
-      async (header: Header) => {
+      (header: Header) => {
         const blockNum = header.number.toNumber();
-        try {
-          await this.processNewFinalizedBlock(blockNum);
-        } catch (err) {
-          this.logger.error(
-            `Error processing finalized head ${blockNum}`,
-            err instanceof Error ? err.stack : err,
-          );
-        }
+        this.realtimeQueue.push(blockNum);
+        void this.processRealtimeQueue();
       },
     );
 
-    // При обрыве соединения запускаем переподключение
-    api.on('error', (err: unknown) => {
+    // При обрыве соединения запускаем переподключение.
+    // Обработчики привязываются к конкретному экземпляру ApiPromise,
+    // поэтому после замены API старые события игнорируются.
+    const onApiError = (err: unknown) => {
+      if (this.currentApi !== api) return;
       this.logger.error(
         'Chain API error',
         err instanceof Error ? err.stack : err,
       );
       this.scheduleReconnect();
-    });
+    };
 
-    api.on('disconnected', () => {
+    const onApiDisconnected = () => {
+      if (this.currentApi !== api) return;
       this.logger.warn('Chain WebSocket disconnected');
       this.scheduleReconnect();
-    });
+    };
+
+    api.on('error', onApiError);
+    api.on('disconnected', onApiDisconnected);
+
+    this.unsubscribeApiEvents = () => {
+      api.off('error', onApiError);
+      api.off('disconnected', onApiDisconnected);
+    };
   }
 
   /**
-   * Отписывается от подписки на финализированные блоки.
+   * Отписывается от подписки на финализированные блоки и дожидается
+   * завершения текущего рабочего цикла очереди, чтобы старая обработка
+   * не пересекалась с новым catch-up при переподключении.
    */
-  private cleanup(): void {
+  private async cleanup(): Promise<void> {
     if (this.unsubscribeHeads) {
       this.unsubscribeHeads();
       this.unsubscribeHeads = undefined;
     }
+
+    if (this.unsubscribeApiEvents) {
+      this.unsubscribeApiEvents();
+      this.unsubscribeApiEvents = undefined;
+    }
+
+    this.currentApi = undefined;
+
+    // Очищаем очередь, чтобы блоки из старой подписки не обрабатывались
+    // новым циклом после переподключения — catch-up в `start()` их покроет.
+    this.realtimeQueue.length = 0;
+
+    await this.realtimeProcessingPromise.catch(() => undefined);
   }
 
   /**
@@ -179,9 +212,8 @@ export class BlockIndexerService implements OnModuleInit {
 
     this.logger.warn(`Reconnecting in ${RECONNECT_DELAY / 1000}s...`);
 
-    this.cleanup();
-
-    this.sleep(RECONNECT_DELAY)
+    void this.cleanup()
+      .then(() => this.sleep(RECONNECT_DELAY))
       .then(() => this.robonomics.reconnect())
       .catch((err) => {
         this.logger.error(
@@ -282,15 +314,55 @@ export class BlockIndexerService implements OnModuleInit {
   }
 
   /**
+   * Рабочий цикл очереди блоков из подписки.
+   * Берёт блоки из `realtimeQueue` по одному и обрабатывает последовательно.
+   * Возвращает промис, который резолвится, когда очередь опустошена.
+   * `realtimeProcessing` не даёт запустить несколько циклов параллельно;
+   * сохранённый `realtimeProcessingPromise` позволяет дождаться завершения
+   * цикла в `cleanup()` перед переподключением.
+   */
+  private processRealtimeQueue(): Promise<void> {
+    if (this.realtimeProcessing) return this.realtimeProcessingPromise;
+    this.realtimeProcessing = true;
+
+    this.realtimeProcessingPromise = (async () => {
+      try {
+        while (this.realtimeQueue.length > 0) {
+          const blockNum = this.realtimeQueue.shift()!;
+          try {
+            await this.processNewFinalizedBlock(blockNum);
+          } catch (err) {
+            this.logger.error(
+              `Error processing finalized head ${blockNum}`,
+              err instanceof Error ? err.stack : err,
+            );
+          }
+        }
+      } finally {
+        this.realtimeProcessing = false;
+      }
+    })();
+
+    return this.realtimeProcessingPromise;
+  }
+
+  /**
    * Обрабатывает новый финализированный заголовок и все блоки между
    * последним сохранённым и полученным, чтобы не пропускать блоки
    * при пропущенных уведомлениях подписки.
-   * @param api - подключённый экземпляр ApiPromise
    * @param blockNum - номер блока из уведомления подписки
    */
   private async processNewFinalizedBlock(blockNum: number): Promise<void> {
     const savedBlock = await this.indexStateRepo.getValue(this.stateKey);
     const lastProcessed = savedBlock ?? blockNum - 1;
+
+    // Блок уже был обработан ранее — пропускаем, чтобы избежать дублей.
+    if (blockNum <= lastProcessed) {
+      this.logger.debug(
+        `Block ${blockNum} already processed (lastProcessed=${lastProcessed}), skipping`,
+      );
+      return;
+    }
 
     if (blockNum > lastProcessed + 1) {
       this.logger.warn(

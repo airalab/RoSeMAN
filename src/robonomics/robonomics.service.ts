@@ -10,7 +10,8 @@ import { ApiPromise, WsProvider } from '@polkadot/api';
 @Injectable()
 export class RobonomicsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RobonomicsService.name);
-  private apiPromise!: Promise<ApiPromise>;
+  private api?: ApiPromise;
+  private connectPromise?: Promise<ApiPromise>;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -19,7 +20,7 @@ export class RobonomicsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    const api = await this.apiPromise;
+    const api = this.api;
     if (api) {
       this.logger.log('Disconnecting from Robonomics');
       await api.disconnect();
@@ -28,19 +29,42 @@ export class RobonomicsService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Отключает текущее соединение и создаёт новое.
+   * Старый экземпляр ApiPromise заменяется до отключения, чтобы подписчики,
+   * вызвавшие getApi(), не получили уже отключаемое соединение.
    */
   async reconnect(): Promise<void> {
-    try {
-      const api = await this.apiPromise;
-      await api.disconnect();
-    } catch {
-      // ignore errors on stale connection
+    this.logger.log('Reconnecting to Robonomics...');
+
+    const staleApi = this.api;
+    this.api = undefined;
+    this.connectPromise = undefined;
+
+    if (staleApi) {
+      try {
+        await staleApi.disconnect();
+      } catch {
+        // ignore errors on stale connection
+      }
     }
+
     this.connect();
+    await this.getApi();
   }
 
+  /**
+   * Возвращает актуальный подключённый ApiPromise.
+   * Если текущий API не подключён, ожидает инициализации нового соединения.
+   */
   async getApi(): Promise<ApiPromise> {
-    return this.apiPromise;
+    if (this.api?.isConnected) {
+      return this.api;
+    }
+
+    if (!this.connectPromise) {
+      this.connect();
+    }
+
+    return this.connectPromise!;
   }
 
   private connect(): void {
@@ -48,7 +72,8 @@ export class RobonomicsService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Connecting to Robonomics at ${wsEndpoint}`);
 
     const provider = new WsProvider(wsEndpoint);
-    this.apiPromise = ApiPromise.create({ provider }).then(async (api) => {
+    this.connectPromise = ApiPromise.create({ provider }).then(async (api) => {
+      this.api = api;
       this.logger.log(
         `Connected to chain ${(await api.rpc.system.chain()).toString()}`,
       );
