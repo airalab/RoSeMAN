@@ -27,6 +27,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@buf/airalab_sensors-social-proto.bufbuild_es": "2.14.0-20260815104319-7f23b240b94d.1",
+    "@bufbuild/protobuf": "2.14.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
@@ -79,13 +81,16 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.ts$": [
+      "^.+\\.[tj]s$": [
         "ts-jest",
         {
           "tsconfig": "<rootDir>/../tsconfig.spec.json"
         }
       ]
     },
+    "transformIgnorePatterns": [
+      "node_modules/(?!@buf/airalab_sensors-social-proto\\.bufbuild_es/)"
+    ],
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },

@@ -4,6 +4,7 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "resolvePackageJsonExports": false,
+    "allowJs": true,
     "isolatedModules": false,
     "declaration": false,
     "incremental": false
