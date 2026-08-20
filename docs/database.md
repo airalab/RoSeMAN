@@ -63,6 +63,7 @@ db.measurements.getIndexes()
 
 | Mongoose class    | Collection       | Repository               | Where it is used                                  |
 |-------------------|------------------|--------------------------|---------------------------------------------------|
+| `CpsAnchor`       | `cps_anchors`    | `CpsAnchorRepository`    | CPS ingestion queue (pipeline wiring pending)     |
 | `Datalog`         | `datalogs`       | `DatalogRepository`      | `DatalogNewRecordHandler`, `MeasurementProcessor`, `MetricsService` |
 | `Measurement`     | `measurements`   | `MeasurementRepository`  | `MeasurementProcessor`, `SensorService`           |
 | `Sensor`          | `cities`         | `SensorRepository`       | `MeasurementProcessor`, `GeocodingService`, `SensorService` |
@@ -88,6 +89,13 @@ Without claiming a complete list (each file is worth reading in full), here are 
 - `findPending(limit)` — selects `status === IPFS_PENDING` with a limit for batch processing.
 - `updateStatus(id, status, errorMessage?)` — finalization of a record by `MeasurementProcessor`.
 - `getCountIpfsPending()` — for the `roseman_ipfs_queue` metric (see [metrics.md](./metrics.md)).
+
+### CpsAnchorRepository
+
+- `upsertAnchor({ nodeId, block, cid, owner })` — idempotent insert keyed by `cps:<nodeId>:<cid>`; numeric u64 NodeId is stored as a canonical decimal string to avoid JavaScript precision loss.
+- `claimNext(now, leaseDurationMs)` — atomically claims pending/retry work and reclaims an expired processing lease after restart.
+- `updateStatus(sourceKey, status, details)` — records processing state, envelope counts and retry/error details.
+- `countPending()` — counts first-attempt and retry-pending anchors.
 
 ### MeasurementRepository
 - `upsertMany(docs)` — uses `bulkWrite` with `upsert` to prevent duplicates; if a record with the same `sensor_id` and `timestamp` exists, it is updated.

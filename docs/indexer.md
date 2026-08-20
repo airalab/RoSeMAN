@@ -316,6 +316,26 @@ STORY   = 5   // story (inline JSON, RwsStoryHandler)
 
 Indexes: unique `{block, sender, resultHash}`, plus single-field indexes on `block`, `sender`, `status`.
 
+### Collection `cps_anchors` (CpsAnchor)
+
+This additive collection is the idempotent queue for the upcoming CPS pipeline.
+It does not replace or modify the legacy `datalogs` path.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source_key` | String | Unique `cps:<node_id>:<cid>` key |
+| `node_id` | String | Numeric CPS u64 NodeId as canonical decimal text |
+| `block` | Number | Finalized block where the anchor was observed |
+| `cid` | String | IPFS CID of the protocol batch |
+| `owner` | String | CPS node owner, when available |
+| `status` | Number | Pending/processing/result/retry state |
+| `attempt_count` | Number | Number of atomic processing claims |
+| `valid_envelope_count` / `invalid_envelope_count` | Number | Processing counters |
+| `available_at` / `lease_expires_at` | Date | Retry and crash-recovery scheduling |
+| `error_code` / `error_message` | String | Sanitized processing diagnostics |
+
+Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and node history `{node_id, block: -1}`.
+
 ### Collection `measurements` (Measurement)
 
 | Field         | Type     | Description                                    |
