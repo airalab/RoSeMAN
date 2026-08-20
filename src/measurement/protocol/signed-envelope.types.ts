@@ -44,6 +44,9 @@ export interface SignedEnvelopeBatchDecodeResult {
 export enum ProtocolBatchDecodeErrorCode {
   EmptyInput = 'EMPTY_INPUT',
   BatchTooLarge = 'BATCH_TOO_LARGE',
+  CompressedBatchTooLarge = 'COMPRESSED_BATCH_TOO_LARGE',
+  DecompressionFailed = 'DECOMPRESSION_FAILED',
+  UnsupportedWireFormat = 'UNSUPPORTED_WIRE_FORMAT',
   MalformedProtobuf = 'MALFORMED_PROTOBUF',
   EmptyBatch = 'EMPTY_BATCH',
   TooManyEnvelopes = 'TOO_MANY_ENVELOPES',
