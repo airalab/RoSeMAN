@@ -12,17 +12,44 @@ export class IpfsFetcherService {
     this.timeout = this.config.get<number>('ipfs.fetchTimeout')!;
   }
 
+  /**
+   * Загружает IPFS-объект и декодирует его как JSON.
+   * Сохраняет совместимость с существующим обработчиком datalog.
+   * @param cid - CID или путь внутри IPFS
+   * @returns декодированное JSON-значение
+   */
   async fetch(cid: string): Promise<unknown> {
+    const response = await this.fetchResponse(cid);
+    return (await response.json()) as unknown;
+  }
+
+  /**
+   * Загружает IPFS-объект без преобразования его бинарного содержимого.
+   * Используется для protobuf batch, подпись и CID которых зависят от точных байтов.
+   * @param cid - CID или путь внутри IPFS
+   * @returns неизменённые байты ответа IPFS gateway
+   */
+  async fetchBytes(cid: string): Promise<Uint8Array> {
+    const response = await this.fetchResponse(cid);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  /**
+   * Запрашивает IPFS-объект, последовательно перебирая настроенные gateways.
+   * Таймер каждого запроса очищается независимо от результата.
+   * @param cid - CID или путь внутри IPFS
+   * @returns первый успешный HTTP-ответ
+   */
+  private async fetchResponse(cid: string): Promise<Response> {
     for (const gateway of this.gateways) {
       const url = `${gateway}${cid}`;
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), this.timeout);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeout);
 
+      try {
         const response = await globalThis.fetch(url, {
           signal: controller.signal,
         });
-        clearTimeout(timer);
 
         if (!response.ok) {
           this.logger.warn(
@@ -31,11 +58,13 @@ export class IpfsFetcherService {
           continue;
         }
 
-        return (await response.json()) as unknown;
+        return response;
       } catch (err) {
         this.logger.warn(
           `Gateway ${gateway} failed for ${cid}: ${err instanceof Error ? err.message : String(err)}`,
         );
+      } finally {
+        clearTimeout(timer);
       }
     }
 
