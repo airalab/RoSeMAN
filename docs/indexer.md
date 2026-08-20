@@ -190,7 +190,7 @@ After successful parsing of measurements, unique sensors by `sensor_id` are writ
 
 ### IpfsFetcherService
 
-`src/measurement/ipfs-fetcher.service.ts`. Iterates through gateways from `IPFS_GATEWAYS` in order. Each request is `fetch` with an `AbortController` and an `IPFS_FETCH_TIMEOUT` timeout. If all gateways fail, it throws `Error('All IPFS gateways failed for CID ...')`, and `processOne()` marks the datalog as `ERROR` with an `errorMessage`.
+`src/measurement/ipfs-fetcher.service.ts`. Validates the CID and optional safe path before the request, then iterates through gateways from `IPFS_GATEWAYS` in order. Each request is `fetch` with an `AbortController`; `IPFS_FETCH_TIMEOUT` covers both the request and reading its body. Responses are read as a bounded byte stream (up to `IPFS_MAX_RESPONSE_BYTES`), after which the legacy path decodes JSON while the protocol path can retain exact bytes. If all gateways fail, it throws `Error('All IPFS gateways failed for CID ...')`, and `processOne()` marks the datalog as `ERROR` with an `errorMessage`.
 
 ## GeocodingService
 
@@ -419,6 +419,7 @@ A flag is treated as `false` only when explicitly set to `'false'` (see `app.mod
 |----------------------|---------------------------------------------------------------|--------------------------------------|
 | `IPFS_GATEWAYS`      | `https://ipfs.io/ipfs/, https://gateway.pinata.cloud/ipfs/, https://cloudflare-ipfs.com/ipfs/` | Comma-separated gateway list |
 | `IPFS_FETCH_TIMEOUT` | `30000`                                                       | HTTP request timeout (ms)            |
+| `IPFS_MAX_RESPONSE_BYTES` | `10485760`                                               | Maximum gateway response size (bytes) |
 | `IPFS_POLL_INTERVAL` | `10000`                                                       | IPFS_PENDING polling interval (ms)   |
 | `IPFS_DIR_SENDER`    | *(empty)*                                                     | Sender whose CIDs are directories; data is fetched as `${cid}/data.json` |
 
