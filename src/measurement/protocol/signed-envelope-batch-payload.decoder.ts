@@ -1,4 +1,5 @@
 import { inflate } from 'node:zlib';
+import { createDecompressor } from 'lzma-native';
 import { SignedEnvelopeBatchDecoder } from './signed-envelope-batch.decoder.js';
 import {
   ProtocolBatchDecodeError,
@@ -13,6 +14,7 @@ export const DEFAULT_MAX_COMPRESSED_PROTOCOL_BATCH_BYTES = 10 * 1024 * 1024;
  */
 export enum ProtocolBatchWireFormat {
   Raw = 'raw',
+  Xz = 'xz',
   Zlib = 'zlib',
 }
 
@@ -22,6 +24,7 @@ export enum ProtocolBatchWireFormat {
 export interface SignedEnvelopeBatchPayloadDecoderOptions {
   readonly maxCompressedBytes?: number;
   readonly maxDecompressedBytes?: number;
+  readonly maxXzMemoryBytes?: number;
   readonly maxEnvelopeCount?: number;
 }
 
@@ -31,6 +34,7 @@ export interface SignedEnvelopeBatchPayloadDecoderOptions {
 export class SignedEnvelopeBatchPayloadDecoder {
   private readonly maxCompressedBytes: number;
   private readonly maxDecompressedBytes: number;
+  private readonly maxXzMemoryBytes: number;
   private readonly batchDecoder: SignedEnvelopeBatchDecoder;
 
   /**
@@ -43,8 +47,16 @@ export class SignedEnvelopeBatchPayloadDecoder {
     this.maxDecompressedBytes =
       options.maxDecompressedBytes ??
       DEFAULT_MAX_COMPRESSED_PROTOCOL_BATCH_BYTES;
+    this.maxXzMemoryBytes = options.maxXzMemoryBytes ?? 64 * 1024 * 1024;
 
-    if (this.maxCompressedBytes <= 0 || this.maxDecompressedBytes <= 0) {
+    if (
+      !Number.isSafeInteger(this.maxCompressedBytes) ||
+      !Number.isSafeInteger(this.maxDecompressedBytes) ||
+      !Number.isSafeInteger(this.maxXzMemoryBytes) ||
+      this.maxCompressedBytes <= 0 ||
+      this.maxDecompressedBytes <= 0 ||
+      this.maxXzMemoryBytes <= 0
+    ) {
       throw new RangeError('Protocol payload limits must be positive');
     }
 
@@ -69,7 +81,10 @@ export class SignedEnvelopeBatchPayloadDecoder {
       return this.batchDecoder.decode(bytes);
     }
 
-    if (format !== ProtocolBatchWireFormat.Zlib) {
+    if (
+      format !== ProtocolBatchWireFormat.Xz &&
+      format !== ProtocolBatchWireFormat.Zlib
+    ) {
       throw new ProtocolBatchDecodeError(
         ProtocolBatchDecodeErrorCode.UnsupportedWireFormat,
         'Signed envelope batch wire format is not supported',
@@ -77,7 +92,10 @@ export class SignedEnvelopeBatchPayloadDecoder {
     }
 
     this.assertCompressedSize(bytes);
-    const decompressedBytes = await this.inflateZlib(bytes);
+    const decompressedBytes =
+      format === ProtocolBatchWireFormat.Xz
+        ? await this.decompressXz(bytes)
+        : await this.inflateZlib(bytes);
     return this.batchDecoder.decode(decompressedBytes);
   }
 
@@ -127,6 +145,74 @@ export class SignedEnvelopeBatchPayloadDecoder {
             ),
           );
         },
+      );
+    });
+  }
+
+  /**
+   * Потоково распаковывает XZ/LZMA2 с лимитами памяти декодера и результата.
+   * @param bytes - XZ-байты, созданные connectivity ipfs-publisher
+   * @returns распакованные protobuf-байты
+   */
+  private decompressXz(bytes: Uint8Array): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+      const decompressor = createDecompressor({
+        memlimit: this.maxXzMemoryBytes,
+      });
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      let settled = false;
+
+      /**
+       * Завершает распаковку типизированной ошибкой только один раз.
+       * @param error - ошибка для возврата вызывающей стороне
+       */
+      const fail = (error: ProtocolBatchDecodeError): void => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+        decompressor.destroy();
+      };
+
+      decompressor.on('data', (chunk: Buffer) => {
+        totalBytes += chunk.byteLength;
+        if (totalBytes > this.maxDecompressedBytes) {
+          fail(
+            new ProtocolBatchDecodeError(
+              ProtocolBatchDecodeErrorCode.BatchTooLarge,
+              `Decompressed signed envelope batch exceeds ${this.maxDecompressedBytes} bytes`,
+            ),
+          );
+          return;
+        }
+        chunks.push(new Uint8Array(chunk));
+      });
+
+      decompressor.once('error', (error: Error) => {
+        fail(
+          new ProtocolBatchDecodeError(
+            ProtocolBatchDecodeErrorCode.DecompressionFailed,
+            'Signed envelope batch cannot be decompressed as XZ',
+            { cause: error },
+          ),
+        );
+      });
+
+      decompressor.once('end', () => {
+        if (settled) return;
+        settled = true;
+
+        const result = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+          result.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        resolve(result);
+      });
+
+      decompressor.end(
+        Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
       );
     });
   }

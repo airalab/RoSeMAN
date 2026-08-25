@@ -36,11 +36,14 @@
     "@nestjs/platform-express": "^11.0.1",
     "@polkadot/api": "^16.5.4",
     "@polkadot/types": "^16.5.4",
+    "@polkadot/util-crypto": "14.0.3",
     "@willsoto/nestjs-prometheus": "^6.1.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "iconv-lite": "^0.7.2",
+    "lzma-native": "8.0.6",
     "mongoose": "^7.8.9",
+    "multiformats": "14.0.5",
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.2",
     "robonomics-api-augment": "^0.3.0",
@@ -55,6 +58,7 @@
     "@types/express": "^5.0.0",
     "@types/iconv-lite": "^0.0.1",
     "@types/jest": "^30.0.0",
+    "@types/lzma-native": "4.0.4",
     "@types/node": "^22.10.7",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
@@ -89,9 +93,10 @@
       ]
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!@buf/airalab_sensors-social-proto\\.bufbuild_es/)"
+      "node_modules/(?!(@buf/airalab_sensors-social-proto\\.bufbuild_es|multiformats)/)"
     ],
     "moduleNameMapper": {
+      "^multiformats/(.*)$": "<rootDir>/../node_modules/multiformats/dist/src/$1.js",
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "collectCoverageFrom": [

@@ -131,12 +131,14 @@ describe('SignedEnvelopeBatchDecoder', () => {
 });
 
 describe('PendingEnvelopeSignatureVerifier', () => {
-  it('всегда отклоняет конверт до утверждения контракта подписи', () => {
+  it('всегда отклоняет конверт при принудительном fail-closed режиме', async () => {
     const [envelope] = new SignedEnvelopeBatchDecoder().decode(
       createBatchBytes([createEnvelope()]),
     ).envelopes;
 
-    const result = new PendingEnvelopeSignatureVerifier().verify(envelope);
+    const result = await new PendingEnvelopeSignatureVerifier().verify(
+      envelope,
+    );
 
     expect(result).toEqual({
       verified: false,

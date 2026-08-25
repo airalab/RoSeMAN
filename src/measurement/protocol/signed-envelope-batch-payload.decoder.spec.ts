@@ -3,6 +3,7 @@ import {
   SignedEnvelopeBatchSchema,
   SignedEnvelopeSchema,
 } from '@buf/airalab_sensors-social-proto.bufbuild_es/crypto/v1/envelope_pb.js';
+import { createCompressor } from 'lzma-native';
 import { deflateSync } from 'node:zlib';
 import {
   ProtocolBatchWireFormat,
@@ -32,6 +33,37 @@ function createBatchBytes(): Uint8Array {
   );
 }
 
+/**
+ * Упаковывает тестовый batch в тот же XZ/LZMA2-контейнер, что и connectivity.
+ * @param bytes - исходные protobuf-байты
+ * @returns XZ-байты после завершения потокового компрессора
+ */
+function compressXz(bytes: Uint8Array): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const compressor = createCompressor();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+
+    compressor.on('data', (chunk: Buffer) => {
+      chunks.push(new Uint8Array(chunk));
+      totalBytes += chunk.byteLength;
+    });
+    compressor.once('error', reject);
+    compressor.once('end', () => {
+      const result = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      resolve(result);
+    });
+    compressor.end(
+      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    );
+  });
+}
+
 describe('SignedEnvelopeBatchPayloadDecoder', () => {
   it('декодирует raw protobuf без распаковки', async () => {
     const result = await new SignedEnvelopeBatchPayloadDecoder().decode(
@@ -53,6 +85,32 @@ describe('SignedEnvelopeBatchPayloadDecoder', () => {
 
     expect(result.envelopes).toHaveLength(1);
     expect(result.errors).toEqual([]);
+  });
+
+  it('декодирует XZ/LZMA2 payload connectivity', async () => {
+    const compressed = await compressXz(createBatchBytes());
+
+    const result = await new SignedEnvelopeBatchPayloadDecoder().decode(
+      compressed,
+      ProtocolBatchWireFormat.Xz,
+    );
+
+    expect(result.envelopes).toHaveLength(1);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('останавливает XZ-распаковку при превышении выходного лимита', async () => {
+    const compressed = await compressXz(createBatchBytes());
+
+    await expect(
+      new SignedEnvelopeBatchPayloadDecoder({
+        maxDecompressedBytes: 32,
+      }).decode(compressed, ProtocolBatchWireFormat.Xz),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: ProtocolBatchDecodeErrorCode.BatchTooLarge,
+      }) as ProtocolBatchDecodeError,
+    );
   });
 
   it('отклоняет повреждённый zlib payload типизированной ошибкой', async () => {
