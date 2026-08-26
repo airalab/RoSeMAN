@@ -26,17 +26,23 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
   readonly method = 'PayloadSet';
 
   private readonly logger = new Logger(CpsPayloadSetHandler.name);
+  private readonly configuredNodeIds: ReadonlySet<string>;
 
   /**
    * Создаёт обработчик CPS-событий.
    * @param robonomics - подключение к Robonomics API
    * @param cpsAnchorRepo - идемпотентная очередь найденных anchors
+   * @param config - конфигурация CPS и allowlist NodeId
    */
   constructor(
     private readonly robonomics: RobonomicsService,
     private readonly cpsAnchorRepo: CpsAnchorRepository,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    this.configuredNodeIds = new Set(
+      this.config.get<string[]>('cps.nodeIds', []),
+    );
+  }
 
   /**
    * Читает CPS node в состоянии блока события и сохраняет бинарный CID.
@@ -61,27 +67,48 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
     if (!payloadSet?.is(event)) return;
 
     const nodeId = event.data[0] as CpsNodeIdCodec;
+    const numericNodeId = nodeId.toBigInt();
+    if (!this.isNodeAllowed(numericNodeId)) {
+      this.logger.debug(
+        `Block ${blockNum}: CPS node ${numericNodeId} is not configured, skipping`,
+      );
+      return;
+    }
+
     const owner = event.data[1].toString();
     const blockHash = await api.rpc.chain.getBlockHash(blockNum);
     const node = await readCpsNodeAt(api, blockHash, nodeId);
 
     if (!node?.payload) {
       this.logger.debug(
-        `Block ${blockNum}: CPS node ${nodeId.toBigInt()} has no payload`,
+        `Block ${blockNum}: CPS node ${numericNodeId} has no payload`,
       );
       return;
     }
 
     const cid = decodeCpsPayloadCid(node.payload);
     await this.cpsAnchorRepo.upsertAnchor({
-      nodeId: nodeId.toBigInt(),
+      nodeId: numericNodeId,
       block: blockNum,
       cid,
       owner,
     });
 
     this.logger.debug(
-      `Block ${blockNum}: queued CPS node ${nodeId.toBigInt()} payload ${cid}`,
+      `Block ${blockNum}: queued CPS node ${numericNodeId} payload ${cid}`,
+    );
+  }
+
+  /**
+   * Проверяет NodeId по realtime allowlist.
+   * Пустой `CPS_NODE_IDS` означает отсутствие ограничения.
+   * @param nodeId - числовой идентификатор CPS node
+   * @returns `true`, если событие разрешено индексировать
+   */
+  private isNodeAllowed(nodeId: bigint): boolean {
+    return (
+      this.configuredNodeIds.size === 0 ||
+      this.configuredNodeIds.has(nodeId.toString(10))
     );
   }
 }

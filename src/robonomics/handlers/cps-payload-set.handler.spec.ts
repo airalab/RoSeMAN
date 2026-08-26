@@ -21,6 +21,29 @@ describe('CpsPayloadSetHandler', () => {
   let isPayloadSet: jest.Mock;
   let handler: CpsPayloadSetHandler;
 
+  /**
+   * Создаёт обработчик с заданным realtime allowlist NodeId.
+   * @param configuredNodeIds - разрешённые числовые NodeId
+   * @returns обработчик CPS-событий
+   */
+  function createHandler(
+    configuredNodeIds: string[] = [],
+  ): CpsPayloadSetHandler {
+    const config = {
+      get: jest.fn((key: string, fallback: unknown) => {
+        if (key === 'cps.enabled') return true;
+        if (key === 'cps.nodeIds') return configuredNodeIds;
+        return fallback;
+      }),
+    } as unknown as ConfigService;
+
+    return new CpsPayloadSetHandler(
+      { getApi } as unknown as RobonomicsService,
+      { upsertAnchor } as unknown as CpsAnchorRepository,
+      config,
+    );
+  }
+
   beforeEach(() => {
     at = jest.fn().mockResolvedValue({
       isNone: false,
@@ -40,14 +63,10 @@ describe('CpsPayloadSetHandler', () => {
     } as unknown as ApiPromise;
     getApi = jest.fn().mockResolvedValue(api);
     upsertAnchor = jest.fn().mockResolvedValue(undefined);
-    handler = new CpsPayloadSetHandler(
-      { getApi } as unknown as RobonomicsService,
-      { upsertAnchor } as unknown as CpsAnchorRepository,
-      { get: jest.fn().mockReturnValue(true) } as unknown as ConfigService,
-    );
+    handler = createHandler();
   });
 
-  it('читает историческое состояние и ставит binary CID в очередь', async () => {
+  it('при пустом CPS_NODE_IDS принимает любой NodeId', async () => {
     await handler.handle(event, 123, true);
 
     expect(getBlockHash).toHaveBeenCalledWith(123);
@@ -58,6 +77,26 @@ describe('CpsPayloadSetHandler', () => {
       cid: TEST_CID,
       owner: '5Owner',
     });
+  });
+
+  it('принимает NodeId из настроенного CPS_NODE_IDS', async () => {
+    handler = createHandler(['42']);
+
+    await handler.handle(event, 123, true);
+
+    expect(upsertAnchor).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 42n }),
+    );
+  });
+
+  it('пропускает NodeId вне настроенного CPS_NODE_IDS до чтения storage', async () => {
+    handler = createHandler(['7']);
+
+    await handler.handle(event, 123, true);
+
+    expect(getBlockHash).not.toHaveBeenCalled();
+    expect(at).not.toHaveBeenCalled();
+    expect(upsertAnchor).not.toHaveBeenCalled();
   });
 
   it('пропускает событие неуспешного экстринсика', async () => {
