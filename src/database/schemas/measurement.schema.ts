@@ -5,8 +5,14 @@ export type MeasurementDocument = HydratedDocument<Measurement>;
 
 @Schema({ collection: 'measurements', timestamps: true })
 export class Measurement {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Datalog', index: true })
-  datalog_id!: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'Datalog', index: true })
+  datalog_id?: Types.ObjectId;
+
+  @Prop({ type: String })
+  source_type?: string;
+
+  @Prop({ type: String })
+  source_id?: string;
 
   @Prop({ required: true, type: String, index: true })
   sensor_id!: string;
@@ -36,6 +42,7 @@ export class Measurement {
 export const MeasurementSchema = SchemaFactory.createForClass(Measurement);
 
 MeasurementSchema.index({ sensor_id: 1, timestamp: 1 }, { unique: true });
+MeasurementSchema.index({ source_type: 1, source_id: 1 });
 
 // Индекс для выборки сенсоров по владельцу (GET /api/v2/sensor/owner/:owner).
 // Составной owner + sensor_id делает distinct по sensor_id covered-запросом.
