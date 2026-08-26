@@ -12,6 +12,7 @@ import { StatusModule } from './api/status/status.module.js';
 import { StoryModule } from './api/story/story.module.js';
 import {
   appConfig,
+  cpsConfig,
   geocodingConfig,
   ipfsConfig,
   robonomicsConfig,
@@ -42,7 +43,13 @@ function buildImports(): Array<
   > = [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, robonomicsConfig, ipfsConfig, geocodingConfig],
+      load: [
+        appConfig,
+        robonomicsConfig,
+        ipfsConfig,
+        geocodingConfig,
+        cpsConfig,
+      ],
     }),
     MongooseModule.forRootAsync({
       inject: [ConfigService],

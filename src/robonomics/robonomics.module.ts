@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BlockIndexerService } from './block-indexer.service.js';
 import { EVENT_HANDLERS, EXTRINSIC_HANDLERS } from './constants.js';
+import { CpsSnapshotService } from './cps-snapshot.service.js';
 import { filterHandlers } from './handler-filter.js';
 import { CpsPayloadSetHandler } from './handlers/cps-payload-set.handler.js';
 import { DatalogNewRecordHandler } from './handlers/datalog-new-record.handler.js';
@@ -14,6 +15,7 @@ import { RobonomicsService } from './robonomics.service.js';
 @Module({
   providers: [
     RobonomicsService,
+    CpsSnapshotService,
     CpsPayloadSetHandler,
     DatalogNewRecordHandler,
     RwsNewDevicesHandler,

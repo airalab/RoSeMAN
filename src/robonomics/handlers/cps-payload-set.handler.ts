@@ -1,38 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ApiPromise } from '@polkadot/api';
+import { ConfigService } from '@nestjs/config';
 import type { Codec } from '@polkadot/types/types';
 import type { Event } from '@polkadot/types/interfaces';
 import { CpsAnchorRepository } from '../../database/repositories/cps-anchor.repository.js';
 import { decodeCpsPayloadCid } from '../cps-payload.decoder.js';
+import { readCpsNodeAt } from '../cps-node.reader.js';
 import type { ChainEventHandler } from '../interfaces/chain-event-handler.interface.js';
 import { RobonomicsService } from '../robonomics.service.js';
 
 interface CpsNodeIdCodec extends Codec {
   toBigInt(): bigint;
-}
-
-interface CpsPayloadCodec extends Codec {
-  toU8a(isBare?: boolean): Uint8Array;
-}
-
-interface CpsPayloadOption extends Codec {
-  readonly isNone: boolean;
-  unwrap(): CpsPayloadCodec;
-}
-
-interface CpsNodeCodec extends Codec {
-  get(key: string): Codec | undefined;
-}
-
-interface CpsNodeOption extends Codec {
-  readonly isNone: boolean;
-  unwrap(): CpsNodeCodec;
-}
-
-interface CpsStorageQuery {
-  readonly nodes: {
-    at(blockHash: Codec, nodeId: CpsNodeIdCodec): Promise<CpsNodeOption>;
-  };
 }
 
 interface CpsEventMatcher {
@@ -58,6 +35,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
   constructor(
     private readonly robonomics: RobonomicsService,
     private readonly cpsAnchorRepo: CpsAnchorRepository,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -72,6 +50,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
     isSuccess: boolean,
   ): Promise<void> {
     if (!isSuccess) return;
+    if (!this.config.get<boolean>('cps.enabled', false)) return;
 
     const api = await this.robonomics.getApi();
     const payloadSet = (
@@ -83,16 +62,17 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
 
     const nodeId = event.data[0] as CpsNodeIdCodec;
     const owner = event.data[1].toString();
-    const payload = await this.readPayloadAt(api, blockNum, nodeId);
+    const blockHash = await api.rpc.chain.getBlockHash(blockNum);
+    const node = await readCpsNodeAt(api, blockHash, nodeId);
 
-    if (payload === null) {
+    if (!node?.payload) {
       this.logger.debug(
         `Block ${blockNum}: CPS node ${nodeId.toBigInt()} has no payload`,
       );
       return;
     }
 
-    const cid = decodeCpsPayloadCid(payload);
+    const cid = decodeCpsPayloadCid(node.payload);
     await this.cpsAnchorRepo.upsertAnchor({
       nodeId: nodeId.toBigInt(),
       block: blockNum,
@@ -103,30 +83,5 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
     this.logger.debug(
       `Block ${blockNum}: queued CPS node ${nodeId.toBigInt()} payload ${cid}`,
     );
-  }
-
-  /**
-   * Получает payload из исторического состояния именно на блоке события.
-   * @param api - подключённый Robonomics API
-   * @param blockNum - номер блока события
-   * @param nodeId - SCALE-кодек числового NodeId
-   * @returns чистые payload bytes либо null для отсутствующего payload
-   */
-  private async readPayloadAt(
-    api: ApiPromise,
-    blockNum: number,
-    nodeId: CpsNodeIdCodec,
-  ): Promise<Uint8Array | null> {
-    const blockHash = await api.rpc.chain.getBlockHash(blockNum);
-    const cpsQuery = (api.query as unknown as { cps: CpsStorageQuery }).cps;
-    const nodeOption = await cpsQuery.nodes.at(blockHash, nodeId);
-    if (nodeOption.isNone) return null;
-
-    const payloadOption = nodeOption
-      .unwrap()
-      .get('payload') as CpsPayloadOption;
-    if (!payloadOption || payloadOption.isNone) return null;
-
-    return payloadOption.unwrap().toU8a(true);
   }
 }

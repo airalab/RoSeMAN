@@ -1,5 +1,6 @@
 import type { ApiPromise } from '@polkadot/api';
 import type { Event } from '@polkadot/types/interfaces';
+import { ConfigService } from '@nestjs/config';
 import { CID } from 'multiformats/cid';
 import { CpsAnchorRepository } from '../../database/repositories/cps-anchor.repository.js';
 import { RobonomicsService } from '../robonomics.service.js';
@@ -42,6 +43,7 @@ describe('CpsPayloadSetHandler', () => {
     handler = new CpsPayloadSetHandler(
       { getApi } as unknown as RobonomicsService,
       { upsertAnchor } as unknown as CpsAnchorRepository,
+      { get: jest.fn().mockReturnValue(true) } as unknown as ConfigService,
     );
   });
 
