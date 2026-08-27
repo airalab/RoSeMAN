@@ -1,8 +1,10 @@
 # RoSeMAN Indexer
 
-Indexer for an air-quality sensor network's data from the `datalog` and `rws` pallets of the Robonomics parachain + IPFS payload processor + sensor geocoder.
+Indexer for legacy `datalog`/`rws` data and the CPS protocol of the Robonomics parachain, with JSON and binary IPFS processing, Ed25519 verification and sensor geocoding.
 
 ## Architecture
+
+### Legacy datalog/RWS path
 
 ```
                                ┌───────────────────────────────────────┐
@@ -51,7 +53,28 @@ Robonomics Chain ───events────▶  catch-up + realtime            
  └──────────────────────────────────┘
 ```
 
-Each of the four background services (`BlockIndexer`, `MeasurementProcessor`, `Geocoding`, `RobonomicsService`) is started by its own NestJS module and is independently turned on/off by environment flags. This makes it possible to spread roles horizontally: one process is a Polkadot indexer, another is a Kusama indexer, a third is the IPFS processor, a fourth is the geocoder, a fifth is the REST API.
+### CPS path
+
+```text
+configured CPS_NODE_IDS ──▶ CpsSnapshotService ─┐
+                                                │
+finalized cps.PayloadSet ─▶ CpsPayloadSetHandler ├─▶ cps_anchors
+                                                │        │ atomic claim + lease
+                                                │        ▼
+                                                └─▶ CpsAnchorProcessorService
+                                                         │
+                                          IPFS bytes ────┤
+                                                         ▼
+                                           raw/XZ/zlib bounded decode
+                                                         ▼
+                                           protobuf + Ed25519 verify
+                                                         ▼
+                                      public Urban/Insight + mandatory GPS
+                                                         ▼
+                                               measurements + cities
+```
+
+Background responsibilities are split between `RobonomicsModule`, `MeasurementModule` and `GeocodingModule`. `RobonomicsModule` owns the chain connection, block indexer, handlers and CPS snapshot. `MeasurementModule` owns the shared IPFS fetcher plus the legacy and CPS processors. Module flags select process roles, while `CPS_ENABLED=true` additionally activates the CPS snapshot, realtime CPS handler and CPS processor.
 
 ## BlockIndexerService
 
@@ -64,7 +87,7 @@ A generic block scanner (`src/robonomics/block-indexer.service.ts`). It is not t
 3. `start()`:
    - reads `last_indexed_block` from the `index_state` collection by the `ROBONOMICS_STATE_KEY` key (e.g. `polkadot_robonomics`, `kusama_robonomics`);
    - **catch-up** — while `from <= finalized`, processes blocks in `BATCH_SIZE = 10` batches, updating `index_state` after each block;
-   - **realtime** — subscribes to `subscribeFinalizedHeads`; on every new header it calls `processBlock(blockNum)`;
+   - **realtime** — subscribes to `subscribeFinalizedHeads`, queues block numbers and processes them strictly sequentially; duplicate notifications are skipped and gaps are caught up from the saved checkpoint;
    - hooks `api.on('error')` and `api.on('disconnected')` to `scheduleReconnect()` with double-fire protection (the `reconnecting` flag).
 
 ### Processing a block
@@ -91,6 +114,7 @@ Current names:
 
 | Handler name         | Type       | Section / Method                                         |
 |----------------------|------------|----------------------------------------------------------|
+| `cps-payload-set`    | event      | `cps.PayloadSet`                                         |
 | `datalog-new-record` | event      | `datalog.NewRecord`                                      |
 | `rws-new-devices`    | event      | `rws.NewDevices`                                         |
 | `rws-extrinsic`      | extrinsic  | `rws.call`                                               |
@@ -109,6 +133,16 @@ File: `src/robonomics/handlers/datalog-new-record.handler.ts`. Reacts to `datalo
   - **CID** (CIDv0/CIDv1) → status `IPFS_PENDING`;
   - otherwise (e.g. inline JSON or an arbitrary string) → status `NEW`.
 - Performs an upsert via `DatalogRepository.upsertRecord({ block, sender, resultHash, status, timechain })` with `$setOnInsert` keyed on the compound unique index `{block, sender, resultHash}` — duplicates are not created.
+
+### CpsPayloadSetHandler
+
+File: `src/robonomics/handlers/cps-payload-set.handler.ts`. Reacts to successful finalized `cps.PayloadSet(NodeId, AccountId)` events only when `CPS_ENABLED=true`.
+
+- Confirms the event through runtime metadata.
+- Treats NodeId as a numeric u64 value, not a public key.
+- If `CPS_NODE_IDS` is non-empty, accepts only listed NodeIds; an empty or missing list allows any realtime NodeId.
+- Reads `api.query.cps.nodes.at(blockHash, nodeId)` at the event block, decodes the binary `CID.bytes` payload and upserts an anchor.
+- Does not download IPFS data in the block-processing path, so checkpoint persistence is not delayed by network I/O.
 
 ### RwsNewDevicesHandler
 
@@ -136,6 +170,26 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
   - parses the JSON, validates `model === SensorModel.STORY (5)` plus the `sensor`, `message`, `timestamp` fields;
   - checks that `payload.sensor` is in the list of owned accounts;
   - saves the story via `StoryRepository.upsert({...})` with the unique `{sensor_id, timestamp}`.
+
+## CPS ingestion
+
+### CpsSnapshotService
+
+`src/robonomics/cps-snapshot.service.ts` runs once at module initialization when `CPS_ENABLED=true`. It reads all configured `CPS_NODE_IDS` at one finalized block hash and creates the same idempotent anchors as the realtime handler. An empty list means that snapshot has no nodes to discover; it does not disable unrestricted realtime ingestion.
+
+### CpsAnchorProcessorService
+
+`src/measurement/cps-anchor-processor.service.ts` starts immediately and then polls every `CPS_POLL_INTERVAL` while both `MEASUREMENT_ENABLED` and `CPS_ENABLED` are active.
+
+1. Atomically claims up to `CPS_MAX_ANCHORS_PER_POLL` pending anchors using a recoverable lease.
+2. Downloads exact bytes through `IpfsFetcherService.fetchBytes()`.
+3. Decodes the explicitly configured `raw`, `xz` or `zlib` wire format with compressed/decompressed/envelope-count limits.
+4. Validates each `SignedEnvelope`, reconstructs `sensor_id || timestamp_le_u64 || nonce || message` and verifies Ed25519 before decoding `core.v1.Message`.
+5. Accepts public Urban/Insight measurements with a valid owner, useful scalar readings and mandatory GPS.
+6. Upserts `measurements` and `cities`, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
+7. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
+
+CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Timestamp milliseconds are converted to Unix seconds after signature verification. Private sections are not decrypted or stored.
 
 ## MeasurementProcessorService
 
@@ -318,8 +372,7 @@ Indexes: unique `{block, sender, resultHash}`, plus single-field indexes on `blo
 
 ### Collection `cps_anchors` (CpsAnchor)
 
-This additive collection is the idempotent queue for the upcoming CPS pipeline.
-It does not replace or modify the legacy `datalogs` path.
+This additive collection is the active idempotent queue for snapshot and realtime CPS ingestion. It does not replace or modify the legacy `datalogs` path.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -340,7 +393,9 @@ Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and 
 
 | Field         | Type     | Description                                    |
 |---------------|----------|------------------------------------------------|
-| `datalog_id`  | ObjectId | Reference to `datalogs._id` *(indexed)*        |
+| `datalog_id`  | ObjectId | Optional reference to `datalogs._id` for legacy records *(indexed)* |
+| `source_type` | String   | Optional source discriminator; `cps` for CPS records |
+| `source_id`   | String   | Optional deterministic source key; CPS uses `cps:<nodeId>:<cid>` |
 | `sensor_id`   | String   | Sensor ID *(indexed)*                          |
 | `model`       | Number   | Sensor model (`SensorModel`)                   |
 | `measurement` | Object   | Reading data (arbitrary JSON)                  |
@@ -350,7 +405,7 @@ Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and 
 | `owner`       | String   | Sensor owner address (optional)                |
 | `timestamp`   | Number   | Unix timestamp of the reading, seconds *(indexed)* |
 
-Indexes: unique compound `{sensor_id, timestamp}` (deduplication); compound `{owner, sensor_id}` (selecting sensors by owner — `GET /api/v2/sensor/owner/:owner`).
+Indexes: unique compound `{sensor_id, timestamp}` (deduplication), compound `{source_type, source_id}` (source lookup), and compound `{owner, sensor_id}` (selecting sensors by owner — `GET /api/v2/sensor/owner/:owner`).
 
 ### Collection `cities` (Sensor)
 
@@ -400,20 +455,21 @@ The key is set by `ROBONOMICS_STATE_KEY` — this allows a single MongoDB instan
 
 ## Configuration
 
-All variables are read via `@nestjs/config` and grouped in `src/config/{app,robonomics,ipfs,geocoding}.config.ts`.
+Configuration comes from environment variables. Typed application settings are grouped in `src/config/{app,robonomics,ipfs,geocoding,cps}.config.ts`; module switches and handler allow/deny lists are read directly while the module graph is built.
 
 ### Module flags (instance role selector)
 
 | Variable               | Default | Purpose                                        |
 |------------------------|---------|------------------------------------------------|
 | `API_ENABLED`          | `true`  | StatusModule, SensorModule, StoryModule, MetricsModule |
-| `INDEXER_ENABLED`      | `true`  | RobonomicsModule (BlockIndexer + handlers)     |
-| `MEASUREMENT_ENABLED`  | `true`  | MeasurementProcessor + IpfsFetcher             |
+| `INDEXER_ENABLED`      | `true`  | RobonomicsModule (BlockIndexer + handlers + CPS snapshot) |
+| `MEASUREMENT_ENABLED`  | `true`  | Legacy and CPS processors + IpfsFetcher        |
 | `GEOCODING_ENABLED`    | `true`  | GeocodingService                               |
+| `CPS_ENABLED`          | `false` | Activates CPS snapshot, realtime handling and processing |
 | `ENABLED_HANDLERS`     | *(empty)* | Comma-separated handler allowlist            |
 | `DISABLED_HANDLERS`    | *(empty)* | Handler denylist (on top of the allowlist)   |
 
-A flag is treated as `false` only when explicitly set to `'false'` (see `app.module.ts`).
+The four module flags are disabled only by the exact value `false` (see `app.module.ts`). `CPS_ENABLED` follows the opposite fail-closed rule and activates CPS work only when exactly `true`; the corresponding indexer or measurement module must also be enabled.
 
 ### App / MongoDB
 
@@ -422,6 +478,7 @@ A flag is treated as `false` only when explicitly set to `'false'` (see `app.mod
 | `NODE_ENV`        | `development`                             |                                          |
 | `PORT`            | `3000`                                    | HTTP port for REST API                   |
 | `MONGODB_URI`     | `mongodb://localhost:27017/roseman`       | MongoDB connection string                |
+| `MONGODB_AUTO_INDEX` | `false`                                | Create declared Mongoose indexes at startup |
 | `MAX_PERIOD_DAYS` | `31`                                      | API period limit (DateRangeGuard)        |
 
 ### Robonomics
@@ -429,7 +486,8 @@ A flag is treated as `false` only when explicitly set to `'false'` (see `app.mod
 | Variable                  | Default                                  | Description                                  |
 |---------------------------|------------------------------------------|----------------------------------------------|
 | `ROBONOMICS_WS`           | `wss://polkadot.rpc.robonomics.network`  | WebSocket endpoint of the parachain          |
-| `ROBONOMICS_START_BLOCK`  | `0`                                      | Starting block (only on first launch)        |
+| `ROBONOMICS_START_BLOCK`  | `latest`                                 | First block when no saved checkpoint exists    |
+| `ROBONOMICS_START_BLOCK_FORCE` | `false`                            | Ignore the checkpoint and force the configured start on every launch |
 | `ROBONOMICS_STATE_KEY`    | `polkadot_robonomics`                    | Key in the `index_state` collection          |
 | `ROBONOMICS_ACCOUNTS`     | *(empty — all)*                          | Comma-separated whitelist of datalog senders |
 
@@ -442,6 +500,26 @@ A flag is treated as `false` only when explicitly set to `'false'` (see `app.mod
 | `IPFS_MAX_RESPONSE_BYTES` | `10485760`                                               | Maximum gateway response size (bytes) |
 | `IPFS_POLL_INTERVAL` | `10000`                                                       | IPFS_PENDING polling interval (ms)   |
 | `IPFS_DIR_SENDER`    | *(empty)*                                                     | Sender whose CIDs are directories; data is fetched as `${cid}/data.json` |
+
+### CPS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPS_ENABLED` | `false` | Enables all CPS-specific work |
+| `CPS_NODE_IDS` | *(empty)* | Numeric u64 NodeIds for snapshot; a non-empty list is also the realtime allowlist |
+| `CPS_BATCH_WIRE_FORMAT` | `xz` | Explicit `raw`, `xz` or `zlib` batch format |
+| `CPS_POLL_INTERVAL` | `10000` | Processor poll interval (ms) |
+| `CPS_LEASE_DURATION` | `60000` | Processing lease duration (ms) |
+| `CPS_MAX_ANCHORS_PER_POLL` | `10` | Maximum claimed anchors per poll |
+| `CPS_MAX_ATTEMPTS` | `5` | Maximum processing claims before terminal error |
+| `CPS_RETRY_BASE_DELAY` | `15000` | Exponential retry base delay (ms) |
+| `CPS_MAX_COMPRESSED_BYTES` | `10485760` | Maximum compressed payload size |
+| `CPS_MAX_DECOMPRESSED_BYTES` | `10485760` | Maximum decoded batch size |
+| `CPS_MAX_XZ_MEMORY_BYTES` | `67108864` | XZ decoder memory limit |
+| `CPS_MAX_ENVELOPE_COUNT` | `10000` | Maximum envelopes per batch |
+| `CPS_OWNER_SS58_PREFIX` | `32` | SS58 prefix used for `Message.metadata.owner` |
+
+If `CPS_NODE_IDS` is empty, snapshot performs no reads and realtime accepts any NodeId. If non-empty, both paths are limited to the listed canonical decimal NodeIds.
 
 ### Geocoding (Nominatim)
 
@@ -465,6 +543,7 @@ src/
 │   ├── robonomics.config.ts       — WS endpoint, startBlock, stateKey, accounts
 │   ├── ipfs.config.ts             — gateways, timeout, pollInterval, dirSender
 │   ├── geocoding.config.ts        — Nominatim endpoint, rate-limit, batch
+│   ├── cps.config.ts              — CPS flags, NodeIds, limits, retry and wire format
 │   └── index.ts                   — config re-exports
 │
 ├── common/
@@ -477,13 +556,15 @@ src/
 ├── database/
 │   ├── database.module.ts         — global module (schemas + repositories)
 │   ├── schemas/
+│   │   ├── cps-anchor.schema.ts   — cps_anchors, queue status, lease and counters
 │   │   ├── datalog.schema.ts      — datalogs, unique {block, sender, resultHash}
-│   │   ├── measurement.schema.ts  — measurements, unique {sensor_id, timestamp}
+│   │   ├── measurement.schema.ts  — measurements, source fields and unique {sensor_id, timestamp}
 │   │   ├── sensor.schema.ts       — cities, sensor_id unique
 │   │   ├── story.schema.ts        — stories, unique {sensor_id, timestamp}
 │   │   ├── subscription.schema.ts — subscriptions, unique {account, owner}
 │   │   └── index-state.schema.ts  — index_state, key unique
 │   └── repositories/
+│       ├── cps-anchor.repository.ts
 │       ├── datalog.repository.ts
 │       ├── measurement.repository.ts
 │       ├── sensor.repository.ts
@@ -496,11 +577,15 @@ src/
 │   ├── robonomics.service.ts      — @polkadot/api connect + reconnect
 │   ├── block-indexer.service.ts   — catch-up + realtime + handler dispatch
 │   ├── handler-filter.ts          — ENABLED/DISABLED_HANDLERS
+│   ├── cps-snapshot.service.ts    — initial snapshot of configured NodeIds
+│   ├── cps-node.reader.ts         — historical CPS storage query
+│   ├── cps-payload.decoder.ts     — strict binary CID decoder
 │   ├── constants.ts               — DI tokens EVENT_HANDLERS, EXTRINSIC_HANDLERS
 │   ├── interfaces/
 │   │   ├── chain-event-handler.interface.ts
 │   │   └── chain-extrinsic-handler.interface.ts
 │   └── handlers/
+│       ├── cps-payload-set.handler.ts
 │       ├── datalog-new-record.handler.ts
 │       ├── rws-new-devices.handler.ts
 │       ├── rws-extrinsic.handler.ts
@@ -508,8 +593,11 @@ src/
 │
 ├── measurement/
 │   ├── measurement.module.ts
-│   ├── ipfs-fetcher.service.ts             — gateway fallback fetch
-│   └── measurement-processor.service.ts    — polling, parsing, sensor upsert
+│   ├── ipfs-fetcher.service.ts             — bounded gateway fallback for JSON/bytes
+│   ├── measurement-processor.service.ts    — legacy datalog polling and parsing
+│   ├── cps-anchor-processor.service.ts     — CPS queue, verification, retry and writes
+│   ├── cps-measurement.transformer.ts      — trusted Message → Measurement
+│   └── protocol/                           — batch/message decoders and Ed25519 verifier
 │
 ├── geocoding/
 │   ├── geocoding.module.ts
@@ -541,6 +629,10 @@ ERROR (3)          — fetch/parse error, see errorMessage
 ## Dependencies
 
 - `@polkadot/api`, `@polkadot/types`, `robonomics-api-augment` — parachain interaction.
+- `@buf/airalab_sensors-social-proto.bufbuild_es`, `@bufbuild/protobuf` — generated CPS schemas and protobuf runtime.
+- `@polkadot/util-crypto` — Ed25519 signature verification and SS58 owner encoding.
+- `lzma-native` — bounded XZ/LZMA2 decompression for CPS batches.
+- `multiformats` — strict CID parsing and binary `CID.bytes` conversion.
 - `@nestjs/mongoose`, `mongoose` — MongoDB via the Repository pattern.
-- Native `fetch` (Node 18+) — IPFS gateways and Nominatim.
+- Native `fetch` — IPFS gateways and Nominatim.
 - `@willsoto/nestjs-prometheus`, `prom-client` — metrics (separate module).

@@ -1,6 +1,6 @@
 # RoSeMAN documentation
 
-**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode — indexer for an air-quality sensor network's data from the `datalog` and `rws` pallets of the Robonomics parachain, with a REST API on top of the collected data.
+**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode — indexer for legacy `datalog`/`rws` data and the CPS protocol of the Robonomics parachain, with verified IPFS ingestion and a REST API on top of the collected measurements.
 
 The documentation covers every project component: blockchain indexer, IPFS processing, geocoding, REST API, metrics and deployment.
 
@@ -13,7 +13,7 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 
 ### Services
 
-- **[Indexer](./indexer.md)** — `BlockIndexerService` (catch-up + realtime + reconnect), event and extrinsic handlers, IPFS payload processing (`MeasurementProcessorService`), sensor geocoding (`GeocodingService`), data formats, MongoDB schemas, configuration (`.env`).
+- **[Indexer](./indexer.md)** — `BlockIndexerService` (catch-up + sequential realtime queue + reconnect), legacy and CPS handlers, CPS snapshot, both IPFS processors, protocol verification, geocoding, MongoDB schemas and configuration.
 
 ### REST API
 
@@ -35,7 +35,9 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 | Robonomics connection, reconnect           | [indexer.md → RobonomicsService](./indexer.md#robonomicsservice) |
 | Catch-up + realtime block scanning         | [indexer.md → BlockIndexerService](./indexer.md#blockindexerservice) |
 | Event and extrinsic handlers               | [indexer.md → Handlers](./indexer.md#handlers)          |
-| IPFS fetch, gateway fallback               | [indexer.md → MeasurementProcessorService](./indexer.md#measurementprocessorservice) |
+| Legacy IPFS JSON processing                | [indexer.md → MeasurementProcessorService](./indexer.md#measurementprocessorservice) |
+| CPS snapshot, events and processing         | [indexer.md → CPS ingestion](./indexer.md#cps-ingestion) |
+| IPFS fetch, gateway fallback                | [indexer.md → IpfsFetcherService](./indexer.md#ipfsfetcherservice) |
 | Reverse geocoding (Nominatim)              | [indexer.md → GeocodingService](./indexer.md#geocodingservice) |
 | MongoDB schemas and indexes                | [indexer.md → MongoDB schemas](./indexer.md#mongodb-schemas) |
 | Full list of environment variables         | [indexer.md → Configuration](./indexer.md#configuration) |
@@ -51,5 +53,6 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 - **MongoDB** via **Mongoose 7** (Repository pattern)
 - **@polkadot/api** + `robonomics-api-augment`
 - **@willsoto/nestjs-prometheus** / `prom-client`
+- **Buf Protobuf**, **@polkadot/util-crypto** and **lzma-native** — CPS decode, Ed25519 verification and XZ/LZMA2
 - **iconv-lite** — payload decoding for arbitrary encodings
 - ESLint + Prettier

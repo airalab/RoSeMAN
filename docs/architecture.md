@@ -14,11 +14,11 @@ See also:
 | Flag                   | Default | What it enables                                                           |
 |------------------------|---------|---------------------------------------------------------------------------|
 | `API_ENABLED`          | `true`  | `StatusModule`, `SensorModule`, `StoryModule`, `MetricsModule`, `PrometheusModule` |
-| `INDEXER_ENABLED`      | `true`  | `RobonomicsModule` (BlockIndexer + 4 handlers)                            |
-| `MEASUREMENT_ENABLED`  | `true`  | `MeasurementModule` (IPFS fetcher + processor)                            |
+| `INDEXER_ENABLED`      | `true`  | `RobonomicsModule` (BlockIndexer + 5 handlers + CPS snapshot)             |
+| `MEASUREMENT_ENABLED`  | `true`  | `MeasurementModule` (IPFS fetcher + legacy and CPS processors)            |
 | `GEOCODING_ENABLED`    | `true`  | `GeocodingModule` (Nominatim reverse)                                     |
 
-A flag is treated as disabled **only** when explicitly set to `'false'` — any other value (or its absence) is treated as `true`.
+A module flag is treated as disabled **only** when explicitly set to `'false'` — any other value (or its absence) is treated as `true`. CPS logic has an additional fail-closed flag: `CPS_ENABLED` must be exactly `true`. The snapshot/realtime handler also require `INDEXER_ENABLED`, and the CPS processor requires `MEASUREMENT_ENABLED`.
 
 Always wired in:
 
@@ -41,7 +41,8 @@ Typical configurations:
 | REST API + IPFS + geocoder          | ✅    | ❌        | ✅            | ✅          | Read-side instance without chain reads           |
 | Polkadot indexer                    | ❌    | ✅        | ❌            | ❌          | Headless, reads only Polkadot blocks             |
 | Kusama indexer (datalog only)       | ❌    | ✅        | ❌            | ❌          | Headless, `ENABLED_HANDLERS=datalog-new-record`  |
-| IPFS processor                      | ❌    | ❌        | ✅            | ❌          | Headless, dedicated process for IPFS load        |
+| IPFS processor                      | ❌    | ❌        | ✅            | ❌          | Headless, legacy processor; CPS too when `CPS_ENABLED=true` |
+| CPS indexer + processor              | ❌    | ✅        | ✅            | ❌          | `CPS_ENABLED=true`, `ENABLED_HANDLERS=cps-payload-set` |
 
 Ready-made `.env` examples for typical roles live at the repository root: `.env.example`, `.env.polkadot.example`, `.env.kusama.example`.
 
@@ -50,20 +51,24 @@ Ready-made `.env` examples for typical roles live at the repository root: `.env.
 ```
 Robonomics (Polkadot/Kusama) ──────▶ BlockIndexerService
                                      │
-                  ┌──────────────────┼──────────────────┐
-                  ▼                  ▼                  ▼
-              datalogs         subscriptions          stories
-                  │
-                  │  status: IPFS_PENDING
-                  ▼
-          MeasurementProcessor ─── IpfsFetcher ─── IPFS gateways
-                  │
-        ┌─────────┴────────┐
-        ▼                  ▼
-   measurements         sensors  ──▶ GeocodingService ──▶ Nominatim
-                                                          (city/state/country)
+              ┌──────────────────────┼────────────────────────┐
+              ▼                      ▼                        ▼
+       legacy handlers       cps.PayloadSet handler    RWS handlers
+              │                      │                        │
+          datalogs              cps_anchors       subscriptions/stories
+              │                      │
+              ▼                      ▼
+ MeasurementProcessor       CpsAnchorProcessor
+              └──────────┬───────────┘
+                         ▼
+              IpfsFetcher ──▶ IPFS gateways
+                         │
+                  ┌──────┴──────┐
+                  ▼             ▼
+             measurements    sensors ──▶ GeocodingService ──▶ Nominatim
 
-REST API (controllers) ──▶ Repositories ──▶ MongoDB (any of the collections)
+CpsSnapshotService ── configured CPS_NODE_IDS ──▶ cps_anchors
+REST API (controllers) ──▶ Repositories ──▶ MongoDB
 ```
 
 A detailed description of each node is in [indexer.md](./indexer.md).
@@ -84,7 +89,7 @@ Example: `DOTENV_CONFIG_PATH=.env.polkadot node dist/main` — the shared `.env`
 ## NestJS lifecycle
 
 - `app.enableShutdownHooks()` is called in both modes. This is needed so that `OnModuleDestroy` fires and `RobonomicsService.disconnect()` cleanly closes the WebSocket on `SIGTERM`/`SIGINT`.
-- Background services (`BlockIndexer`, `MeasurementProcessor`, `Geocoding`) are started in `OnModuleInit` as fire-and-forget — NestJS startup is not blocked.
+- Background services (`BlockIndexerService`, `CpsSnapshotService`, `MeasurementProcessorService`, `CpsAnchorProcessorService`, `GeocodingService`) start work from `OnModuleInit` without blocking NestJS startup.
 - `ValidationPipe` is configured globally with `{ whitelist: true, transform: true }` — DTO classes from `src/api/**/dto/` automatically strip unknown fields and coerce types.
 
 ## `src/` layout
@@ -101,8 +106,8 @@ src/
 │   ├── sensor/                    /api/sensor/...  (V1) and /api/v2/sensor/...
 │   └── story/                     /api/v2/story/...
 │
-├── robonomics/                    indexer (see indexer.md)
-├── measurement/                   IPFS processor (see indexer.md)
+├── robonomics/                    indexer, handlers and CPS snapshot (see indexer.md)
+├── measurement/                   legacy/CPS processors and protocol layer (see indexer.md)
 ├── geocoding/                     Nominatim reverse (see indexer.md)
 ├── metrics/                       Prometheus (see metrics.md)
 │

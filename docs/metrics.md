@@ -22,6 +22,10 @@ Default Node.js metrics (`process_cpu_seconds_total`, `nodejs_eventloop_lag_seco
 | `roseman_block_read`      | gauge | `chain`   | Number of the last processed block for each `index_state` key (`polkadot_robonomics`, `kusama_robonomics`, …) |
 | `roseman_ipfs_queue`      | gauge | —         | Count of `datalogs` records with status `IPFS_PENDING` (unprocessed IPFS CIDs)            |
 
+## CPS observability status
+
+There are currently no dedicated CPS gauges or counters. In particular, `cps_anchors` pending/error counts, processed envelopes, signature failures and decode failures are visible only through MongoDB state and application logs. This is an implementation limitation, not an undocumented metric; add the corresponding providers and repository queries before documenting them as exported.
+
 ## MetricsService
 
 File: `src/metrics/metrics.service.ts`. The values come from the DB, not from in-memory counters:

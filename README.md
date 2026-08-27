@@ -1,11 +1,12 @@
 # RoSeMAN
 
-**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode -- the indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN watches the Robonomics parachain for sensor datalogs, fetches measurement data from IPFS, and serves it via REST API.
+**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode -- the indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN indexes legacy sensor datalogs and the CPS protocol from the Robonomics parachain, verifies IPFS payloads, stores measurements in MongoDB and serves them via REST API.
 
 ## Features
 
 - **Robonomics blockchain indexer** (Polkadot/Kusama) — reads finalized blocks and processes `datalog.NewRecord` events and RWS extrinsics.
 - **IPFS loader** — asynchronous processing of `datalog` records with CIDs: fetches JSON via a list of gateways with fallback, parses it and stores sensor measurements.
+- **CPS ingestion** — snapshots configured numeric NodeIds, handles realtime `cps.PayloadSet`, reads binary CIDs, decodes raw/XZ/zlib protobuf batches and verifies Ed25519 signatures before storing public Urban/Insight measurements.
 - **Reverse geocoding** — derives country/region/city from sensor coordinates.
 - **REST API** — sensor data (V1/V2), story list, indexer status. See [docs/api_endpoints.md](./docs/api_endpoints.md).
 - **Prometheus metrics** at `/metrics`.
@@ -15,7 +16,8 @@
 
 - **NestJS 11** + TypeScript (ESM)
 - **MongoDB** via **Mongoose**
-- **@polkadot/api**
+- **@polkadot/api** + `robonomics-api-augment`
+- **Buf Protobuf**, **Ed25519** and **XZ/LZMA2** for CPS payloads
 - ESLint + Prettier
 
 A detailed description of the indexer, data formats and DB schemas is in [docs/indexer.md](./docs/indexer.md).
@@ -25,14 +27,14 @@ A detailed description of the indexer, data formats and DB schemas is in [docs/i
 ```
 src/
 ├── api/                  REST controllers: sensor (V1/V2), story, status
-├── robonomics/           chain connection, BlockIndexerService, handlers/
-├── measurement/          IPFS fetcher and measurement processor
+├── robonomics/           chain connection, block indexer, CPS snapshot and handlers
+├── measurement/          legacy/CPS processors, IPFS fetcher and protocol codecs
 ├── geocoding/            sensor reverse geocoding
 ├── metrics/              Prometheus metrics
 ├── database/
 │   ├── schemas/          Mongoose schemas
 │   └── repositories/     DB access (Repository pattern)
-├── config/               configs (app, robonomics, ipfs, geocoding)
+├── config/               configs (app, robonomics, ipfs, geocoding, cps)
 ├── common/               constants and utilities
 └── app.module.ts         dynamic module composition driven by env flags
 ```
@@ -51,12 +53,14 @@ Key flags for splitting processes:
 |------------------------|------------------------------------------------------------------|
 | `API_ENABLED`          | REST API + Prometheus                                            |
 | `INDEXER_ENABLED`      | Robonomics block scanner                                         |
-| `MEASUREMENT_ENABLED`  | IPFS_PENDING polling and measurement parsing                     |
+| `MEASUREMENT_ENABLED`  | Legacy datalog and CPS queue processing                          |
 | `GEOCODING_ENABLED`    | Reverse geocoding                                                |
+| `CPS_ENABLED`          | CPS snapshot, realtime handler and CPS processor                 |
+| `CPS_NODE_IDS`         | Snapshot NodeIds and optional realtime allowlist                 |
 | `ENABLED_HANDLERS`     | Allowlist of indexer handlers (comma-separated)                  |
 | `DISABLED_HANDLERS`    | Denylist of handlers (applied on top of the allowlist)           |
 
-The full list of variables and defaults is in the `*.example` files and in [docs/indexer.md](./docs/indexer.md).
+The full list of variables and defaults is in the `*.example` files and in [docs/indexer.md](./docs/indexer.md). `CPS_ENABLED` only activates work inside enabled indexer/measurement modules. An empty `CPS_NODE_IDS` disables snapshot discovery but allows realtime events from any numeric NodeId.
 
 ## Running
 
@@ -101,7 +105,7 @@ REST API will be available at `http://localhost:3000/api`, metrics — at `/metr
 | `sync-indexes`    | Sync MongoDB indexes with the schemas (see [docs/database.md](./docs/database.md#index-management)) |
 | `format`          | Prettier over `src/` and `test/`      |
 | `lint`            | ESLint with autofix                   |
-| `test`            | Jest (unit)                           |
+| `test`            | Jest unit tests, sequentially (`--runInBand`) |
 | `test:e2e`        | Jest with the config from `test/`     |
 
 ## Documentation

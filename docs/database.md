@@ -19,7 +19,10 @@ The MongoDB connection is configured at the `AppModule` level:
 ```ts
 MongooseModule.forRootAsync({
   inject: [ConfigService],
-  useFactory: (cfg) => ({ uri: cfg.get<string>('app.mongodbUri') }),
+  useFactory: (cfg) => ({
+    uri: cfg.get<string>('app.mongodbUri'),
+    autoIndex: cfg.get<boolean>('app.autoIndex'),
+  }),
 })
 ```
 
@@ -63,10 +66,10 @@ db.measurements.getIndexes()
 
 | Mongoose class    | Collection       | Repository               | Where it is used                                  |
 |-------------------|------------------|--------------------------|---------------------------------------------------|
-| `CpsAnchor`       | `cps_anchors`    | `CpsAnchorRepository`    | CPS ingestion queue (pipeline wiring pending)     |
-| `Datalog`         | `datalogs`       | `DatalogRepository`      | `DatalogNewRecordHandler`, `MeasurementProcessor`, `MetricsService` |
-| `Measurement`     | `measurements`   | `MeasurementRepository`  | `MeasurementProcessor`, `SensorService`           |
-| `Sensor`          | `cities`         | `SensorRepository`       | `MeasurementProcessor`, `GeocodingService`, `SensorService` |
+| `CpsAnchor`       | `cps_anchors`    | `CpsAnchorRepository`    | `CpsSnapshotService`, `CpsPayloadSetHandler`, `CpsAnchorProcessorService` |
+| `Datalog`         | `datalogs`       | `DatalogRepository`      | `DatalogNewRecordHandler`, `MeasurementProcessorService`, `MetricsService` |
+| `Measurement`     | `measurements`   | `MeasurementRepository`  | Legacy/CPS processors, `SensorService`             |
+| `Sensor`          | `cities`         | `SensorRepository`       | Legacy/CPS processors, `GeocodingService`, `SensorService` |
 | `Story`           | `stories`        | `StoryRepository`        | `RwsStoryHandler`, `StoryService`                 |
 | `Subscription`    | `subscriptions`  | `SubscriptionRepository` | `RwsExtrinsicHandler`, `RwsNewDevicesHandler`, `RwsStoryHandler` |
 | `IndexState`      | `index_state`    | `IndexStateRepository`   | `BlockIndexerService`, `StatusController`, `MetricsService` |
@@ -78,7 +81,7 @@ A detailed description of each schema (fields, types, indexes) is in [indexer.md
 1. **Isolating Mongoose from business logic.** Services operate in domain terms like `findPending(20)` or `upsertBlock(account, owner, block)`, not raw `Model.find({...})`. This simplifies tests (repositories can be mocked) and makes it possible to swap the ORM or storage without rewriting all services.
 2. **A single place for indexes and optimizations.** All `lean()`, `bulkWrite`, `insertManyIgnoreDuplicates` and `$setOnInsert` live in one layer — easier to audit performance and change indexing strategies.
 3. **Protection against accidentally duplicated SQL/Mongo logic.** For example, `MeasurementRepository.insertManyIgnoreDuplicates(...)` is the only writer into `measurements` — no random `model.insertMany()` will sneak past the unique index.
-4. **Consistency with the project style.** This is a hard project rule (CLAUDE.md): any new code that touches the DB must go through a repository.
+4. **Consistency with the project style.** Repository access is a project rule: new handlers, processors and controllers must not inject Mongoose models directly.
 
 ## Typical repository operations
 
@@ -129,6 +132,7 @@ Repository files:
 
 ```
 src/database/repositories/
+├── cps-anchor.repository.ts
 ├── datalog.repository.ts
 ├── measurement.repository.ts
 ├── sensor.repository.ts
@@ -141,6 +145,7 @@ Mongoose schemas:
 
 ```
 src/database/schemas/
+├── cps-anchor.schema.ts
 ├── datalog.schema.ts
 ├── measurement.schema.ts
 ├── sensor.schema.ts

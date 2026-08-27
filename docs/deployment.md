@@ -8,7 +8,7 @@ The repository root contains three `.example` files from which you should create
 
 | File                | Role                                                                              |
 |---------------------|-----------------------------------------------------------------------------------|
-| `.env`              | Base: `MONGODB_URI`, `PORT`, module flags, Robonomics agents, Nominatim           |
+| `.env`              | Base: MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings   |
 | `.env.polkadot`     | **Polkadot** indexer: `ROBONOMICS_WS`, `ROBONOMICS_STATE_KEY=polkadot_robonomics`, `ROBONOMICS_START_BLOCK`, `API_ENABLED=false`, the desired `ENABLED_HANDLERS` set |
 | `.env.kusama`       | **Kusama** indexer: same as above, but with the Kusama endpoint and start block   |
 
@@ -34,7 +34,7 @@ npm run start:dev:polkadot
 npm run start:dev:kusama
 ```
 
-`start:dev*` uses `nest start --watch` — changes in `src/` restart the process. To connect to a local MongoDB, set `MONGODB_URI=mongodb://localhost:27017/roseman` in `.env` or run MongoDB in Docker (see below).
+`start:dev*` uses `nest start --watch` — changes in `src/` restart the process. To connect to a local MongoDB, set `MONGODB_URI=mongodb://localhost:27017/roseman` in `.env` or run MongoDB in Docker (see below). CPS remains off unless `CPS_ENABLED=true`.
 
 ## Production
 
@@ -68,14 +68,14 @@ The repository root contains `Dockerfile` and `docker-compose.yml`.
 
 ### Image
 
-The `Dockerfile` is minimal: it installs dependencies and copies a **prebuilt `dist/`**. That is, the TypeScript build happens **before** the image build:
+The `Dockerfile` copies a **prebuilt `dist/`**, so the TypeScript build happens **before** the image build:
 
 ```bash
 npm run build
 docker build -t vol4/roseman:v0.1.0 .
 ```
 
-This is a deliberate choice — the image does not carry `devDependencies` or the TypeScript toolchain.
+The current image runs plain `npm ci`, so it does contain `devDependencies` and the TypeScript toolchain from the lockfile. It is reproducible, but not production-minimal; changing that would require a Dockerfile update such as a production-only dependency stage.
 
 ### Docker Compose
 
@@ -88,7 +88,7 @@ This is a deliberate choice — the image does not carry `devDependencies` or th
 | `indexer-polkadot`  | `vol4/roseman:v0.1.0`  | Polkadot indexer (`DOTENV_CONFIG_PATH=/app/.env.polkadot`)         |
 | `indexer-kusama`    | `vol4/roseman:v0.1.0`  | Kusama indexer (`DOTENV_CONFIG_PATH=/app/.env.kusama`)             |
 
-Configuration is supplied to the containers via **bind-mounts** of the corresponding `.env` files in read-only mode. All applications depend on `mongodb` with `condition: service_healthy`.
+Configuration is supplied to the containers via **bind-mounts** of the corresponding `.env` files in read-only mode. All applications depend on `mongodb` with `condition: service_healthy`. The checked-in example files keep `CPS_ENABLED=false`, so the root Compose stack does not index CPS until its environment is explicitly changed.
 
 ```bash
 cp .env.example .env
@@ -137,9 +137,25 @@ A typical production setup is to **split the roles across processes** so that ea
 Key points:
 
 - **Indexer state is separated by `ROBONOMICS_STATE_KEY`** in the `index_state` collection (`polkadot_robonomics`, `kusama_robonomics`, …). One MongoDB serves both indexers without conflicts.
-- **`MEASUREMENT_ENABLED` only needs to be enabled on one instance** — `MeasurementProcessor` polls the `datalogs` collection and processes records produced by any indexer, regardless of which process wrote them. Running the processor on multiple instances simultaneously is safe (deduplication relies on unique indexes), but redundant.
+- **`MEASUREMENT_ENABLED` only needs to be enabled on one instance** — it starts both `MeasurementProcessorService` and `CpsAnchorProcessorService`. The legacy processor polls `datalogs`; when `CPS_ENABLED=true`, the CPS processor atomically claims `cps_anchors` with a lease. Unique measurement indexes keep repeated writes idempotent, but extra processor instances are usually redundant.
 - **`GEOCODING_ENABLED`** — same idea; it makes sense to keep it on a single instance because of Nominatim's rate limit.
 - **The REST API can be horizontally scaled** — it is stateless and reads the DB through repositories. Behind a load balancer you can put N instances with `API_ENABLED=true` and all the other flags set to `false`.
+
+### Dedicated CPS role
+
+A CPS-only chain and payload worker can use:
+
+```env
+API_ENABLED=false
+INDEXER_ENABLED=true
+MEASUREMENT_ENABLED=true
+GEOCODING_ENABLED=false
+CPS_ENABLED=true
+CPS_NODE_IDS=0
+ENABLED_HANDLERS=cps-payload-set
+```
+
+A non-empty `CPS_NODE_IDS` drives the initial snapshot and restricts realtime events to the same allowlist. If it is empty or absent, snapshot reads no nodes while realtime accepts any numeric NodeId. `MEASUREMENT_ENABLED=true` also creates the legacy datalog processor; with `datalog-new-record` excluded it receives no new legacy records, but it can still process old pending rows already present in the shared database.
 
 See also [architecture.md → Run modes](./architecture.md#run-modes).
 

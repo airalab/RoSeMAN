@@ -35,7 +35,7 @@
 |--------|------|---------|-------------|
 | GET | `/api/v2/sensor/maxdata/:type/:start/:end` | `getMaxData()` | Maximum measurement values of the given type for each sensor in the period. `:type` is validated by `/^[a-z0-9_]+$/`. Guard: `DateRangeGuard` |
 | GET | `/api/v2/sensor/list/:start/:end` | `getSensorList()` | List of sensors with data for the given period. Guard: `DateRangeGuard` |
-| GET | `/api/v2/sensor/urban/:start/:end` | `getUrbanSensorList()` | List of sensors without `co2` measurements for the period (same as `list`, but filtered). Guard: `DateRangeGuard` |
+| GET | `/api/v2/sensor/urban/:start/:end` | `getUrbanSensorList()` | Sensors whose latest `device_model` contains `urban` (case-insensitive) or is absent. Guard: `DateRangeGuard` |
 | GET | `/api/v2/sensor/markers/:start/:end` | `getMarkerSensorList()` | List of sensors for map markers in the period: urban sensors, sensors without `device_model`, and insight sensors whose owner has no urban sensor. Urban entries also carry a `sensors` array of the owner's other sensors. Guard: `DateRangeGuard` |
 | GET | `/api/v2/sensor/owner/:owner` | `getSensorsByOwner()` | List of sensor IDs whose **current** owner is the given one (the `owner` field of the sensor's latest measurement in the `measurements` collection). Response: `{ result: string[] }` (sorted) |
 | GET | `/api/v2/sensor/:sensor/:start/:end` | `getSensorDataWithOwner()` | Sensor data for the period + data of all sensors with the same owner. Response: `{ result, sensor: { owner, sensors, data } }`. Guard: `DateRangeGuard` |
@@ -47,7 +47,7 @@
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| GET | `/api/v2/story/list` | `getList()` | Page of stories (sorted by timestamp desc). Query: `?limit=` (max 50, default 50), `?page=` (default 1), `?start=`, `?end=` — all optional. Response: `{ totalPages, list }` |
+| GET | `/api/v2/story/list` | `getList()` | Page of stories (sorted by timestamp desc). Query: `?limit=` (max 50, default 50), `?page=` (default 1), `?start=`, `?end=` — all optional. Response: `{ result: { totalPages, list } }` |
 | GET | `/api/v2/story/last/:sensor_id` | `getLast()` | Last story for the given sensor. Response: `{ result: { author, message, date, timestamp, icon } }` or `{ result: null }` |
 
 ## Summary
@@ -56,4 +56,4 @@
 - **All methods:** GET only
 - **Versioning:** V2 is implemented in a separate controller with the `v2/sensor` prefix
 - **Controllers with endpoints** live in `StatusModule`, `SensorModule`, `StoryModule`
-- The `RobonomicsModule`, `MeasurementModule`, `GeocodingModule` modules are loaded conditionally (`INDEXER_ENABLED`) and contain no HTTP controllers
+- Background modules contain no HTTP controllers and are controlled independently: `RobonomicsModule` by `INDEXER_ENABLED`, `MeasurementModule` by `MEASUREMENT_ENABLED`, and `GeocodingModule` by `GEOCODING_ENABLED`. CPS work additionally requires `CPS_ENABLED=true`
