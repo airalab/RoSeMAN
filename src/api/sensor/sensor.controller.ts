@@ -117,7 +117,7 @@ export class SensorController {
       id: string;
       message: string;
       timestamp: number;
-      geo: { lat: number; lng: number };
+      geo?: { lat: number; lng: number };
       author: string;
       images: string[];
     }>;

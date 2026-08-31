@@ -9,7 +9,7 @@ import { type GeoBound } from './dto/sensor-json-query.dto.js';
 
 interface MaxDataEntry {
   model: number;
-  geo: { lat: number; lng: number };
+  geo?: { lat: number; lng: number };
   timestamp: number;
   value: number;
 }
@@ -234,7 +234,7 @@ export class SensorService {
       Array<{
         data: Record<string, unknown>;
         timestamp: number;
-        geo: { lat: number; lng: number };
+        geo?: { lat: number; lng: number };
       }>
     >
   > {
@@ -343,7 +343,7 @@ export class SensorService {
       id: string;
       message: string;
       timestamp: number;
-      geo: { lat: number; lng: number };
+      geo?: { lat: number; lng: number };
       author: string;
       images: string[];
     }>
@@ -376,7 +376,7 @@ export class SensorService {
     Array<{
       data: Record<string, unknown>;
       timestamp: number;
-      geo: { lat: number; lng: number };
+      geo?: { lat: number; lng: number };
     }>
   > {
     return this.measurementRepo.findBySensorInRange(sensorId, start, end);
@@ -400,7 +400,7 @@ export class SensorService {
     result: Array<{
       data: Record<string, unknown>;
       timestamp: number;
-      geo: { lat: number; lng: number };
+      geo?: { lat: number; lng: number };
     }>;
     sensor: {
       owner: string;
@@ -410,7 +410,7 @@ export class SensorService {
         Array<{
           data: Record<string, unknown>;
           timestamp: number;
-          geo: { lat: number; lng: number };
+          geo?: { lat: number; lng: number };
         }>
       >;
     } | null;
@@ -441,7 +441,7 @@ export class SensorService {
       Array<{
         data: Record<string, unknown>;
         timestamp: number;
-        geo: { lat: number; lng: number };
+        geo?: { lat: number; lng: number };
       }>
     > = {};
 

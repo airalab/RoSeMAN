@@ -23,8 +23,8 @@ export class Measurement {
   @Prop({ required: true, type: Object })
   measurement!: Record<string, unknown>;
 
-  @Prop({ required: true, type: { lat: Number, lng: Number } })
-  geo!: { lat: number; lng: number };
+  @Prop({ type: { lat: Number, lng: Number } })
+  geo?: { lat: number; lng: number };
 
   @Prop({ type: String })
   donated_by?: string;

@@ -2,7 +2,7 @@ import { create, toBinary } from '@bufbuild/protobuf';
 import {
   SignedEnvelopeBatchSchema,
   SignedEnvelopeSchema,
-} from '@buf/airalab_sensors-social-proto.bufbuild_es/crypto/v1/envelope_pb.js';
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
 import { createCompressor } from 'lzma-native';
 import { deflateSync } from 'node:zlib';
 import {

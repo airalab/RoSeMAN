@@ -173,13 +173,16 @@ export class CpsAnchorProcessorService
     }
   }
 
-  /** Дедуплицирует координаты сенсоров перед массовым upsert. */
+  /** Дедуплицирует доступные координаты сенсоров перед массовым upsert. */
   private async upsertSensors(measurements: Measurement[]): Promise<void> {
     const unique = new Map<string, { lat: number; lng: number }>();
     for (const measurement of measurements) {
+      if (!measurement.geo) continue;
       unique.set(measurement.sensor_id, measurement.geo);
     }
-    await this.sensorRepo.bulkUpsert([...unique]);
+    if (unique.size > 0) {
+      await this.sensorRepo.bulkUpsert([...unique]);
+    }
   }
 
   /** Планирует экспоненциальный retry либо завершает исчерпавший попытки anchor. */

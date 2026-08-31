@@ -3,8 +3,8 @@ import {
   SignedEnvelopeBatchSchema,
   SignedEnvelopeSchema,
   type SignedEnvelope,
-} from '@buf/airalab_sensors-social-proto.bufbuild_es/crypto/v1/envelope_pb.js';
-import { MessageSchema } from '@buf/airalab_sensors-social-proto.bufbuild_es/core/v1/message_pb.js';
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
+import { MessageSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
 import {
   PendingEnvelopeSignatureVerifier,
   SignatureVerificationFailureReason,

@@ -13,7 +13,7 @@ import {
 interface AggregatedMaxEntry {
   _id: string;
   model: number;
-  geo: { lat: number; lng: number };
+  geo?: { lat: number; lng: number };
   timestamp: number;
   value: number;
 }
@@ -21,7 +21,7 @@ interface AggregatedMaxEntry {
 export interface SensorListEntry {
   sensor_id: string;
   model: number;
-  geo: { lat: number; lng: number };
+  geo?: { lat: number; lng: number };
   donated_by: string;
   timestamp: number;
 }
@@ -295,7 +295,7 @@ export class MeasurementRepository {
     Array<{
       data: Record<string, unknown>;
       timestamp: number;
-      geo: { lat: number; lng: number };
+      geo?: { lat: number; lng: number };
     }>
   > {
     return this.model
@@ -497,7 +497,7 @@ export class MeasurementRepository {
       Array<{
         data: Record<string, unknown>;
         timestamp: number;
-        geo: { lat: number; lng: number };
+        geo?: { lat: number; lng: number };
       }>
     >
   > {
@@ -531,7 +531,7 @@ export class MeasurementRepository {
       Array<{
         data: Record<string, unknown>;
         timestamp: number;
-        geo: { lat: number; lng: number };
+        geo?: { lat: number; lng: number };
       }>
     > = {};
 
@@ -568,7 +568,7 @@ export class MeasurementRepository {
       sensor_id: string;
       measurement: Record<string, unknown>;
       timestamp: number;
-      geo: { lat: number; lng: number };
+      geo?: { lat: number; lng: number };
     }>
   > {
     return this.model
@@ -598,7 +598,7 @@ export class MeasurementRepository {
       sensor_id: string;
       measurement: Record<string, unknown>;
       timestamp: number;
-      geo: { lat: number; lng: number };
+      geo?: { lat: number; lng: number };
     }>
   > {
     return this.model

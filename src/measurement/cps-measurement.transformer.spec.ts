@@ -4,26 +4,23 @@ import {
   MessageSchema,
   MetaSchema,
   type Message,
-} from '@buf/airalab_sensors-social-proto.bufbuild_es/core/v1/message_pb.js';
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
 import {
   UrbanSchema,
   UrbanSensorSchema,
-} from '@buf/airalab_sensors-social-proto.bufbuild_es/device/v1/urban_pb.js';
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/device/v1/urban_pb.js';
 import {
   BME280Schema,
   GPSSchema,
-} from '@buf/airalab_sensors-social-proto.bufbuild_es/sensor/v1/sensor_pb.js';
-import { TemperatureSchema } from '@buf/airalab_sensors-social-proto.bufbuild_es/sensor/v1/measurement_pb.js';
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/sensor/v1/sensor_pb.js';
+import { TemperatureSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/sensor/v1/measurement_pb.js';
 import {
   cryptoWaitReady,
   ed25519PairFromSeed,
   ed25519Sign,
   encodeAddress,
 } from '@polkadot/util-crypto';
-import {
-  CpsMeasurementTransformer,
-  CpsMeasurementTransformErrorCode,
-} from './cps-measurement.transformer.js';
+import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
 import {
   buildEnvelopeSigningBytes,
   Ed25519EnvelopeSignatureVerifier,
@@ -89,7 +86,7 @@ describe('CpsMeasurementTransformer', () => {
     get: jest.fn().mockReturnValue(32),
   } as unknown as ConfigService);
 
-  it('сохраняет обязательный geo и публичные показатели Urban', async () => {
+  it('сохраняет доступный geo и публичные показатели Urban', async () => {
     const envelope = await createVerifiedEnvelope();
     const owner = new Uint8Array(32).fill(7);
 
@@ -113,7 +110,7 @@ describe('CpsMeasurementTransformer', () => {
     });
   });
 
-  it('отклоняет измерение без GPS', async () => {
+  it('сохраняет измерение без GPS и не добавляет geo', async () => {
     const envelope = await createVerifiedEnvelope();
     const result = transformer.transform(
       envelope,
@@ -121,9 +118,12 @@ describe('CpsMeasurementTransformer', () => {
       'cps:0:test',
     );
 
-    expect(result).toEqual({
-      transformed: false,
-      code: CpsMeasurementTransformErrorCode.MissingGeo,
+    expect(result.transformed).toBe(true);
+    if (!result.transformed) return;
+    expect(result.measurement).toMatchObject({
+      measurement: { temperature: 21.5 },
+      source_id: 'cps:0:test',
     });
+    expect(result.measurement).not.toHaveProperty('geo');
   });
 });

@@ -2,7 +2,7 @@ import { fromBinary } from '@bufbuild/protobuf';
 import {
   MessageSchema,
   type Message,
-} from '@buf/airalab_sensors-social-proto.bufbuild_es/core/v1/message_pb.js';
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
 import type { VerifiedSignedEnvelope } from './envelope-signature-verifier.js';
 
 /**

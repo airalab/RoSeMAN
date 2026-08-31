@@ -3,7 +3,7 @@ import {
   SignedEnvelopeBatchSchema,
   type SignedEnvelope,
   type SignedEnvelopeBatch,
-} from '@buf/airalab_sensors-social-proto.bufbuild_es/crypto/v1/envelope_pb.js';
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
 import {
   EnvelopeValidationErrorCode,
   ProtocolBatchDecodeError,

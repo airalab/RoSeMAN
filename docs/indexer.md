@@ -69,7 +69,7 @@ finalized cps.PayloadSet ─▶ CpsPayloadSetHandler ├─▶ cps_anchors
                                                          ▼
                                            protobuf + Ed25519 verify
                                                          ▼
-                                      public Urban/Insight + mandatory GPS
+                                      public Urban/Insight + optional GPS
                                                          ▼
                                                measurements + cities
 ```
@@ -185,7 +185,7 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 2. Downloads exact bytes through `IpfsFetcherService.fetchBytes()`.
 3. Decodes the explicitly configured `raw`, `xz` or `zlib` wire format with compressed/decompressed/envelope-count limits.
 4. Validates each `SignedEnvelope`, reconstructs `sensor_id || timestamp_le_u64 || nonce || message` and verifies Ed25519 before decoding `core.v1.Message`.
-5. Accepts public Urban/Insight measurements with a valid owner, useful scalar readings and mandatory GPS.
+5. Accepts public Urban/Insight measurements with a valid owner and useful scalar readings; GPS is optional, but validated when present.
 6. Upserts `measurements` and `cities`, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
 7. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
 
@@ -399,7 +399,7 @@ Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and 
 | `sensor_id`   | String   | Sensor ID *(indexed)*                          |
 | `model`       | Number   | Sensor model (`SensorModel`)                   |
 | `measurement` | Object   | Reading data (arbitrary JSON)                  |
-| `geo`         | Object   | `{ lat: Number, lng: Number }`                 |
+| `geo`         | Object   | Optional `{ lat: Number, lng: Number }`        |
 | `donated_by`  | String   | Donor (optional)                               |
 | `device_model`| String   | Device model (optional)                        |
 | `owner`       | String   | Sensor owner address (optional)                |
@@ -629,7 +629,7 @@ ERROR (3)          — fetch/parse error, see errorMessage
 ## Dependencies
 
 - `@polkadot/api`, `@polkadot/types`, `robonomics-api-augment` — parachain interaction.
-- `@buf/airalab_sensors-social-proto.bufbuild_es`, `@bufbuild/protobuf` — generated CPS schemas and protobuf runtime.
+- `@buf/airalab_connectivity-protocol.bufbuild_es`, `@bufbuild/protobuf` — generated CPS schemas and protobuf runtime.
 - `@polkadot/util-crypto` — Ed25519 signature verification and SS58 owner encoding.
 - `lzma-native` — bounded XZ/LZMA2 decompression for CPS batches.
 - `multiformats` — strict CID parsing and binary `CID.bytes` conversion.

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Message } from '@buf/airalab_sensors-social-proto.bufbuild_es/core/v1/message_pb.js';
+import type { Message } from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
 import { encodeAddress } from '@polkadot/util-crypto';
 import { MeasurementSourceType } from '../common/constants/measurement-source-type.enum.js';
 import { SensorModel } from '../common/constants/sensor-model.enum.js';
@@ -24,7 +24,6 @@ interface PublicSensor {
 }
 
 export enum CpsMeasurementTransformErrorCode {
-  MissingGeo = 'MISSING_GEO',
   InvalidGeo = 'INVALID_GEO',
   MissingOwner = 'MISSING_OWNER',
   InvalidOwner = 'INVALID_OWNER',
@@ -89,9 +88,7 @@ export class CpsMeasurementTransformer {
     if (collected.invalidMeasurement) {
       return this.failure(CpsMeasurementTransformErrorCode.InvalidMeasurement);
     }
-    if (!collected.geo)
-      return this.failure(CpsMeasurementTransformErrorCode.MissingGeo);
-    if (!this.isValidGeo(collected.geo)) {
+    if (collected.geo && !this.isValidGeo(collected.geo)) {
       return this.failure(CpsMeasurementTransformErrorCode.InvalidGeo);
     }
     if (Object.keys(collected.measurement).length === 0) {
@@ -104,7 +101,7 @@ export class CpsMeasurementTransformer {
         sensor_id: Buffer.from(envelope.sensorId).toString('hex'),
         model: SensorModel.STATIC,
         measurement: collected.measurement,
-        geo: collected.geo,
+        ...(collected.geo ? { geo: collected.geo } : {}),
         device_model: message.payload.case,
         owner,
         timestamp,
