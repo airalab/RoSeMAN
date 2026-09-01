@@ -19,6 +19,7 @@
     "start:dev:kusama": "DOTENV_CONFIG_PATH=.env.kusama nest start --watch",
     "sync-indexes": "npm run build && node dist/scripts/sync-indexes.js",
     "dedup-measurements": "npm run build && node dist/scripts/dedup-measurements.js",
+    "backfill-connectivity": "npm run build && node dist/scripts/backfill-connectivity.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",

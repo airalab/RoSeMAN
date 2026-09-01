@@ -105,6 +105,7 @@ REST API will be available at `http://localhost:3000/api`, metrics — at `/metr
 | `start` / `start:dev` | Run (with watch in dev)                                                                             |
 | `start:prod`          | Run the built `dist/main`                                                                           |
 | `sync-indexes`        | Sync MongoDB indexes with the schemas (see [docs/database.md](./docs/database.md#index-management)) |
+| `backfill-connectivity` | Backfill canonical CPS payloads/records for completed anchors |
 | `format`              | Prettier over `src/` and `test/`                                                                    |
 | `lint`                | ESLint with autofix                                                                                 |
 | `test`                | Jest unit tests, sequentially (`--runInBand`)                                                       |

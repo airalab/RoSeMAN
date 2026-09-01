@@ -102,6 +102,9 @@ export class CpsAnchor {
 
   @Prop({ type: Number })
   backfill_private_section_count?: number;
+
+  @Prop({ type: Number })
+  backfill_private_only_count?: number;
 }
 
 export const CpsAnchorSchema = SchemaFactory.createForClass(CpsAnchor);

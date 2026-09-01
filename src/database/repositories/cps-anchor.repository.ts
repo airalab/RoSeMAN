@@ -32,6 +32,7 @@ export interface CpsBackfillResultDetails {
   readonly invalidCount: number;
   readonly unsupportedCount: number;
   readonly privateSectionCount: number;
+  readonly privateOnlyCount: number;
   readonly errorCode?: string;
   readonly errorMessage?: string;
   readonly completedAt?: Date;
@@ -315,6 +316,7 @@ export class CpsAnchorRepository {
             backfill_invalid_count: details.invalidCount,
             backfill_unsupported_count: details.unsupportedCount,
             backfill_private_section_count: details.privateSectionCount,
+            backfill_private_only_count: details.privateOnlyCount,
             ...error,
           },
           ...(details.errorCode === undefined

@@ -162,6 +162,23 @@ A non-empty `CPS_NODE_IDS` drives the initial snapshot and restricts realtime ev
 
 See also [architecture.md → Run modes](./architecture.md#run-modes).
 
+### Canonical CPS backfill
+
+Preview one bounded batch without downloading or writing payloads:
+
+```bash
+npm run backfill-connectivity -- --dry-run --start-block 1000000 --end-block 1100000 --limit 100
+```
+
+Run the same range, optionally narrowed to one CID:
+
+```bash
+npm run backfill-connectivity -- --start-block 1000000 --end-block 1100000 --limit 100
+npm run backfill-connectivity -- --cid <CID> --limit 1
+```
+
+The command uses the configured `MONGODB_URI`, IPFS gateways, CPS wire format and decoder limits. It never rewrites `measurements` and does not modify the main anchor queue status. Successful entries are skipped on subsequent runs unless `--force` is passed; failed entries remain eligible for retry. A non-zero failed count sets the process exit code to `1`.
+
 ## Healthcheck and shutdown
 
 - **MongoDB:** in `docker-compose.yml` — `healthcheck: db.adminCommand('ping')`. All `roseman` services start only after `service_healthy`.

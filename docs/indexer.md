@@ -193,6 +193,12 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 
 CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128 and stores private sections as BSON Binary without decrypting them. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
 
+### Canonical CPS backfill
+
+`npm run backfill-connectivity -- [options]` processes only anchors whose main ingestion status is `PROCESSED` or `PROCESSED_WITH_ERRORS`. It writes `connectivity_payloads` and `connectivity_records` without rewriting legacy `measurements` or `cities`, and stores progress in separate `backfill_*` fields.
+
+Options: `--dry-run`, `--start-block`, `--end-block`, `--cid`, `--limit` (default `100`), and `--force` to include already completed backfill entries. The command handles one bounded batch per invocation and prints a JSON report with anchor/record/error/unsupported/private counters plus failed CID entries. A repeated payload key must have the same byte size and SHA-256.
+
 ## MeasurementProcessorService
 
 File: `src/measurement/measurement-processor.service.ts`. Polls `datalogs` with status `IPFS_PENDING`, parses the payload and saves measurements + sensors.

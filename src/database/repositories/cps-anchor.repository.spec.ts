@@ -222,6 +222,7 @@ describe('CpsAnchorRepository', () => {
         invalidCount: 1,
         unsupportedCount: 1,
         privateSectionCount: 2,
+        privateOnlyCount: 1,
         errorCode: 'PARTIAL_ERRORS',
         errorMessage: 'One record was invalid',
         completedAt,
@@ -250,6 +251,7 @@ describe('CpsAnchorRepository', () => {
       backfill_invalid_count: 1,
       backfill_unsupported_count: 1,
       backfill_private_section_count: 2,
+      backfill_private_only_count: 1,
       backfill_error_code: 'PARTIAL_ERRORS',
     });
   });
