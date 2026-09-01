@@ -392,8 +392,12 @@ This additive collection is the active idempotent queue for snapshot and realtim
 | `legacy_projection_count` / `private_section_count` | Number | Legacy projections and encrypted private parts |
 | `available_at` / `lease_expires_at`               | Date   | Retry and crash-recovery scheduling              |
 | `error_code` / `error_message`                    | String | Sanitized processing diagnostics                 |
+| `backfill_status` / `backfill_attempt_count`      | String / Number | Canonical backfill state, independent of ingestion status |
+| `backfill_started_at` / `backfilled_at`           | Date | Backfill attempt timestamps                       |
+| `backfill_error_code` / `backfill_error_message`  | String | Sanitized backfill-only diagnostics              |
+| `backfill_*_count`                                | Number | Stored records, invalid/unsupported and private-section counters |
 
-Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and node history `{node_id, block: -1}`. A partially valid batch ends with `error_code="ENVELOPE_ERRORS"`; fatal batch and retry failures retain their stable error codes.
+Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, node history `{node_id, block: -1}`, and backfill scan `{backfill_status, block}`. A partially valid batch ends with `error_code="ENVELOPE_ERRORS"`; fatal batch and retry failures retain their stable error codes. Backfill repository methods never overwrite the main `status`, lease, or ingestion errors.
 
 ### Collection `connectivity_payloads` (ConnectivityPayload)
 

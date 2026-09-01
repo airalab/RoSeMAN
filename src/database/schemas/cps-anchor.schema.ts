@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
+import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
 
 export type CpsAnchorDocument = HydratedDocument<CpsAnchor>;
 
@@ -71,6 +72,36 @@ export class CpsAnchor {
 
   @Prop({ type: String })
   error_message?: string;
+
+  @Prop({ type: String, enum: CpsBackfillStatus })
+  backfill_status?: CpsBackfillStatus;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  backfill_attempt_count!: number;
+
+  @Prop({ type: Date })
+  backfill_started_at?: Date;
+
+  @Prop({ type: Date })
+  backfilled_at?: Date;
+
+  @Prop({ type: String })
+  backfill_error_code?: string;
+
+  @Prop({ type: String })
+  backfill_error_message?: string;
+
+  @Prop({ type: Number })
+  backfill_record_count?: number;
+
+  @Prop({ type: Number })
+  backfill_invalid_count?: number;
+
+  @Prop({ type: Number })
+  backfill_unsupported_count?: number;
+
+  @Prop({ type: Number })
+  backfill_private_section_count?: number;
 }
 
 export const CpsAnchorSchema = SchemaFactory.createForClass(CpsAnchor);
@@ -78,3 +109,4 @@ export const CpsAnchorSchema = SchemaFactory.createForClass(CpsAnchor);
 CpsAnchorSchema.index({ source_key: 1 }, { unique: true });
 CpsAnchorSchema.index({ status: 1, available_at: 1, block: 1 });
 CpsAnchorSchema.index({ node_id: 1, block: -1 });
+CpsAnchorSchema.index({ backfill_status: 1, block: 1 });

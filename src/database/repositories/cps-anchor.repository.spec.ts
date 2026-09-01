@@ -1,5 +1,6 @@
 import { type Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
+import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
 import { MAX_CPS_NODE_ID } from '../../common/utils/cps-node-id.util.js';
 import { type CpsAnchorDocument } from '../schemas/cps-anchor.schema.js';
 import { CpsAnchorRepository } from './cps-anchor.repository.js';
@@ -72,6 +73,7 @@ describe('CpsAnchorRepository', () => {
       unsupported_count: 0,
       legacy_projection_count: 0,
       private_section_count: 0,
+      backfill_attempt_count: 0,
     });
     expect(options).toEqual({ upsert: true });
     expect(exec).toHaveBeenCalled();
@@ -165,5 +167,103 @@ describe('CpsAnchorRepository', () => {
       private_section_count: 3,
       error_code: 'ENVELOPE_ERRORS',
     });
+  });
+
+  it('выбирает только незавершённые backfill anchors в заданном диапазоне', async () => {
+    const model = createModelMock();
+    const exec = jest.fn().mockResolvedValue([]);
+    const limit = jest.fn().mockReturnValue({ exec });
+    const sort = jest.fn().mockReturnValue({ limit });
+    const find = jest.fn().mockReturnValue({ sort });
+    Object.assign(model, { find });
+    const repository = new CpsAnchorRepository(asModel(model));
+
+    await repository.findBackfillCandidates({
+      startBlock: 10,
+      endBlock: 20,
+      cid: 'cid',
+      limit: 25,
+    });
+
+    expect(find).toHaveBeenCalledWith({
+      status: {
+        $in: [CpsAnchorStatus.PROCESSED, CpsAnchorStatus.PROCESSED_WITH_ERRORS],
+      },
+      block: { $gte: 10, $lte: 20 },
+      cid: 'cid',
+      backfill_status: {
+        $nin: [
+          CpsBackfillStatus.Processed,
+          CpsBackfillStatus.ProcessedWithErrors,
+        ],
+      },
+    });
+    expect(sort).toHaveBeenCalledWith({ block: 1, source_key: 1 });
+    expect(limit).toHaveBeenCalledWith(25);
+    expect(exec).toHaveBeenCalled();
+  });
+
+  it('обновляет backfill state без изменения основного status', async () => {
+    const model = createModelMock();
+    const exec = jest.fn().mockResolvedValue(undefined);
+    model.updateOne.mockReturnValue({ exec });
+    const repository = new CpsAnchorRepository(asModel(model));
+    const completedAt = new Date('2026-09-01T10:00:00.000Z');
+
+    await repository.markBackfillStarted(
+      'cps:1:cid',
+      new Date('2026-09-01T09:00:00.000Z'),
+    );
+    await repository.updateBackfillResult(
+      'cps:1:cid',
+      CpsBackfillStatus.ProcessedWithErrors,
+      {
+        recordCount: 4,
+        invalidCount: 1,
+        unsupportedCount: 1,
+        privateSectionCount: 2,
+        errorCode: 'PARTIAL_ERRORS',
+        errorMessage: 'One record was invalid',
+        completedAt,
+      },
+    );
+
+    const updateCalls = model.updateOne.mock.calls as unknown as Array<
+      [
+        Record<string, unknown>,
+        {
+          $set: Record<string, unknown>;
+          $inc: Record<string, unknown>;
+        },
+      ]
+    >;
+    const startUpdate = updateCalls[0][1];
+    expect(startUpdate.$set).not.toHaveProperty('status');
+    expect(startUpdate.$set.backfill_status).toBe(CpsBackfillStatus.Processing);
+    expect(startUpdate.$inc).toEqual({ backfill_attempt_count: 1 });
+    const resultUpdate = updateCalls[1][1];
+    expect(resultUpdate.$set).not.toHaveProperty('status');
+    expect(resultUpdate.$set).toMatchObject({
+      backfill_status: CpsBackfillStatus.ProcessedWithErrors,
+      backfilled_at: completedAt,
+      backfill_record_count: 4,
+      backfill_invalid_count: 1,
+      backfill_unsupported_count: 1,
+      backfill_private_section_count: 2,
+      backfill_error_code: 'PARTIAL_ERRORS',
+    });
+  });
+
+  it('отклоняет неверный диапазон backfill до запроса MongoDB', async () => {
+    const model = createModelMock();
+    const repository = new CpsAnchorRepository(asModel(model));
+
+    await expect(
+      repository.findBackfillCandidates({
+        startBlock: 20,
+        endBlock: 10,
+        limit: 25,
+      }),
+    ).rejects.toThrow('startBlock must not exceed endBlock');
   });
 });

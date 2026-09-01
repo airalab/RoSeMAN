@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
+import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
 import {
   createCpsAnchorSourceKey,
   normalizeCpsNodeId,
@@ -16,6 +17,24 @@ export interface CpsAnchorInput {
   readonly block: number;
   readonly cid: string;
   readonly owner?: string;
+}
+
+export interface CpsBackfillQuery {
+  readonly startBlock?: number;
+  readonly endBlock?: number;
+  readonly cid?: string;
+  readonly limit: number;
+  readonly includeCompleted?: boolean;
+}
+
+export interface CpsBackfillResultDetails {
+  readonly recordCount: number;
+  readonly invalidCount: number;
+  readonly unsupportedCount: number;
+  readonly privateSectionCount: number;
+  readonly errorCode?: string;
+  readonly errorMessage?: string;
+  readonly completedAt?: Date;
 }
 
 /**
@@ -61,6 +80,7 @@ export class CpsAnchorRepository {
       unsupported_count: 0,
       legacy_projection_count: 0,
       private_section_count: 0,
+      backfill_attempt_count: 0,
     };
 
     await this.model
@@ -204,5 +224,135 @@ export class CpsAnchorRepository {
         },
       })
       .exec();
+  }
+
+  /**
+   * Возвращает завершённые ingestion anchors для отдельного canonical backfill.
+   * Основной queue status при этом не захватывается и не изменяется.
+   * @param query - диапазон блоков, CID, limit и режим повторного запуска
+   * @returns отсортированный batch кандидатов
+   */
+  async findBackfillCandidates(
+    query: CpsBackfillQuery,
+  ): Promise<CpsAnchorDocument[]> {
+    this.validateBackfillQuery(query);
+    const filter: Record<string, unknown> = {
+      status: {
+        $in: [CpsAnchorStatus.PROCESSED, CpsAnchorStatus.PROCESSED_WITH_ERRORS],
+      },
+    };
+    const block: Record<string, number> = {};
+    if (query.startBlock !== undefined) block.$gte = query.startBlock;
+    if (query.endBlock !== undefined) block.$lte = query.endBlock;
+    if (Object.keys(block).length > 0) filter.block = block;
+    if (query.cid !== undefined) filter.cid = query.cid;
+    if (!query.includeCompleted) {
+      filter.backfill_status = {
+        $nin: [
+          CpsBackfillStatus.Processed,
+          CpsBackfillStatus.ProcessedWithErrors,
+        ],
+      };
+    }
+
+    return this.model
+      .find(filter)
+      .sort({ block: 1, source_key: 1 })
+      .limit(query.limit)
+      .exec();
+  }
+
+  /**
+   * Фиксирует начало попытки backfill отдельно от ingestion lease/status.
+   * @param sourceKey - детерминированный ключ anchor
+   * @param startedAt - время начала попытки
+   */
+  async markBackfillStarted(sourceKey: string, startedAt: Date): Promise<void> {
+    await this.model
+      .updateOne(
+        { source_key: sourceKey },
+        {
+          $set: {
+            backfill_status: CpsBackfillStatus.Processing,
+            backfill_started_at: startedAt,
+          },
+          $inc: { backfill_attempt_count: 1 },
+          $unset: {
+            backfill_error_code: '',
+            backfill_error_message: '',
+          },
+        },
+      )
+      .exec();
+  }
+
+  /**
+   * Сохраняет терминальный результат backfill, не меняя рабочий status anchor.
+   * @param sourceKey - детерминированный ключ anchor
+   * @param status - терминальное состояние backfill
+   * @param details - отдельные counters и безопасная диагностика
+   */
+  async updateBackfillResult(
+    sourceKey: string,
+    status: Exclude<CpsBackfillStatus, CpsBackfillStatus.Processing>,
+    details: CpsBackfillResultDetails,
+  ): Promise<void> {
+    const error =
+      details.errorCode !== undefined
+        ? {
+            backfill_error_code: details.errorCode,
+            backfill_error_message: details.errorMessage,
+          }
+        : {};
+    await this.model
+      .updateOne(
+        { source_key: sourceKey },
+        {
+          $set: {
+            backfill_status: status,
+            backfilled_at: details.completedAt ?? new Date(),
+            backfill_record_count: details.recordCount,
+            backfill_invalid_count: details.invalidCount,
+            backfill_unsupported_count: details.unsupportedCount,
+            backfill_private_section_count: details.privateSectionCount,
+            ...error,
+          },
+          ...(details.errorCode === undefined
+            ? {
+                $unset: {
+                  backfill_error_code: '',
+                  backfill_error_message: '',
+                },
+              }
+            : {}),
+        },
+      )
+      .exec();
+  }
+
+  /** Проверяет безопасные числовые границы запроса backfill. */
+  private validateBackfillQuery(query: CpsBackfillQuery): void {
+    if (!Number.isSafeInteger(query.limit) || query.limit <= 0) {
+      throw new RangeError(
+        'CPS backfill limit must be a positive safe integer',
+      );
+    }
+    for (const [name, value] of [
+      ['startBlock', query.startBlock],
+      ['endBlock', query.endBlock],
+    ] as const) {
+      if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+        throw new RangeError(
+          `CPS backfill ${name} must be a safe unsigned integer`,
+        );
+      }
+    }
+    if (
+      query.startBlock !== undefined &&
+      query.endBlock !== undefined &&
+      query.startBlock > query.endBlock
+    ) {
+      throw new RangeError('CPS backfill startBlock must not exceed endBlock');
+    }
   }
 }

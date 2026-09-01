@@ -103,6 +103,8 @@ Without claiming a complete list (each file is worth reading in full), here are 
 - `claimNext(now, leaseDurationMs)` — atomically claims pending/retry work and reclaims an expired processing lease after restart.
 - `updateStatus(sourceKey, status, details)` — records processing state, separate canonical/signature/decode/projection/private counters and retry/error details.
 - `countPending()` — counts first-attempt and retry-pending anchors.
+- `findBackfillCandidates(...)` — selects only completed ingestion anchors by block/CID without claiming the working queue.
+- `markBackfillStarted(...)` / `updateBackfillResult(...)` — keep attempts, status, counters and errors in separate `backfill_*` fields.
 
 ### Connectivity repositories
 
