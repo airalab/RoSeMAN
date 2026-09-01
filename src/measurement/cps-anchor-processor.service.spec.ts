@@ -154,7 +154,18 @@ describe('CpsAnchorProcessorService', () => {
     expect(updateStatus).toHaveBeenCalledWith(
       anchor.source_key,
       CpsAnchorStatus.PROCESSED,
-      { validEnvelopeCount: 1, invalidEnvelopeCount: 0 },
+      {
+        validEnvelopeCount: 1,
+        invalidEnvelopeCount: 0,
+        envelopeCount: 1,
+        storedRecordCount: 0,
+        validSignatureCount: 1,
+        invalidSignatureCount: 0,
+        decodedCount: 1,
+        unsupportedCount: 0,
+        legacyProjectionCount: 1,
+        privateSectionCount: 0,
+      },
     );
     expect(upsertMany.mock.invocationCallOrder[0]).toBeLessThan(
       updateStatus.mock.invocationCallOrder[0],
@@ -221,7 +232,18 @@ describe('CpsAnchorProcessorService', () => {
     expect(updateStatus).toHaveBeenCalledWith(
       anchor.source_key,
       CpsAnchorStatus.PROCESSED,
-      { validEnvelopeCount: 1, invalidEnvelopeCount: 0 },
+      {
+        validEnvelopeCount: 1,
+        invalidEnvelopeCount: 0,
+        envelopeCount: 1,
+        storedRecordCount: 0,
+        validSignatureCount: 1,
+        invalidSignatureCount: 0,
+        decodedCount: 1,
+        unsupportedCount: 0,
+        legacyProjectionCount: 1,
+        privateSectionCount: 0,
+      },
     );
   });
 
@@ -314,6 +336,21 @@ describe('CpsAnchorProcessorService', () => {
       anchor.source_key,
       'decoded',
     );
+    const processedStatusCall = updateStatus.mock.calls.at(-1) as unknown as [
+      string,
+      CpsAnchorStatus,
+      Record<string, number>,
+    ];
+    expect(processedStatusCall[2]).toMatchObject({
+      envelopeCount: 1,
+      storedRecordCount: 1,
+      validSignatureCount: 1,
+      invalidSignatureCount: 0,
+      decodedCount: 1,
+      unsupportedCount: 0,
+      legacyProjectionCount: 1,
+      privateSectionCount: 0,
+    });
     expect(upsertFetched.mock.invocationCallOrder[0]).toBeLessThan(
       upsertRecord.mock.invocationCallOrder[0],
     );

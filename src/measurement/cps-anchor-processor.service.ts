@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CpsAnchorStatus } from '../common/constants/cps-anchor-status.enum.js';
+import { CpsAnchorErrorCode } from '../common/constants/cps-anchor-error-code.enum.js';
 import {
   ConnectivityLegacyProjectionStatus,
   ConnectivityPayloadDecodeStatus,
@@ -168,6 +169,19 @@ export class CpsAnchorProcessorService
       }
 
       let invalidEnvelopeCount = batch.errors.length;
+      const structuralErrors = new Map<number, string[]>();
+      for (const error of batch.errors) {
+        const codes = structuralErrors.get(error.envelopeIndex) ?? [];
+        codes.push(error.code);
+        structuralErrors.set(error.envelopeIndex, codes);
+      }
+      const envelopeCount = batch.envelopes.length + structuralErrors.size;
+      let storedRecordCount = 0;
+      let validSignatureCount = 0;
+      let invalidSignatureCount = 0;
+      let decodedCount = 0;
+      let unsupportedCount = 0;
+      let privateSectionCount = 0;
       const measurements: Measurement[] = [];
       const projectedRecords: Array<{
         record: ConnectivityRecordInput;
@@ -175,12 +189,6 @@ export class CpsAnchorProcessorService
       }> = [];
 
       if (this.canonicalStorageEnabled) {
-        const structuralErrors = new Map<number, string[]>();
-        for (const error of batch.errors) {
-          const codes = structuralErrors.get(error.envelopeIndex) ?? [];
-          codes.push(error.code);
-          structuralErrors.set(error.envelopeIndex, codes);
-        }
         for (const [envelopeIndex, codes] of structuralErrors) {
           await this.connectivityRecordRepo.upsertRecord(
             this.connectivityRecordMapper.createInvalidEnvelopeRecord(
@@ -189,6 +197,7 @@ export class CpsAnchorProcessorService
               codes.join(','),
             ),
           );
+          storedRecordCount += 1;
         }
       }
 
@@ -198,11 +207,13 @@ export class CpsAnchorProcessorService
           : undefined;
         if (record) {
           await this.connectivityRecordRepo.upsertRecord(record);
+          storedRecordCount += 1;
         }
 
         const verification = await this.signatureVerifier.verify(envelope);
         if (!verification.verified) {
           invalidEnvelopeCount += 1;
+          invalidSignatureCount += 1;
           if (record) {
             record = {
               ...record,
@@ -216,9 +227,19 @@ export class CpsAnchorProcessorService
           }
           continue;
         }
+        validSignatureCount += 1;
 
         try {
           const message = this.messageDecoder.decode(verification.envelope);
+          if (
+            message.payload.case === 'urban' ||
+            message.payload.case === 'insight'
+          ) {
+            decodedCount += 1;
+            privateSectionCount += message.payload.value.private.length;
+          } else {
+            unsupportedCount += 1;
+          }
           if (record) {
             record = this.connectivityRecordMapper.applyDecodedMessage(
               record,
@@ -312,6 +333,17 @@ export class CpsAnchorProcessorService
       await this.cpsAnchorRepo.updateStatus(anchor.source_key, status, {
         validEnvelopeCount: measurements.length,
         invalidEnvelopeCount,
+        envelopeCount,
+        storedRecordCount,
+        validSignatureCount,
+        invalidSignatureCount,
+        decodedCount,
+        unsupportedCount,
+        legacyProjectionCount: measurements.length,
+        privateSectionCount,
+        ...(invalidEnvelopeCount > 0
+          ? { errorCode: CpsAnchorErrorCode.EnvelopeErrors }
+          : {}),
       });
       this.logger.debug(
         `CPS anchor ${anchor.source_key}: saved ${measurements.length}, rejected ${invalidEnvelopeCount}`,
@@ -362,7 +394,9 @@ export class CpsAnchorProcessorService
       ? undefined
       : new Date(Date.now() + this.retryBaseDelay * 2 ** exponent);
     await this.cpsAnchorRepo.updateStatus(anchor.source_key, status, {
-      errorCode: exhausted ? 'MAX_ATTEMPTS_EXCEEDED' : 'TRANSIENT_ERROR',
+      errorCode: exhausted
+        ? CpsAnchorErrorCode.MaxAttemptsExceeded
+        : CpsAnchorErrorCode.TransientError,
       errorMessage: message,
       availableAt,
     });

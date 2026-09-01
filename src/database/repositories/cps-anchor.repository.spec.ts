@@ -64,6 +64,14 @@ describe('CpsAnchorRepository', () => {
       attempt_count: 0,
       valid_envelope_count: 0,
       invalid_envelope_count: 0,
+      envelope_count: 0,
+      stored_record_count: 0,
+      valid_signature_count: 0,
+      invalid_signature_count: 0,
+      decoded_count: 0,
+      unsupported_count: 0,
+      legacy_projection_count: 0,
+      private_section_count: 0,
     });
     expect(options).toEqual({ upsert: true });
     expect(exec).toHaveBeenCalled();
@@ -117,5 +125,45 @@ describe('CpsAnchorRepository', () => {
       }),
     ).rejects.toThrow('CPS anchor block must be a safe unsigned integer');
     expect(model.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('атомарно сохраняет раздельные processing counters', async () => {
+    const model = createModelMock();
+    const exec = jest.fn().mockResolvedValue(undefined);
+    model.updateOne.mockReturnValue({ exec });
+    const repository = new CpsAnchorRepository(asModel(model));
+
+    await repository.updateStatus(
+      'cps:1:cid',
+      CpsAnchorStatus.PROCESSED_WITH_ERRORS,
+      {
+        envelopeCount: 8,
+        storedRecordCount: 8,
+        validSignatureCount: 6,
+        invalidSignatureCount: 1,
+        decodedCount: 5,
+        unsupportedCount: 1,
+        legacyProjectionCount: 4,
+        privateSectionCount: 3,
+        errorCode: 'ENVELOPE_ERRORS',
+      },
+    );
+
+    const [, update] = model.updateOne.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+      { $set: Record<string, unknown> },
+    ];
+    expect(update.$set).toMatchObject({
+      status: CpsAnchorStatus.PROCESSED_WITH_ERRORS,
+      envelope_count: 8,
+      stored_record_count: 8,
+      valid_signature_count: 6,
+      invalid_signature_count: 1,
+      decoded_count: 5,
+      unsupported_count: 1,
+      legacy_projection_count: 4,
+      private_section_count: 3,
+      error_code: 'ENVELOPE_ERRORS',
+    });
   });
 });

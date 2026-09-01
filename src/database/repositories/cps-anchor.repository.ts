@@ -53,6 +53,14 @@ export class CpsAnchorRepository {
       attempt_count: 0,
       valid_envelope_count: 0,
       invalid_envelope_count: 0,
+      envelope_count: 0,
+      stored_record_count: 0,
+      valid_signature_count: 0,
+      invalid_signature_count: 0,
+      decoded_count: 0,
+      unsupported_count: 0,
+      legacy_projection_count: 0,
+      private_section_count: 0,
     };
 
     await this.model
@@ -121,6 +129,14 @@ export class CpsAnchorRepository {
     details: {
       readonly validEnvelopeCount?: number;
       readonly invalidEnvelopeCount?: number;
+      readonly envelopeCount?: number;
+      readonly storedRecordCount?: number;
+      readonly validSignatureCount?: number;
+      readonly invalidSignatureCount?: number;
+      readonly decodedCount?: number;
+      readonly unsupportedCount?: number;
+      readonly legacyProjectionCount?: number;
+      readonly privateSectionCount?: number;
       readonly errorCode?: string;
       readonly errorMessage?: string;
       readonly availableAt?: Date;
@@ -133,6 +149,30 @@ export class CpsAnchorRepository {
     }
     if (details.invalidEnvelopeCount !== undefined) {
       update.invalid_envelope_count = details.invalidEnvelopeCount;
+    }
+    if (details.envelopeCount !== undefined) {
+      update.envelope_count = details.envelopeCount;
+    }
+    if (details.storedRecordCount !== undefined) {
+      update.stored_record_count = details.storedRecordCount;
+    }
+    if (details.validSignatureCount !== undefined) {
+      update.valid_signature_count = details.validSignatureCount;
+    }
+    if (details.invalidSignatureCount !== undefined) {
+      update.invalid_signature_count = details.invalidSignatureCount;
+    }
+    if (details.decodedCount !== undefined) {
+      update.decoded_count = details.decodedCount;
+    }
+    if (details.unsupportedCount !== undefined) {
+      update.unsupported_count = details.unsupportedCount;
+    }
+    if (details.legacyProjectionCount !== undefined) {
+      update.legacy_projection_count = details.legacyProjectionCount;
+    }
+    if (details.privateSectionCount !== undefined) {
+      update.private_section_count = details.privateSectionCount;
     }
     if (details.errorCode !== undefined) {
       update.error_code = details.errorCode;

@@ -101,7 +101,7 @@ Without claiming a complete list (each file is worth reading in full), here are 
 
 - `upsertAnchor({ nodeId, block, cid, owner })` — idempotent insert keyed by `cps:<nodeId>:<cid>`; numeric u64 NodeId is stored as a canonical decimal string to avoid JavaScript precision loss.
 - `claimNext(now, leaseDurationMs)` — atomically claims pending/retry work and reclaims an expired processing lease after restart.
-- `updateStatus(sourceKey, status, details)` — records processing state, envelope counts and retry/error details.
+- `updateStatus(sourceKey, status, details)` — records processing state, separate canonical/signature/decode/projection/private counters and retry/error details.
 - `countPending()` — counts first-attempt and retry-pending anchors.
 
 ### Connectivity repositories

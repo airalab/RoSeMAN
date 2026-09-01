@@ -36,6 +36,30 @@ export class CpsAnchor {
   @Prop({ required: true, type: Number, default: 0 })
   invalid_envelope_count!: number;
 
+  @Prop({ required: true, type: Number, default: 0 })
+  envelope_count!: number;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  stored_record_count!: number;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  valid_signature_count!: number;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  invalid_signature_count!: number;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  decoded_count!: number;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  unsupported_count!: number;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  legacy_projection_count!: number;
+
+  @Prop({ required: true, type: Number, default: 0 })
+  private_section_count!: number;
+
   @Prop({ type: Date })
   available_at?: Date;
 

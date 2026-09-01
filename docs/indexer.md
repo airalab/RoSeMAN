@@ -385,11 +385,15 @@ This additive collection is the active idempotent queue for snapshot and realtim
 | `owner`                                           | String | CPS node owner, when available                   |
 | `status`                                          | Number | Pending/processing/result/retry state            |
 | `attempt_count`                                   | Number | Number of atomic processing claims               |
-| `valid_envelope_count` / `invalid_envelope_count` | Number | Processing counters                              |
+| `valid_envelope_count` / `invalid_envelope_count` | Number | Legacy-compatible accepted/rejected counters     |
+| `envelope_count` / `stored_record_count`          | Number | Total occurrences and stored canonical records   |
+| `valid_signature_count` / `invalid_signature_count` | Number | Signature verification results                 |
+| `decoded_count` / `unsupported_count`             | Number | Supported decoded and unsupported messages       |
+| `legacy_projection_count` / `private_section_count` | Number | Legacy projections and encrypted private parts |
 | `available_at` / `lease_expires_at`               | Date   | Retry and crash-recovery scheduling              |
 | `error_code` / `error_message`                    | String | Sanitized processing diagnostics                 |
 
-Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and node history `{node_id, block: -1}`.
+Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and node history `{node_id, block: -1}`. A partially valid batch ends with `error_code="ENVELOPE_ERRORS"`; fatal batch and retry failures retain their stable error codes.
 
 ### Collection `connectivity_payloads` (ConnectivityPayload)
 
