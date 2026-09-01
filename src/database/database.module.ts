@@ -1,6 +1,14 @@
 import { Global, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CpsAnchor, CpsAnchorSchema } from './schemas/cps-anchor.schema.js';
+import {
+  ConnectivityPayload,
+  ConnectivityPayloadSchema,
+} from './schemas/connectivity-payload.schema.js';
+import {
+  ConnectivityRecord,
+  ConnectivityRecordSchema,
+} from './schemas/connectivity-record.schema.js';
 import { Datalog, DatalogSchema } from './schemas/datalog.schema.js';
 import { IndexState, IndexStateSchema } from './schemas/index-state.schema.js';
 import {
@@ -14,6 +22,8 @@ import {
   SubscriptionSchema,
 } from './schemas/subscription.schema.js';
 import { CpsAnchorRepository } from './repositories/cps-anchor.repository.js';
+import { ConnectivityPayloadRepository } from './repositories/connectivity-payload.repository.js';
+import { ConnectivityRecordRepository } from './repositories/connectivity-record.repository.js';
 import { DatalogRepository } from './repositories/datalog.repository.js';
 import { IndexStateRepository } from './repositories/index-state.repository.js';
 import { MeasurementRepository } from './repositories/measurement.repository.js';
@@ -31,6 +41,8 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
   imports: [
     MongooseModule.forFeature([
       { name: CpsAnchor.name, schema: CpsAnchorSchema },
+      { name: ConnectivityPayload.name, schema: ConnectivityPayloadSchema },
+      { name: ConnectivityRecord.name, schema: ConnectivityRecordSchema },
       { name: Datalog.name, schema: DatalogSchema },
       { name: IndexState.name, schema: IndexStateSchema },
       { name: Measurement.name, schema: MeasurementSchema },
@@ -41,6 +53,8 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
   ],
   providers: [
     CpsAnchorRepository,
+    ConnectivityPayloadRepository,
+    ConnectivityRecordRepository,
     DatalogRepository,
     IndexStateRepository,
     MeasurementRepository,
@@ -50,6 +64,8 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
   ],
   exports: [
     CpsAnchorRepository,
+    ConnectivityPayloadRepository,
+    ConnectivityRecordRepository,
     DatalogRepository,
     IndexStateRepository,
     MeasurementRepository,

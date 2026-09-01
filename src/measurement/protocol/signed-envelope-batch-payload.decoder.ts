@@ -1,5 +1,6 @@
 import { inflate } from 'node:zlib';
 import { createDecompressor } from 'lzma-native';
+import { ProtocolBatchWireFormat } from '../../common/constants/connectivity-storage.enum.js';
 import { SignedEnvelopeBatchDecoder } from './signed-envelope-batch.decoder.js';
 import {
   ProtocolBatchDecodeError,
@@ -9,14 +10,7 @@ import {
 
 export const DEFAULT_MAX_COMPRESSED_PROTOCOL_BATCH_BYTES = 10 * 1024 * 1024;
 
-/**
- * Явно заданный wire format объекта, полученного из IPFS.
- */
-export enum ProtocolBatchWireFormat {
-  Raw = 'raw',
-  Xz = 'xz',
-  Zlib = 'zlib',
-}
+export { ProtocolBatchWireFormat } from '../../common/constants/connectivity-storage.enum.js';
 
 /**
  * Ограничения декодирования raw или zlib payload.

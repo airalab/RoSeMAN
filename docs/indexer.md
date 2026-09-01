@@ -112,13 +112,13 @@ A generic block scanner (`src/robonomics/block-indexer.service.ts`). It is not t
 
 Current names:
 
-| Handler name         | Type       | Section / Method                                         |
-|----------------------|------------|----------------------------------------------------------|
-| `cps-payload-set`    | event      | `cps.PayloadSet`                                         |
-| `datalog-new-record` | event      | `datalog.NewRecord`                                      |
-| `rws-new-devices`    | event      | `rws.NewDevices`                                         |
-| `rws-extrinsic`      | extrinsic  | `rws.call`                                               |
-| `rws-story`          | extrinsic  | `rws.call` (reads `datalog.NewRecord` events of the extrinsic) |
+| Handler name         | Type      | Section / Method                                               |
+| -------------------- | --------- | -------------------------------------------------------------- |
+| `cps-payload-set`    | event     | `cps.PayloadSet`                                               |
+| `datalog-new-record` | event     | `datalog.NewRecord`                                            |
+| `rws-new-devices`    | event     | `rws.NewDevices`                                               |
+| `rws-extrinsic`      | extrinsic | `rws.call`                                                     |
+| `rws-story`          | extrinsic | `rws.call` (reads `datalog.NewRecord` events of the extrinsic) |
 
 ## Handlers
 
@@ -183,13 +183,15 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 
 1. Atomically claims up to `CPS_MAX_ANCHORS_PER_POLL` pending anchors using a recoverable lease.
 2. Downloads exact bytes through `IpfsFetcherService.fetchBytes()`.
-3. Decodes the explicitly configured `raw`, `xz` or `zlib` wire format with compressed/decompressed/envelope-count limits.
-4. Validates each `SignedEnvelope`, reconstructs `sensor_id || timestamp_le_u64 || nonce || message` and verifies Ed25519 before decoding `core.v1.Message`.
-5. Accepts public Urban/Insight measurements with a valid owner and useful scalar readings; GPS is optional, but validated when present.
-6. Upserts `measurements` and `cities`, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
-7. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
+3. With `CPS_RAW_PAYLOAD_STORAGE_ENABLED=true`, upserts exact downloaded bytes and their SHA-256 into `connectivity_payloads` before any decompression or decode.
+4. Decodes the explicitly configured `raw`, `xz` or `zlib` wire format with compressed/decompressed/envelope-count limits.
+5. Validates each `SignedEnvelope`, reconstructs `sensor_id || timestamp_le_u64 || nonce || message` and verifies Ed25519 before decoding `core.v1.Message`.
+6. With `CPS_CANONICAL_STORAGE_ENABLED=true`, stores each occurrence in `connectivity_records`, including envelope bytes, millisecond timestamp, ordered public events, GPS height, encrypted private sections and processing statuses.
+7. Accepts public Urban/Insight measurements with a valid owner and useful scalar readings; GPS is optional, but validated when present.
+8. Upserts `measurements` and `cities`, finalizes canonical/raw statuses, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
+9. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
 
-CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Timestamp milliseconds are converted to Unix seconds after signature verification. Private sections are not decrypted or stored.
+CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128 and stores private sections as BSON Binary without decrypting them. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
 
 ## MeasurementProcessorService
 
@@ -358,15 +360,15 @@ STORY   = 5   // story (inline JSON, RwsStoryHandler)
 
 ### Collection `datalogs` (Datalog)
 
-| Field          | Type     | Description                                           |
-|----------------|----------|-------------------------------------------------------|
-| `block`        | Number   | Block number in the chain *(indexed)*                 |
-| `sender`       | String   | Account address *(indexed)*                           |
-| `resultHash`   | String   | IPFS CID or arbitrary string                          |
-| `status`       | Number   | `0` NEW, `1` IPFS_PENDING, `2` PROCESSED, `3` ERROR *(indexed)* |
-| `timechain`    | Number   | Timestamp from the NewRecord event                    |
-| `errorMessage` | String   | Error text (when `status: ERROR`)                     |
-| `createdAt` / `updatedAt` | Date | timestamps                                       |
+| Field                     | Type   | Description                                                     |
+| ------------------------- | ------ | --------------------------------------------------------------- |
+| `block`                   | Number | Block number in the chain _(indexed)_                           |
+| `sender`                  | String | Account address _(indexed)_                                     |
+| `resultHash`              | String | IPFS CID or arbitrary string                                    |
+| `status`                  | Number | `0` NEW, `1` IPFS_PENDING, `2` PROCESSED, `3` ERROR _(indexed)_ |
+| `timechain`               | Number | Timestamp from the NewRecord event                              |
+| `errorMessage`            | String | Error text (when `status: ERROR`)                               |
+| `createdAt` / `updatedAt` | Date   | timestamps                                                      |
 
 Indexes: unique `{block, sender, resultHash}`, plus single-field indexes on `block`, `sender`, `status`.
 
@@ -374,80 +376,92 @@ Indexes: unique `{block, sender, resultHash}`, plus single-field indexes on `blo
 
 This additive collection is the active idempotent queue for snapshot and realtime CPS ingestion. It does not replace or modify the legacy `datalogs` path.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `source_key` | String | Unique `cps:<node_id>:<cid>` key |
-| `node_id` | String | Numeric CPS u64 NodeId as canonical decimal text |
-| `block` | Number | Finalized block where the anchor was observed |
-| `cid` | String | IPFS CID of the protocol batch |
-| `owner` | String | CPS node owner, when available |
-| `status` | Number | Pending/processing/result/retry state |
-| `attempt_count` | Number | Number of atomic processing claims |
-| `valid_envelope_count` / `invalid_envelope_count` | Number | Processing counters |
-| `available_at` / `lease_expires_at` | Date | Retry and crash-recovery scheduling |
-| `error_code` / `error_message` | String | Sanitized processing diagnostics |
+| Field                                             | Type   | Description                                      |
+| ------------------------------------------------- | ------ | ------------------------------------------------ |
+| `source_key`                                      | String | Unique `cps:<node_id>:<cid>` key                 |
+| `node_id`                                         | String | Numeric CPS u64 NodeId as canonical decimal text |
+| `block`                                           | Number | Finalized block where the anchor was observed    |
+| `cid`                                             | String | IPFS CID of the protocol batch                   |
+| `owner`                                           | String | CPS node owner, when available                   |
+| `status`                                          | Number | Pending/processing/result/retry state            |
+| `attempt_count`                                   | Number | Number of atomic processing claims               |
+| `valid_envelope_count` / `invalid_envelope_count` | Number | Processing counters                              |
+| `available_at` / `lease_expires_at`               | Date   | Retry and crash-recovery scheduling              |
+| `error_code` / `error_message`                    | String | Sanitized processing diagnostics                 |
 
 Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, and node history `{node_id, block: -1}`.
 
+### Collection `connectivity_payloads` (ConnectivityPayload)
+
+Lossless archive of the exact transport payload. `raw_payload` is stored before decompression and decode together with `raw_size`, `raw_sha256`, wire format, schema revision, CPS provenance and a decode status. No TTL is declared.
+
+Indexes: unique `{payload_key}`, unique `{source_type, source_id}`, CID lookup `{cid}`, and decode queue `{decode_status, fetched_at}`.
+
+### Collection `connectivity_records` (ConnectivityRecord)
+
+One document per envelope occurrence in a payload. It stores `record_key=<payload_key>:<envelope_index>`, provenance, exact envelope binary fields, `timestamp_ms` as Decimal128, optional `recorded_at`, signature/decode/projection statuses, owner metadata, ordered `public_events` (including sensor type and GPS height), and ordered encrypted `private_sections`. Invalid envelopes receive a diagnostic occurrence record while their exact source bytes remain in `connectivity_payloads`.
+
+Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, and time-range indexes by `sensor_id`, `owner`, and `payload_type` paired with `recorded_at`.
+
 ### Collection `measurements` (Measurement)
 
-| Field         | Type     | Description                                    |
-|---------------|----------|------------------------------------------------|
-| `datalog_id`  | ObjectId | Optional reference to `datalogs._id` for legacy records *(indexed)* |
-| `source_type` | String   | Optional source discriminator; `cps` for CPS records |
-| `source_id`   | String   | Optional deterministic source key; CPS uses `cps:<nodeId>:<cid>` |
-| `sensor_id`   | String   | Sensor ID *(indexed)*                          |
-| `model`       | Number   | Sensor model (`SensorModel`)                   |
-| `measurement` | Object   | Reading data (arbitrary JSON)                  |
-| `geo`         | Object   | Optional `{ lat: Number, lng: Number }`        |
-| `donated_by`  | String   | Donor (optional)                               |
-| `device_model`| String   | Device model (optional)                        |
-| `owner`       | String   | Sensor owner address (optional)                |
-| `timestamp`   | Number   | Unix timestamp of the reading, seconds *(indexed)* |
+| Field          | Type     | Description                                                         |
+| -------------- | -------- | ------------------------------------------------------------------- |
+| `datalog_id`   | ObjectId | Optional reference to `datalogs._id` for legacy records _(indexed)_ |
+| `source_type`  | String   | Optional source discriminator; `cps` for CPS records                |
+| `source_id`    | String   | Optional deterministic source key; CPS uses `cps:<nodeId>:<cid>`    |
+| `sensor_id`    | String   | Sensor ID _(indexed)_                                               |
+| `model`        | Number   | Sensor model (`SensorModel`)                                        |
+| `measurement`  | Object   | Reading data (arbitrary JSON)                                       |
+| `geo`          | Object   | Optional `{ lat: Number, lng: Number }`                             |
+| `donated_by`   | String   | Donor (optional)                                                    |
+| `device_model` | String   | Device model (optional)                                             |
+| `owner`        | String   | Sensor owner address (optional)                                     |
+| `timestamp`    | Number   | Unix timestamp of the reading, seconds _(indexed)_                  |
 
 Indexes: unique compound `{sensor_id, timestamp}` (deduplication), compound `{source_type, source_id}` (source lookup), and compound `{owner, sensor_id}` (selecting sensors by owner — `GET /api/v2/sensor/owner/:owner`).
 
 ### Collection `cities` (Sensor)
 
-| Field       | Type   | Description                                              |
-|-------------|--------|----------------------------------------------------------|
-| `sensor_id` | String | Sensor ID *(unique)*                                     |
-| `geo`       | Object | `{ lat, lng }` — last known position                     |
+| Field       | Type           | Description                                                                       |
+| ----------- | -------------- | --------------------------------------------------------------------------------- |
+| `sensor_id` | String         | Sensor ID _(unique)_                                                              |
+| `geo`       | Object         | `{ lat, lng }` — last known position                                              |
 | `city`      | String \| null | `null` — needs geocoding; `''` — Nominatim returned no result; otherwise the city |
-| `state`     | String \| null | region/state                                     |
-| `country`   | String \| null | country                                          |
+| `state`     | String \| null | region/state                                                                      |
+| `country`   | String \| null | country                                                                           |
 
 ### Collection `stories` (Story)
 
-| Field       | Type   | Description                                              |
-|-------------|--------|----------------------------------------------------------|
-| `block`     | Number | Block number (optional)                                  |
-| `author`    | String | Datalog sender address *(indexed)*                       |
-| `sensor_id` | String | ID of the sensor the story relates to *(indexed)*        |
-| `message`   | String | Story text                                               |
-| `icon`      | String | Icon name (the `i` field from the payload)               |
-| `timestamp` | Number | Unix timestamp *(indexed)*                               |
-| `timechain` | Number | Event timestamp from the chain                           |
-| `date`      | String \| null | Free-form date string from the payload           |
+| Field       | Type           | Description                                       |
+| ----------- | -------------- | ------------------------------------------------- |
+| `block`     | Number         | Block number (optional)                           |
+| `author`    | String         | Datalog sender address _(indexed)_                |
+| `sensor_id` | String         | ID of the sensor the story relates to _(indexed)_ |
+| `message`   | String         | Story text                                        |
+| `icon`      | String         | Icon name (the `i` field from the payload)        |
+| `timestamp` | Number         | Unix timestamp _(indexed)_                        |
+| `timechain` | Number         | Event timestamp from the chain                    |
+| `date`      | String \| null | Free-form date string from the payload            |
 
 Indexes: unique compound `{sensor_id, timestamp}`.
 
 ### Collection `subscriptions` (Subscription)
 
-| Field     | Type   | Description                                       |
-|-----------|--------|---------------------------------------------------|
-| `account` | String | Subscription's device account *(indexed)*         |
-| `owner`   | String | Subscription owner *(indexed)*                    |
-| `block`   | Number | Block number of the last update (optional)        |
+| Field     | Type   | Description                                |
+| --------- | ------ | ------------------------------------------ |
+| `account` | String | Subscription's device account _(indexed)_  |
+| `owner`   | String | Subscription owner _(indexed)_             |
+| `block`   | Number | Block number of the last update (optional) |
 
 Indexes: unique compound `{account, owner}`.
 
 ### Collection `index_state` (IndexState)
 
-| Field   | Type   | Description                                         |
-|---------|--------|-----------------------------------------------------|
-| `key`   | String | `polkadot_robonomics`, `kusama_robonomics`, … *(unique)* |
-| `value` | Number | Number of the last processed block                  |
+| Field   | Type   | Description                                              |
+| ------- | ------ | -------------------------------------------------------- |
+| `key`   | String | `polkadot_robonomics`, `kusama_robonomics`, … _(unique)_ |
+| `value` | Number | Number of the last processed block                       |
 
 The key is set by `ROBONOMICS_STATE_KEY` — this allows a single MongoDB instance to serve indexers of different networks at the same time.
 
@@ -459,78 +473,80 @@ Configuration comes from environment variables. Typed application settings are g
 
 ### Module flags (instance role selector)
 
-| Variable               | Default | Purpose                                        |
-|------------------------|---------|------------------------------------------------|
-| `API_ENABLED`          | `true`  | StatusModule, SensorModule, StoryModule, MetricsModule |
-| `INDEXER_ENABLED`      | `true`  | RobonomicsModule (BlockIndexer + handlers + CPS snapshot) |
-| `MEASUREMENT_ENABLED`  | `true`  | Legacy and CPS processors + IpfsFetcher        |
-| `GEOCODING_ENABLED`    | `true`  | GeocodingService                               |
-| `CPS_ENABLED`          | `false` | Activates CPS snapshot, realtime handling and processing |
-| `ENABLED_HANDLERS`     | *(empty)* | Comma-separated handler allowlist            |
-| `DISABLED_HANDLERS`    | *(empty)* | Handler denylist (on top of the allowlist)   |
+| Variable              | Default   | Purpose                                                   |
+| --------------------- | --------- | --------------------------------------------------------- |
+| `API_ENABLED`         | `true`    | StatusModule, SensorModule, StoryModule, MetricsModule    |
+| `INDEXER_ENABLED`     | `true`    | RobonomicsModule (BlockIndexer + handlers + CPS snapshot) |
+| `MEASUREMENT_ENABLED` | `true`    | Legacy and CPS processors + IpfsFetcher                   |
+| `GEOCODING_ENABLED`   | `true`    | GeocodingService                                          |
+| `CPS_ENABLED`         | `false`   | Activates CPS snapshot, realtime handling and processing  |
+| `ENABLED_HANDLERS`    | _(empty)_ | Comma-separated handler allowlist                         |
+| `DISABLED_HANDLERS`   | _(empty)_ | Handler denylist (on top of the allowlist)                |
 
 The four module flags are disabled only by the exact value `false` (see `app.module.ts`). `CPS_ENABLED` follows the opposite fail-closed rule and activates CPS work only when exactly `true`; the corresponding indexer or measurement module must also be enabled.
 
 ### App / MongoDB
 
-| Variable          | Default                                   | Description                              |
-|-------------------|-------------------------------------------|------------------------------------------|
-| `NODE_ENV`        | `development`                             |                                          |
-| `PORT`            | `3000`                                    | HTTP port for REST API                   |
-| `MONGODB_URI`     | `mongodb://localhost:27017/roseman`       | MongoDB connection string                |
-| `MONGODB_AUTO_INDEX` | `false`                                | Create declared Mongoose indexes at startup |
-| `MAX_PERIOD_DAYS` | `31`                                      | API period limit (DateRangeGuard)        |
+| Variable             | Default                             | Description                                 |
+| -------------------- | ----------------------------------- | ------------------------------------------- |
+| `NODE_ENV`           | `development`                       |                                             |
+| `PORT`               | `3000`                              | HTTP port for REST API                      |
+| `MONGODB_URI`        | `mongodb://localhost:27017/roseman` | MongoDB connection string                   |
+| `MONGODB_AUTO_INDEX` | `false`                             | Create declared Mongoose indexes at startup |
+| `MAX_PERIOD_DAYS`    | `31`                                | API period limit (DateRangeGuard)           |
 
 ### Robonomics
 
-| Variable                  | Default                                  | Description                                  |
-|---------------------------|------------------------------------------|----------------------------------------------|
-| `ROBONOMICS_WS`           | `wss://polkadot.rpc.robonomics.network`  | WebSocket endpoint of the parachain          |
-| `ROBONOMICS_START_BLOCK`  | `latest`                                 | First block when no saved checkpoint exists    |
-| `ROBONOMICS_START_BLOCK_FORCE` | `false`                            | Ignore the checkpoint and force the configured start on every launch |
-| `ROBONOMICS_STATE_KEY`    | `polkadot_robonomics`                    | Key in the `index_state` collection          |
-| `ROBONOMICS_ACCOUNTS`     | *(empty — all)*                          | Comma-separated whitelist of datalog senders |
+| Variable                       | Default                                 | Description                                                          |
+| ------------------------------ | --------------------------------------- | -------------------------------------------------------------------- |
+| `ROBONOMICS_WS`                | `wss://polkadot.rpc.robonomics.network` | WebSocket endpoint of the parachain                                  |
+| `ROBONOMICS_START_BLOCK`       | `latest`                                | First block when no saved checkpoint exists                          |
+| `ROBONOMICS_START_BLOCK_FORCE` | `false`                                 | Ignore the checkpoint and force the configured start on every launch |
+| `ROBONOMICS_STATE_KEY`         | `polkadot_robonomics`                   | Key in the `index_state` collection                                  |
+| `ROBONOMICS_ACCOUNTS`          | _(empty — all)_                         | Comma-separated whitelist of datalog senders                         |
 
 ### IPFS
 
-| Variable             | Default                                                       | Description                          |
-|----------------------|---------------------------------------------------------------|--------------------------------------|
-| `IPFS_GATEWAYS`      | `https://ipfs.io/ipfs/, https://gateway.pinata.cloud/ipfs/, https://cloudflare-ipfs.com/ipfs/` | Comma-separated gateway list |
-| `IPFS_FETCH_TIMEOUT` | `30000`                                                       | HTTP request timeout (ms)            |
-| `IPFS_MAX_RESPONSE_BYTES` | `10485760`                                               | Maximum gateway response size (bytes) |
-| `IPFS_POLL_INTERVAL` | `10000`                                                       | IPFS_PENDING polling interval (ms)   |
-| `IPFS_DIR_SENDER`    | *(empty)*                                                     | Sender whose CIDs are directories; data is fetched as `${cid}/data.json` |
+| Variable                  | Default                                                                                        | Description                                                              |
+| ------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `IPFS_GATEWAYS`           | `https://ipfs.io/ipfs/, https://gateway.pinata.cloud/ipfs/, https://cloudflare-ipfs.com/ipfs/` | Comma-separated gateway list                                             |
+| `IPFS_FETCH_TIMEOUT`      | `30000`                                                                                        | HTTP request timeout (ms)                                                |
+| `IPFS_MAX_RESPONSE_BYTES` | `10485760`                                                                                     | Maximum gateway response size (bytes)                                    |
+| `IPFS_POLL_INTERVAL`      | `10000`                                                                                        | IPFS_PENDING polling interval (ms)                                       |
+| `IPFS_DIR_SENDER`         | _(empty)_                                                                                      | Sender whose CIDs are directories; data is fetched as `${cid}/data.json` |
 
 ### CPS
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CPS_ENABLED` | `false` | Enables all CPS-specific work |
-| `CPS_NODE_IDS` | *(empty)* | Numeric u64 NodeIds for snapshot; a non-empty list is also the realtime allowlist |
-| `CPS_BATCH_WIRE_FORMAT` | `xz` | Explicit `raw`, `xz` or `zlib` batch format |
-| `CPS_POLL_INTERVAL` | `10000` | Processor poll interval (ms) |
-| `CPS_LEASE_DURATION` | `60000` | Processing lease duration (ms) |
-| `CPS_MAX_ANCHORS_PER_POLL` | `10` | Maximum claimed anchors per poll |
-| `CPS_MAX_ATTEMPTS` | `5` | Maximum processing claims before terminal error |
-| `CPS_RETRY_BASE_DELAY` | `15000` | Exponential retry base delay (ms) |
-| `CPS_MAX_COMPRESSED_BYTES` | `10485760` | Maximum compressed payload size |
-| `CPS_MAX_DECOMPRESSED_BYTES` | `10485760` | Maximum decoded batch size |
-| `CPS_MAX_XZ_MEMORY_BYTES` | `67108864` | XZ decoder memory limit |
-| `CPS_MAX_ENVELOPE_COUNT` | `10000` | Maximum envelopes per batch |
-| `CPS_OWNER_SS58_PREFIX` | `32` | SS58 prefix used for `Message.metadata.owner` |
+| Variable                          | Default    | Description                                                                       |
+| --------------------------------- | ---------- | --------------------------------------------------------------------------------- |
+| `CPS_ENABLED`                     | `false`    | Enables all CPS-specific work                                                     |
+| `CPS_CANONICAL_STORAGE_ENABLED`   | `false`    | Writes occurrence records to `connectivity_records`                               |
+| `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | `false`    | Archives exact IPFS bytes in `connectivity_payloads`                              |
+| `CPS_NODE_IDS`                    | _(empty)_  | Numeric u64 NodeIds for snapshot; a non-empty list is also the realtime allowlist |
+| `CPS_BATCH_WIRE_FORMAT`           | `xz`       | Explicit `raw`, `xz` or `zlib` batch format                                       |
+| `CPS_POLL_INTERVAL`               | `10000`    | Processor poll interval (ms)                                                      |
+| `CPS_LEASE_DURATION`              | `60000`    | Processing lease duration (ms)                                                    |
+| `CPS_MAX_ANCHORS_PER_POLL`        | `10`       | Maximum claimed anchors per poll                                                  |
+| `CPS_MAX_ATTEMPTS`                | `5`        | Maximum processing claims before terminal error                                   |
+| `CPS_RETRY_BASE_DELAY`            | `15000`    | Exponential retry base delay (ms)                                                 |
+| `CPS_MAX_COMPRESSED_BYTES`        | `10485760` | Maximum compressed payload size                                                   |
+| `CPS_MAX_DECOMPRESSED_BYTES`      | `10485760` | Maximum decoded batch size                                                        |
+| `CPS_MAX_XZ_MEMORY_BYTES`         | `67108864` | XZ decoder memory limit                                                           |
+| `CPS_MAX_ENVELOPE_COUNT`          | `10000`    | Maximum envelopes per batch                                                       |
+| `CPS_OWNER_SS58_PREFIX`           | `32`       | SS58 prefix used for `Message.metadata.owner`                                     |
 
 If `CPS_NODE_IDS` is empty, snapshot performs no reads and realtime accepts any NodeId. If non-empty, both paths are limited to the listed canonical decimal NodeIds.
 
 ### Geocoding (Nominatim)
 
-| Variable                      | Default                                          | Description                                   |
-|-------------------------------|--------------------------------------------------|-----------------------------------------------|
-| `NOMINATIM_BASE_URL`          | `https://nominatim.openstreetmap.org/reverse`    | Reverse geocoding endpoint                    |
-| `NOMINATIM_USER_AGENT`        | `RoSeMAN/1.0`                                    | User-Agent (Nominatim ToS requirement)        |
-| `NOMINATIM_REQUEST_INTERVAL`  | `1100`                                           | Pause between requests (ms), rate-limit 1/s   |
-| `NOMINATIM_FETCH_TIMEOUT`     | `10000`                                          | HTTP request timeout (ms)                     |
-| `GEOCODING_POLL_INTERVAL`     | `30000`                                          | Polling interval for sensors with `city === null` |
-| `GEOCODING_BATCH_SIZE`        | `10`                                             | Sensor batch size per polling tick            |
+| Variable                     | Default                                       | Description                                       |
+| ---------------------------- | --------------------------------------------- | ------------------------------------------------- |
+| `NOMINATIM_BASE_URL`         | `https://nominatim.openstreetmap.org/reverse` | Reverse geocoding endpoint                        |
+| `NOMINATIM_USER_AGENT`       | `RoSeMAN/1.0`                                 | User-Agent (Nominatim ToS requirement)            |
+| `NOMINATIM_REQUEST_INTERVAL` | `1100`                                        | Pause between requests (ms), rate-limit 1/s       |
+| `NOMINATIM_FETCH_TIMEOUT`    | `10000`                                       | HTTP request timeout (ms)                         |
+| `GEOCODING_POLL_INTERVAL`    | `30000`                                       | Polling interval for sensors with `city === null` |
+| `GEOCODING_BATCH_SIZE`       | `10`                                          | Sensor batch size per polling tick                |
 
 ---
 

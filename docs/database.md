@@ -3,6 +3,7 @@
 The storage is **MongoDB** (Mongoose 7). Data access is organized using the **Repository pattern**: all reads and writes go through classes from `src/database/repositories/`. Services, handlers and controllers do not use `@InjectModel` directly — they only inject the corresponding repository.
 
 See also:
+
 - [indexer.md → MongoDB schemas](./indexer.md#mongodb-schemas) — fields, indexes and unique constraints of every collection.
 - [architecture.md](./architecture.md) — how `DatabaseModule` is wired into `AppModule`.
 
@@ -23,7 +24,7 @@ MongooseModule.forRootAsync({
     uri: cfg.get<string>('app.mongodbUri'),
     autoIndex: cfg.get<boolean>('app.autoIndex'),
   }),
-})
+});
 ```
 
 The URI comes from `MONGODB_URI` (default `mongodb://localhost:27017/roseman`).
@@ -54,25 +55,27 @@ Gives full control and avoids dropping anything. Since MongoDB 4.2 index builds 
 
 ```js
 // create the new owner lookup index without blocking writes
-db.measurements.createIndex({ owner: 1, sensor_id: 1 }, { background: true })
+db.measurements.createIndex({ owner: 1, sensor_id: 1 }, { background: true });
 
 // verify
-db.measurements.getIndexes()
+db.measurements.getIndexes();
 ```
 
 > Tip: a `unique` index (e.g. `{ sensor_id: 1, timestamp: 1 }`) will fail to build if the collection already contains duplicates (`E11000`). Resolve duplicates first, then create the index.
 
 ## Collections and repositories
 
-| Mongoose class    | Collection       | Repository               | Where it is used                                  |
-|-------------------|------------------|--------------------------|---------------------------------------------------|
-| `CpsAnchor`       | `cps_anchors`    | `CpsAnchorRepository`    | `CpsSnapshotService`, `CpsPayloadSetHandler`, `CpsAnchorProcessorService` |
-| `Datalog`         | `datalogs`       | `DatalogRepository`      | `DatalogNewRecordHandler`, `MeasurementProcessorService`, `MetricsService` |
-| `Measurement`     | `measurements`   | `MeasurementRepository`  | Legacy/CPS processors, `SensorService`             |
-| `Sensor`          | `cities`         | `SensorRepository`       | Legacy/CPS processors, `GeocodingService`, `SensorService` |
-| `Story`           | `stories`        | `StoryRepository`        | `RwsStoryHandler`, `StoryService`                 |
-| `Subscription`    | `subscriptions`  | `SubscriptionRepository` | `RwsExtrinsicHandler`, `RwsNewDevicesHandler`, `RwsStoryHandler` |
-| `IndexState`      | `index_state`    | `IndexStateRepository`   | `BlockIndexerService`, `StatusController`, `MetricsService` |
+| Mongoose class        | Collection              | Repository                      | Where it is used                                                           |
+| --------------------- | ----------------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| `CpsAnchor`           | `cps_anchors`           | `CpsAnchorRepository`           | `CpsSnapshotService`, `CpsPayloadSetHandler`, `CpsAnchorProcessorService`  |
+| `ConnectivityPayload` | `connectivity_payloads` | `ConnectivityPayloadRepository` | Lossless CPS payload archive before decode                                 |
+| `ConnectivityRecord`  | `connectivity_records`  | `ConnectivityRecordRepository`  | Canonical CPS occurrence storage                                           |
+| `Datalog`             | `datalogs`              | `DatalogRepository`             | `DatalogNewRecordHandler`, `MeasurementProcessorService`, `MetricsService` |
+| `Measurement`         | `measurements`          | `MeasurementRepository`         | Legacy/CPS processors, `SensorService`                                     |
+| `Sensor`              | `cities`                | `SensorRepository`              | Legacy/CPS processors, `GeocodingService`, `SensorService`                 |
+| `Story`               | `stories`               | `StoryRepository`               | `RwsStoryHandler`, `StoryService`                                          |
+| `Subscription`        | `subscriptions`         | `SubscriptionRepository`        | `RwsExtrinsicHandler`, `RwsNewDevicesHandler`, `RwsStoryHandler`           |
+| `IndexState`          | `index_state`           | `IndexStateRepository`          | `BlockIndexerService`, `StatusController`, `MetricsService`                |
 
 A detailed description of each schema (fields, types, indexes) is in [indexer.md → MongoDB schemas](./indexer.md#mongodb-schemas).
 
@@ -88,6 +91,7 @@ A detailed description of each schema (fields, types, indexes) is in [indexer.md
 Without claiming a complete list (each file is worth reading in full), here are characteristic methods — to give a sense of each repository's responsibility.
 
 ### DatalogRepository
+
 - `upsertRecord({ block, sender, resultHash, status, timechain })` — idempotent insert via `$setOnInsert` keyed on the unique `{block, sender, resultHash}` index.
 - `findPending(limit)` — selects `status === IPFS_PENDING` with a limit for batch processing.
 - `updateStatus(id, status, errorMessage?)` — finalization of a record by `MeasurementProcessor`.
@@ -100,7 +104,14 @@ Without claiming a complete list (each file is worth reading in full), here are 
 - `updateStatus(sourceKey, status, details)` — records processing state, envelope counts and retry/error details.
 - `countPending()` — counts first-attempt and retry-pending anchors.
 
+### Connectivity repositories
+
+- `ConnectivityPayloadRepository.upsertFetched(...)` — stores exact transport bytes, size and SHA-256 with `$setOnInsert` before decode.
+- `ConnectivityPayloadRepository.updateDecodeStatus(...)` — finalizes decode status without replacing archived bytes.
+- `ConnectivityRecordRepository.upsertRecord(...)` — idempotently updates one occurrence using deterministic `record_key=<payload_key>:<envelope_index>`.
+
 ### MeasurementRepository
+
 - `upsertMany(docs)` — uses `bulkWrite` with `upsert` to prevent duplicates; if a record with the same `sensor_id` and `timestamp` exists, it is updated.
 - `insertManyIgnoreDuplicates(docs)` — `bulkWrite` with `ordered: false`; duplicates by the unique `{sensor_id, timestamp}` are silently ignored.
 - Time-range and filter queries for the V1/V2 controllers (`getMaxData`, `getSensorList`, etc.).
@@ -108,21 +119,25 @@ Without claiming a complete list (each file is worth reading in full), here are 
 - Filtering by `model` via the `SENSOR_DATA_MODELS` constant from `src/common/constants/sensor-model.enum.ts`.
 
 ### SensorRepository
+
 - `bulkUpsert([{ sensor_id, geo }])` — updates `geo` for known sensors + inserts new ones with `city/state/country: null` (the "needs geocoding" marker).
 - `findWithoutCity(limit)` — used by `GeocodingService`.
 - `updateLocation(_id, { city, state, country })` — writes the Nominatim result.
 
 ### StoryRepository
+
 - `upsert({ ... })` — idempotent story insert keyed on the unique `{sensor_id, timestamp}`.
 - Reads for `StoryController`: pagination, range filtering, last story per sensor.
 
 ### SubscriptionRepository
+
 - `upsertBlock(account, owner, block)` — updates the `block` of an existing subscription or creates a new one.
 - `bulkUpsert([{ account, owner }])` — bulk upsert (for `rws.NewDevices`).
 - `deleteByOwnerExcept(owner, accounts)` — removes accounts that are no longer in the current device list of the subscription.
 - `findAccountsByOwner(owner)` — list of subscription devices (used by `RwsStoryHandler` to verify the right to publish a story).
 
 ### IndexStateRepository
+
 - `getValue(key)` / `upsertValue(key, value)` — reads/writes the indexer's progress (`last_indexed_block` under keys `polkadot_robonomics`, `kusama_robonomics`, etc.).
 - `getAllIndex()` — for the `roseman_block_read{chain=...}` metric (see [metrics.md](./metrics.md)).
 

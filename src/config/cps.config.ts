@@ -54,6 +54,10 @@ export function parseCpsNodeIds(raw: string | undefined): string[] {
 export function createCpsConfig() {
   return {
     enabled: process.env.CPS_ENABLED === 'true',
+    canonicalStorageEnabled:
+      process.env.CPS_CANONICAL_STORAGE_ENABLED === 'true',
+    rawPayloadStorageEnabled:
+      process.env.CPS_RAW_PAYLOAD_STORAGE_ENABLED === 'true',
     nodeIds: parseCpsNodeIds(process.env.CPS_NODE_IDS),
     batchWireFormat: parseWireFormat(process.env.CPS_BATCH_WIRE_FORMAT),
     pollInterval: parsePositiveInteger(

@@ -49,16 +49,18 @@ Environment files:
 
 Key flags for splitting processes:
 
-| Variable               | Purpose                                                          |
-|------------------------|------------------------------------------------------------------|
-| `API_ENABLED`          | REST API + Prometheus                                            |
-| `INDEXER_ENABLED`      | Robonomics block scanner                                         |
-| `MEASUREMENT_ENABLED`  | Legacy datalog and CPS queue processing                          |
-| `GEOCODING_ENABLED`    | Reverse geocoding                                                |
-| `CPS_ENABLED`          | CPS snapshot, realtime handler and CPS processor                 |
-| `CPS_NODE_IDS`         | Snapshot NodeIds and optional realtime allowlist                 |
-| `ENABLED_HANDLERS`     | Allowlist of indexer handlers (comma-separated)                  |
-| `DISABLED_HANDLERS`    | Denylist of handlers (applied on top of the allowlist)           |
+| Variable                          | Purpose                                                |
+| --------------------------------- | ------------------------------------------------------ |
+| `API_ENABLED`                     | REST API + Prometheus                                  |
+| `INDEXER_ENABLED`                 | Robonomics block scanner                               |
+| `MEASUREMENT_ENABLED`             | Legacy datalog and CPS queue processing                |
+| `GEOCODING_ENABLED`               | Reverse geocoding                                      |
+| `CPS_ENABLED`                     | CPS snapshot, realtime handler and CPS processor       |
+| `CPS_CANONICAL_STORAGE_ENABLED`   | Canonical CPS occurrence writes (default off)          |
+| `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | Exact CPS payload archive writes (default off)         |
+| `CPS_NODE_IDS`                    | Snapshot NodeIds and optional realtime allowlist       |
+| `ENABLED_HANDLERS`                | Allowlist of indexer handlers (comma-separated)        |
+| `DISABLED_HANDLERS`               | Denylist of handlers (applied on top of the allowlist) |
 
 The full list of variables and defaults is in the `*.example` files and in [docs/indexer.md](./docs/indexer.md). `CPS_ENABLED` only activates work inside enabled indexer/measurement modules. An empty `CPS_NODE_IDS` disables snapshot discovery but allows realtime events from any numeric NodeId.
 
@@ -97,16 +99,16 @@ REST API will be available at `http://localhost:3000/api`, metrics — at `/metr
 
 ## npm scripts
 
-| Command           | Description                           |
-|-------------------|---------------------------------------|
-| `build`           | Build via `nest build`                |
-| `start` / `start:dev` | Run (with watch in dev)           |
-| `start:prod`      | Run the built `dist/main`             |
-| `sync-indexes`    | Sync MongoDB indexes with the schemas (see [docs/database.md](./docs/database.md#index-management)) |
-| `format`          | Prettier over `src/` and `test/`      |
-| `lint`            | ESLint with autofix                   |
-| `test`            | Jest unit tests, sequentially (`--runInBand`) |
-| `test:e2e`        | Jest with the config from `test/`     |
+| Command               | Description                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `build`               | Build via `nest build`                                                                              |
+| `start` / `start:dev` | Run (with watch in dev)                                                                             |
+| `start:prod`          | Run the built `dist/main`                                                                           |
+| `sync-indexes`        | Sync MongoDB indexes with the schemas (see [docs/database.md](./docs/database.md#index-management)) |
+| `format`              | Prettier over `src/` and `test/`                                                                    |
+| `lint`                | ESLint with autofix                                                                                 |
+| `test`                | Jest unit tests, sequentially (`--runInBand`)                                                       |
+| `test:e2e`            | Jest with the config from `test/`                                                                   |
 
 ## Documentation
 

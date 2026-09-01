@@ -6,11 +6,11 @@ This document describes practical scenarios for running RoSeMAN. The architectur
 
 The repository root contains three `.example` files from which you should create real `.env` files:
 
-| File                | Role                                                                              |
-|---------------------|-----------------------------------------------------------------------------------|
-| `.env`              | Base: MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings   |
-| `.env.polkadot`     | **Polkadot** indexer: `ROBONOMICS_WS`, `ROBONOMICS_STATE_KEY=polkadot_robonomics`, `ROBONOMICS_START_BLOCK`, `API_ENABLED=false`, the desired `ENABLED_HANDLERS` set |
-| `.env.kusama`       | **Kusama** indexer: same as above, but with the Kusama endpoint and start block   |
+| File            | Role                                                                                                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.env`          | Base: MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings                                                                                   |
+| `.env.polkadot` | **Polkadot** indexer: `ROBONOMICS_WS`, `ROBONOMICS_STATE_KEY=polkadot_robonomics`, `ROBONOMICS_START_BLOCK`, `API_ENABLED=false`, the desired `ENABLED_HANDLERS` set |
+| `.env.kusama`   | **Kusama** indexer: same as above, but with the Kusama endpoint and start block                                                                                      |
 
 The loading cascade (`src/env-bootstrap.ts`):
 
@@ -81,12 +81,12 @@ The current image runs plain `npm ci`, so it does contain `devDependencies` and 
 
 `docker-compose.yml` brings up four services:
 
-| Service             | Image                  | Purpose                                                            |
-|---------------------|------------------------|--------------------------------------------------------------------|
-| `mongodb`           | `mongo:8`              | DB, healthcheck via `db.adminCommand('ping')`, volume `./mongodb-data` |
-| `rest-api`          | `vol4/roseman:v0.1.0`  | REST API (reads `.env`)                                            |
-| `indexer-polkadot`  | `vol4/roseman:v0.1.0`  | Polkadot indexer (`DOTENV_CONFIG_PATH=/app/.env.polkadot`)         |
-| `indexer-kusama`    | `vol4/roseman:v0.1.0`  | Kusama indexer (`DOTENV_CONFIG_PATH=/app/.env.kusama`)             |
+| Service            | Image                 | Purpose                                                                |
+| ------------------ | --------------------- | ---------------------------------------------------------------------- |
+| `mongodb`          | `mongo:8`             | DB, healthcheck via `db.adminCommand('ping')`, volume `./mongodb-data` |
+| `rest-api`         | `vol4/roseman:v0.1.0` | REST API (reads `.env`)                                                |
+| `indexer-polkadot` | `vol4/roseman:v0.1.0` | Polkadot indexer (`DOTENV_CONFIG_PATH=/app/.env.polkadot`)             |
+| `indexer-kusama`   | `vol4/roseman:v0.1.0` | Kusama indexer (`DOTENV_CONFIG_PATH=/app/.env.kusama`)                 |
 
 Configuration is supplied to the containers via **bind-mounts** of the corresponding `.env` files in read-only mode. All applications depend on `mongodb` with `condition: service_healthy`. The checked-in example files keep `CPS_ENABLED=false`, so the root Compose stack does not index CPS until its environment is explicitly changed.
 
@@ -100,6 +100,7 @@ docker compose logs -f indexer-polkadot
 ```
 
 After startup:
+
 - REST API: `http://localhost:3000/api`
 - Metrics: `http://localhost:3000/metrics`
 - MongoDB: `localhost:27017` (`admin` / `secret` by default — change via `MONGO_ROOT_USER` / `MONGO_ROOT_PASSWORD`)
@@ -151,11 +152,13 @@ INDEXER_ENABLED=true
 MEASUREMENT_ENABLED=true
 GEOCODING_ENABLED=false
 CPS_ENABLED=true
+CPS_CANONICAL_STORAGE_ENABLED=true
+CPS_RAW_PAYLOAD_STORAGE_ENABLED=true
 CPS_NODE_IDS=0
 ENABLED_HANDLERS=cps-payload-set
 ```
 
-A non-empty `CPS_NODE_IDS` drives the initial snapshot and restricts realtime events to the same allowlist. If it is empty or absent, snapshot reads no nodes while realtime accepts any numeric NodeId. `MEASUREMENT_ENABLED=true` also creates the legacy datalog processor; with `datalog-new-record` excluded it receives no new legacy records, but it can still process old pending rows already present in the shared database.
+A non-empty `CPS_NODE_IDS` drives the initial snapshot and restricts realtime events to the same allowlist. If it is empty or absent, snapshot reads no nodes while realtime accepts any numeric NodeId. The two storage flags enable the lossless/canonical dual write; both default to `false` for a controlled rollout. `MEASUREMENT_ENABLED=true` also creates the legacy datalog processor; with `datalog-new-record` excluded it receives no new legacy records, but it can still process old pending rows already present in the shared database.
 
 See also [architecture.md → Run modes](./architecture.md#run-modes).
 

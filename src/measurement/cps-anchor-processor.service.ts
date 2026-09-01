@@ -6,19 +6,34 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CpsAnchorStatus } from '../common/constants/cps-anchor-status.enum.js';
+import {
+  ConnectivityLegacyProjectionStatus,
+  ConnectivityPayloadDecodeStatus,
+  ConnectivityRecordDecodeStatus,
+  ConnectivitySignatureStatus,
+} from '../common/constants/connectivity-storage.enum.js';
+import { ConnectivityPayloadRepository } from '../database/repositories/connectivity-payload.repository.js';
+import {
+  type ConnectivityRecordInput,
+  ConnectivityRecordRepository,
+} from '../database/repositories/connectivity-record.repository.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
 import { MeasurementRepository } from '../database/repositories/measurement.repository.js';
 import { SensorRepository } from '../database/repositories/sensor.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
 import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
+import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 import { Ed25519EnvelopeSignatureVerifier } from './protocol/envelope-signature-verifier.js';
 import {
   ProtocolBatchWireFormat,
   SignedEnvelopeBatchPayloadDecoder,
 } from './protocol/signed-envelope-batch-payload.decoder.js';
-import { SignedEnvelopeMessageDecoder } from './protocol/signed-envelope-message.decoder.js';
+import {
+  ProtocolMessageDecodeError,
+  SignedEnvelopeMessageDecoder,
+} from './protocol/signed-envelope-message.decoder.js';
 import { ProtocolBatchDecodeError } from './protocol/signed-envelope.types.js';
 
 /** Забирает CPS anchors из очереди, проверяет batch и сохраняет измерения. */
@@ -28,6 +43,8 @@ export class CpsAnchorProcessorService
 {
   private readonly logger = new Logger(CpsAnchorProcessorService.name);
   private readonly enabled: boolean;
+  private readonly canonicalStorageEnabled: boolean;
+  private readonly rawPayloadStorageEnabled: boolean;
   private readonly pollInterval: number;
   private readonly leaseDuration: number;
   private readonly maxAnchorsPerPoll: number;
@@ -45,11 +62,22 @@ export class CpsAnchorProcessorService
     config: ConfigService,
     private readonly ipfsFetcher: IpfsFetcherService,
     private readonly cpsAnchorRepo: CpsAnchorRepository,
+    private readonly connectivityPayloadRepo: ConnectivityPayloadRepository,
+    private readonly connectivityRecordRepo: ConnectivityRecordRepository,
     private readonly measurementRepo: MeasurementRepository,
     private readonly sensorRepo: SensorRepository,
     private readonly transformer: CpsMeasurementTransformer,
+    private readonly connectivityRecordMapper: ConnectivityRecordMapper,
   ) {
     this.enabled = config.get<boolean>('cps.enabled', false);
+    this.canonicalStorageEnabled = config.get<boolean>(
+      'cps.canonicalStorageEnabled',
+      false,
+    );
+    this.rawPayloadStorageEnabled = config.get<boolean>(
+      'cps.rawPayloadStorageEnabled',
+      false,
+    );
     this.pollInterval = config.get<number>('cps.pollInterval', 10_000);
     this.leaseDuration = config.get<number>('cps.leaseDuration', 60_000);
     this.maxAnchorsPerPoll = config.get<number>('cps.maxAnchorsPerPoll', 10);
@@ -110,19 +138,94 @@ export class CpsAnchorProcessorService
   private async processAnchor(anchor: CpsAnchorDocument): Promise<void> {
     try {
       const bytes = await this.ipfsFetcher.fetchBytes(anchor.cid);
-      const batch = await this.batchDecoder.decode(bytes, this.wireFormat);
+      if (this.rawPayloadStorageEnabled) {
+        await this.connectivityPayloadRepo.upsertFetched({
+          payloadKey: anchor.source_key,
+          sourceId: anchor.source_key,
+          nodeId: anchor.node_id,
+          block: anchor.block,
+          cid: anchor.cid,
+          wireFormat: this.wireFormat,
+          rawPayload: bytes,
+        });
+      }
+
+      let batch;
+      try {
+        batch = await this.batchDecoder.decode(bytes, this.wireFormat);
+      } catch (error) {
+        if (
+          error instanceof ProtocolBatchDecodeError &&
+          this.rawPayloadStorageEnabled
+        ) {
+          await this.connectivityPayloadRepo.updateDecodeStatus(
+            anchor.source_key,
+            ConnectivityPayloadDecodeStatus.Error,
+            { code: error.code, message: error.message },
+          );
+        }
+        throw error;
+      }
+
       let invalidEnvelopeCount = batch.errors.length;
       const measurements: Measurement[] = [];
+      const projectedRecords: Array<{
+        record: ConnectivityRecordInput;
+        measurement: Measurement;
+      }> = [];
+
+      if (this.canonicalStorageEnabled) {
+        const structuralErrors = new Map<number, string[]>();
+        for (const error of batch.errors) {
+          const codes = structuralErrors.get(error.envelopeIndex) ?? [];
+          codes.push(error.code);
+          structuralErrors.set(error.envelopeIndex, codes);
+        }
+        for (const [envelopeIndex, codes] of structuralErrors) {
+          await this.connectivityRecordRepo.upsertRecord(
+            this.connectivityRecordMapper.createInvalidEnvelopeRecord(
+              anchor,
+              envelopeIndex,
+              codes.join(','),
+            ),
+          );
+        }
+      }
 
       for (const envelope of batch.envelopes) {
+        let record = this.canonicalStorageEnabled
+          ? this.connectivityRecordMapper.createEnvelopeRecord(anchor, envelope)
+          : undefined;
+        if (record) {
+          await this.connectivityRecordRepo.upsertRecord(record);
+        }
+
         const verification = await this.signatureVerifier.verify(envelope);
         if (!verification.verified) {
           invalidEnvelopeCount += 1;
+          if (record) {
+            record = {
+              ...record,
+              signature_status: ConnectivitySignatureStatus.Invalid,
+              decode_status: ConnectivityRecordDecodeStatus.NotAttempted,
+              error_code: verification.reason,
+              legacy_projection_status:
+                ConnectivityLegacyProjectionStatus.NotAttempted,
+            };
+            await this.connectivityRecordRepo.upsertRecord(record);
+          }
           continue;
         }
 
         try {
           const message = this.messageDecoder.decode(verification.envelope);
+          if (record) {
+            record = this.connectivityRecordMapper.applyDecodedMessage(
+              record,
+              message,
+            );
+            await this.connectivityRecordRepo.upsertRecord(record);
+          }
           const transformed = this.transformer.transform(
             verification.envelope,
             message,
@@ -130,20 +233,76 @@ export class CpsAnchorProcessorService
           );
           if (!transformed.transformed) {
             invalidEnvelopeCount += 1;
+            if (record) {
+              record = {
+                ...record,
+                legacy_projection_status:
+                  ConnectivityLegacyProjectionStatus.Skipped,
+                projection_error_code: transformed.code,
+              };
+              await this.connectivityRecordRepo.upsertRecord(record);
+            }
             this.logger.debug(
               `CPS anchor ${anchor.source_key}: envelope ${envelope.envelopeIndex} rejected (${transformed.code})`,
             );
             continue;
           }
           measurements.push(transformed.measurement);
-        } catch {
+          if (record) {
+            projectedRecords.push({
+              record,
+              measurement: transformed.measurement,
+            });
+          }
+        } catch (error) {
+          if (!(error instanceof ProtocolMessageDecodeError)) throw error;
           invalidEnvelopeCount += 1;
+          if (record) {
+            record = {
+              ...record,
+              signature_status: ConnectivitySignatureStatus.Valid,
+              decode_status: ConnectivityRecordDecodeStatus.Error,
+              error_code: 'MALFORMED_MESSAGE',
+              legacy_projection_status:
+                ConnectivityLegacyProjectionStatus.NotAttempted,
+            };
+            await this.connectivityRecordRepo.upsertRecord(record);
+          }
         }
       }
 
-      if (measurements.length > 0) {
-        await this.measurementRepo.upsertMany(measurements);
-        await this.upsertSensors(measurements);
+      try {
+        if (measurements.length > 0) {
+          await this.measurementRepo.upsertMany(measurements);
+          await this.upsertSensors(measurements);
+        }
+      } catch (error) {
+        for (const { record } of projectedRecords) {
+          await this.connectivityRecordRepo.upsertRecord({
+            ...record,
+            legacy_projection_status: ConnectivityLegacyProjectionStatus.Error,
+            projection_error_code: 'LEGACY_PROJECTION_FAILED',
+          });
+        }
+        throw error;
+      }
+
+      for (const { record, measurement } of projectedRecords) {
+        await this.connectivityRecordRepo.upsertRecord({
+          ...record,
+          legacy_projection_status:
+            ConnectivityLegacyProjectionStatus.Projected,
+          legacy_measurement_key: `${measurement.sensor_id}:${measurement.timestamp}`,
+        });
+      }
+
+      if (this.rawPayloadStorageEnabled) {
+        await this.connectivityPayloadRepo.updateDecodeStatus(
+          anchor.source_key,
+          invalidEnvelopeCount === 0
+            ? ConnectivityPayloadDecodeStatus.Decoded
+            : ConnectivityPayloadDecodeStatus.DecodedWithErrors,
+        );
       }
 
       const status =

@@ -24,12 +24,18 @@ import {
 } from '@polkadot/util-crypto';
 import { CpsAnchorStatus } from '../common/constants/cps-anchor-status.enum.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
+import { ConnectivityPayloadRepository } from '../database/repositories/connectivity-payload.repository.js';
+import {
+  type ConnectivityRecordInput,
+  ConnectivityRecordRepository,
+} from '../database/repositories/connectivity-record.repository.js';
 import { MeasurementRepository } from '../database/repositories/measurement.repository.js';
 import { SensorRepository } from '../database/repositories/sensor.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
 import { CpsAnchorProcessorService } from './cps-anchor-processor.service.js';
 import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
+import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 import { buildEnvelopeSigningBytes } from './protocol/envelope-signature-verifier.js';
 import { ProtocolBatchWireFormat } from './protocol/signed-envelope-batch-payload.decoder.js';
@@ -128,9 +134,12 @@ describe('CpsAnchorProcessorService', () => {
         fetchBytes: jest.fn().mockResolvedValue(await createSignedBatch(true)),
       } as unknown as IpfsFetcherService,
       { claimNext, updateStatus } as unknown as CpsAnchorRepository,
+      {} as ConnectivityPayloadRepository,
+      {} as ConnectivityRecordRepository,
       { upsertMany } as unknown as MeasurementRepository,
       { bulkUpsert } as unknown as SensorRepository,
       new CpsMeasurementTransformer(config),
+      new ConnectivityRecordMapper(config),
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -192,9 +201,12 @@ describe('CpsAnchorProcessorService', () => {
         fetchBytes: jest.fn().mockResolvedValue(await createSignedBatch(false)),
       } as unknown as IpfsFetcherService,
       { claimNext, updateStatus } as unknown as CpsAnchorRepository,
+      {} as ConnectivityPayloadRepository,
+      {} as ConnectivityRecordRepository,
       { upsertMany } as unknown as MeasurementRepository,
       { bulkUpsert } as unknown as SensorRepository,
       new CpsMeasurementTransformer(config),
+      new ConnectivityRecordMapper(config),
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -211,5 +223,175 @@ describe('CpsAnchorProcessorService', () => {
       CpsAnchorStatus.PROCESSED,
       { validEnvelopeCount: 1, invalidEnvelopeCount: 0 },
     );
+  });
+
+  it('при включённых флагах пишет raw payload и canonical record до legacy measurement', async () => {
+    const values: Record<string, unknown> = {
+      'cps.enabled': true,
+      'cps.canonicalStorageEnabled': true,
+      'cps.rawPayloadStorageEnabled': true,
+      'cps.pollInterval': 10_000,
+      'cps.leaseDuration': 60_000,
+      'cps.maxAnchorsPerPoll': 10,
+      'cps.maxAttempts': 5,
+      'cps.retryBaseDelay': 1_000,
+      'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
+      'cps.ownerSs58Prefix': 32,
+    };
+    const config = {
+      get: jest.fn(
+        (key: string, fallback?: unknown) => values[key] ?? fallback,
+      ),
+    } as unknown as ConfigService;
+    const anchor = {
+      source_key: 'cps:5:canonical',
+      node_id: '5',
+      block: 12,
+      cid: 'QmCanonical',
+      attempt_count: 1,
+    } as CpsAnchorDocument;
+    const batchBytes = await createSignedBatch(true);
+    const claimNext = jest
+      .fn()
+      .mockResolvedValueOnce(anchor)
+      .mockResolvedValueOnce(null);
+    const updateStatus = jest.fn().mockResolvedValue(undefined);
+    const upsertFetched = jest.fn().mockResolvedValue(undefined);
+    const updateDecodeStatus = jest.fn().mockResolvedValue(undefined);
+    const upsertRecord = jest.fn().mockResolvedValue(undefined);
+    const upsertMany = jest.fn().mockResolvedValue(undefined);
+    const bulkUpsert = jest.fn().mockResolvedValue(undefined);
+    const processor = new CpsAnchorProcessorService(
+      config,
+      {
+        fetchBytes: jest.fn().mockResolvedValue(batchBytes),
+      } as unknown as IpfsFetcherService,
+      { claimNext, updateStatus } as unknown as CpsAnchorRepository,
+      {
+        upsertFetched,
+        updateDecodeStatus,
+      } as unknown as ConnectivityPayloadRepository,
+      { upsertRecord } as unknown as ConnectivityRecordRepository,
+      { upsertMany } as unknown as MeasurementRepository,
+      { bulkUpsert } as unknown as SensorRepository,
+      new CpsMeasurementTransformer(config),
+      new ConnectivityRecordMapper(config),
+    );
+
+    await expect(processor.runOnce()).resolves.toBe(1);
+
+    expect(upsertFetched).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payloadKey: anchor.source_key,
+        rawPayload: batchBytes,
+      }),
+    );
+    expect(upsertRecord).toHaveBeenCalledTimes(3);
+    const recordCalls = upsertRecord.mock.calls as unknown as Array<
+      [ConnectivityRecordInput]
+    >;
+    expect(recordCalls[0][0]).toMatchObject({
+      record_key: `${anchor.source_key}:0`,
+      signature_status: 'pending',
+      decode_status: 'pending',
+    });
+    expect(recordCalls[0][0].message_raw).toBeInstanceOf(Buffer);
+    expect(recordCalls[2][0]).toMatchObject({
+      signature_status: 'valid',
+      decode_status: 'decoded',
+      legacy_projection_status: 'projected',
+    });
+    expect(
+      recordCalls[2][0].public_events.map((event) => [
+        event.sensor_type,
+        event.measurement_type,
+      ]),
+    ).toEqual([
+      ['gps', 'location'],
+      ['bme280', 'temperature'],
+    ]);
+    expect(updateDecodeStatus).toHaveBeenCalledWith(
+      anchor.source_key,
+      'decoded',
+    );
+    expect(upsertFetched.mock.invocationCallOrder[0]).toBeLessThan(
+      upsertRecord.mock.invocationCallOrder[0],
+    );
+    expect(upsertRecord.mock.invocationCallOrder[0]).toBeLessThan(
+      upsertMany.mock.invocationCallOrder[0],
+    );
+    expect(upsertMany.mock.invocationCallOrder[0]).toBeLessThan(
+      upsertRecord.mock.invocationCallOrder[2],
+    );
+    expect(updateDecodeStatus.mock.invocationCallOrder[0]).toBeLessThan(
+      updateStatus.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('фиксирует ошибку legacy projection и оставляет anchor для retry', async () => {
+    const values: Record<string, unknown> = {
+      'cps.enabled': true,
+      'cps.canonicalStorageEnabled': true,
+      'cps.rawPayloadStorageEnabled': false,
+      'cps.pollInterval': 10_000,
+      'cps.leaseDuration': 60_000,
+      'cps.maxAnchorsPerPoll': 10,
+      'cps.maxAttempts': 5,
+      'cps.retryBaseDelay': 1_000,
+      'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
+      'cps.ownerSs58Prefix': 32,
+    };
+    const config = {
+      get: jest.fn(
+        (key: string, fallback?: unknown) => values[key] ?? fallback,
+      ),
+    } as unknown as ConfigService;
+    const anchor = {
+      source_key: 'cps:5:projection-error',
+      node_id: '5',
+      block: 13,
+      cid: 'QmProjectionError',
+      attempt_count: 1,
+    } as CpsAnchorDocument;
+    const claimNext = jest
+      .fn()
+      .mockResolvedValueOnce(anchor)
+      .mockResolvedValueOnce(null);
+    const updateStatus = jest.fn().mockResolvedValue(undefined);
+    const upsertRecord = jest.fn().mockResolvedValue(undefined);
+    const processor = new CpsAnchorProcessorService(
+      config,
+      {
+        fetchBytes: jest.fn().mockResolvedValue(await createSignedBatch(false)),
+      } as unknown as IpfsFetcherService,
+      { claimNext, updateStatus } as unknown as CpsAnchorRepository,
+      {} as ConnectivityPayloadRepository,
+      { upsertRecord } as unknown as ConnectivityRecordRepository,
+      {
+        upsertMany: jest.fn().mockRejectedValue(new Error('Mongo unavailable')),
+      } as unknown as MeasurementRepository,
+      { bulkUpsert: jest.fn() } as unknown as SensorRepository,
+      new CpsMeasurementTransformer(config),
+      new ConnectivityRecordMapper(config),
+    );
+
+    await expect(processor.runOnce()).resolves.toBe(1);
+
+    const recordCalls = upsertRecord.mock.calls as unknown as Array<
+      [ConnectivityRecordInput]
+    >;
+    expect(recordCalls.at(-1)?.[0]).toMatchObject({
+      legacy_projection_status: 'error',
+      projection_error_code: 'LEGACY_PROJECTION_FAILED',
+    });
+    const statusCall = updateStatus.mock.calls[0] as unknown as [
+      string,
+      CpsAnchorStatus,
+      { errorCode: string; availableAt: Date },
+    ];
+    expect(statusCall[0]).toBe(anchor.source_key);
+    expect(statusCall[1]).toBe(CpsAnchorStatus.RETRY_PENDING);
+    expect(statusCall[2].errorCode).toBe('TRANSIENT_ERROR');
+    expect(statusCall[2].availableAt).toBeInstanceOf(Date);
   });
 });
