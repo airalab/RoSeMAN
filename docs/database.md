@@ -108,7 +108,7 @@ Without claiming a complete list (each file is worth reading in full), here are 
 
 ### Connectivity repositories
 
-- `ConnectivityPayloadRepository.upsertFetched(...)` — stores exact transport bytes, size and SHA-256 with `$setOnInsert` before decode.
+- `ConnectivityPayloadRepository.upsertFetched(...)` — stores exact transport bytes, size and SHA-256 with `$setOnInsert` before decode; a repeated payload key must match size/checksum or fails with `PAYLOAD_CONTENT_CONFLICT`.
 - `ConnectivityPayloadRepository.updateDecodeStatus(...)` — finalizes decode status without replacing archived bytes.
 - `ConnectivityRecordRepository.upsertRecord(...)` — idempotently updates one occurrence using deterministic `record_key=<payload_key>:<envelope_index>`.
 

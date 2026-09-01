@@ -28,6 +28,24 @@ export interface ConnectivityPayloadInput {
   readonly fetchedAt?: Date;
 }
 
+/** Ошибка несовпадения bytes для уже известного immutable payload key. */
+export class ConnectivityPayloadConflictError extends Error {
+  readonly code = 'PAYLOAD_CONTENT_CONFLICT';
+
+  /**
+   * Создаёт безопасную ошибку без включения payload или checksum в сообщение.
+   * @param payloadKey - конфликтующий детерминированный ключ
+   * @param options - исходная ошибка unique index
+   */
+  constructor(
+    readonly payloadKey: string,
+    options?: ErrorOptions,
+  ) {
+    super('Connectivity payload content conflicts with existing key', options);
+    this.name = ConnectivityPayloadConflictError.name;
+  }
+}
+
 /** Репозиторий lossless payload Connectivity Protocol. */
 @Injectable()
 export class ConnectivityPayloadRepository {
@@ -46,6 +64,7 @@ export class ConnectivityPayloadRepository {
    */
   async upsertFetched(input: ConnectivityPayloadInput): Promise<void> {
     const rawPayload = Buffer.from(input.rawPayload);
+    const rawSha256 = createHash('sha256').update(rawPayload).digest('hex');
     const document = {
       payload_key: input.payloadKey,
       source_type: input.sourceType ?? ConnectivitySourceType.Cps,
@@ -56,20 +75,34 @@ export class ConnectivityPayloadRepository {
       wire_format: input.wireFormat,
       raw_payload: rawPayload,
       raw_size: rawPayload.byteLength,
-      raw_sha256: createHash('sha256').update(rawPayload).digest('hex'),
+      raw_sha256: rawSha256,
       schema_package: CONNECTIVITY_ENVELOPE_SCHEMA_PACKAGE,
       schema_revision: CONNECTIVITY_SCHEMA_REVISION,
       decode_status: ConnectivityPayloadDecodeStatus.Pending,
       fetched_at: input.fetchedAt ?? new Date(),
     };
 
-    await this.model
-      .updateOne(
-        { payload_key: input.payloadKey },
-        { $setOnInsert: document },
-        { upsert: true },
-      )
-      .exec();
+    try {
+      await this.model
+        .updateOne(
+          {
+            payload_key: input.payloadKey,
+            raw_size: rawPayload.byteLength,
+            raw_sha256: rawSha256,
+          },
+          { $setOnInsert: document },
+          { upsert: true },
+        )
+        .exec();
+    } catch (error) {
+      const code = (error as { readonly code?: unknown }).code;
+      if (code === 11000) {
+        throw new ConnectivityPayloadConflictError(input.payloadKey, {
+          cause: error,
+        });
+      }
+      throw error;
+    }
   }
 
   /**

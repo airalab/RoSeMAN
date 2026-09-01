@@ -4,7 +4,10 @@ import { CONNECTIVITY_SCHEMA_REVISION } from '../../common/constants/connectivit
 import { ConnectivityPayloadDecodeStatus } from '../../common/constants/connectivity-storage.enum.js';
 import { ProtocolBatchWireFormat } from '../../measurement/protocol/signed-envelope-batch-payload.decoder.js';
 import type { ConnectivityPayloadDocument } from '../schemas/connectivity-payload.schema.js';
-import { ConnectivityPayloadRepository } from './connectivity-payload.repository.js';
+import {
+  ConnectivityPayloadConflictError,
+  ConnectivityPayloadRepository,
+} from './connectivity-payload.repository.js';
 
 /** Создаёт минимальный mock Mongoose-модели payload. */
 function createModelMock(): { readonly updateOne: jest.Mock } {
@@ -43,7 +46,11 @@ describe('ConnectivityPayloadRepository', () => {
       { $setOnInsert: Record<string, unknown> },
       Record<string, unknown>,
     ];
-    expect(filter).toEqual({ payload_key: 'cps:1:cid' });
+    expect(filter).toEqual({
+      payload_key: 'cps:1:cid',
+      raw_size: 4,
+      raw_sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
     expect(options).toEqual({ upsert: true });
     expect(update.$setOnInsert).toMatchObject({
       raw_payload: Buffer.from(bytes),
@@ -80,5 +87,26 @@ describe('ConnectivityPayloadRepository', () => {
     );
     expect(update.$set.decoded_at).toBeInstanceOf(Date);
     expect(update.$unset).toEqual({ error_code: '', error_message: '' });
+  });
+
+  it('возвращает стабильную ошибку при конфликте immutable payload bytes', async () => {
+    const model = createModelMock();
+    model.updateOne.mockReturnValue({
+      exec: jest.fn().mockRejectedValue({ code: 11000 }),
+    });
+    const repository = new ConnectivityPayloadRepository(asModel(model));
+
+    await expect(
+      repository.upsertFetched({
+        payloadKey: 'cps:1:cid',
+        sourceId: 'cps:1:cid',
+        wireFormat: ProtocolBatchWireFormat.Raw,
+        rawPayload: new Uint8Array([1, 2, 3]),
+      }),
+    ).rejects.toMatchObject({
+      name: ConnectivityPayloadConflictError.name,
+      code: 'PAYLOAD_CONTENT_CONFLICT',
+      payloadKey: 'cps:1:cid',
+    });
   });
 });
