@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { ApiPromise } from '@polkadot/api';
 import type { Event, Header } from '@polkadot/types/interfaces';
+import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { START_BLOCK_LATEST } from '../config/robonomics.config.js';
 import { IndexStateRepository } from '../database/repositories/index-state.repository.js';
 import { EVENT_HANDLERS, EXTRINSIC_HANDLERS } from './constants.js';
@@ -73,10 +74,7 @@ export class BlockIndexerService implements OnModuleInit {
    */
   private run(): void {
     this.start().catch((err) => {
-      this.logger.error(
-        'Indexer error',
-        err instanceof Error ? err.stack : err,
-      );
+      this.logger.error('Indexer error', formatSafeErrorForLog(err));
       this.scheduleReconnect();
     });
   }
@@ -154,10 +152,7 @@ export class BlockIndexerService implements OnModuleInit {
     // поэтому после замены API старые события игнорируются.
     const onApiError = (err: unknown) => {
       if (this.currentApi !== api) return;
-      this.logger.error(
-        'Chain API error',
-        err instanceof Error ? err.stack : err,
-      );
+      this.logger.error('Chain API error', formatSafeErrorForLog(err));
       this.scheduleReconnect();
     };
 
@@ -216,10 +211,7 @@ export class BlockIndexerService implements OnModuleInit {
       .then(() => this.sleep(RECONNECT_DELAY))
       .then(() => this.robonomics.reconnect())
       .catch((err) => {
-        this.logger.error(
-          'Reconnect failed',
-          err instanceof Error ? err.stack : err,
-        );
+        this.logger.error('Reconnect failed', formatSafeErrorForLog(err));
       })
       .finally(() => {
         this.reconnecting = false;
@@ -334,7 +326,7 @@ export class BlockIndexerService implements OnModuleInit {
           } catch (err) {
             this.logger.error(
               `Error processing finalized head ${blockNum}`,
-              err instanceof Error ? err.stack : err,
+              formatSafeErrorForLog(err),
             );
           }
         }

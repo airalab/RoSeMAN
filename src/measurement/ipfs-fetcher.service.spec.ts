@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 
@@ -89,6 +90,26 @@ describe('IpfsFetcherService', () => {
     await expect(service.fetchBytes(cid)).rejects.toThrow(
       `All IPFS gateways failed for CID ${cid}`,
     );
+  });
+
+  /** Не переносит произвольное сообщение сетевой ошибки в warning и итоговую ошибку. */
+  it('does not expose response errors in logs', async () => {
+    const secret =
+      'raw=010203 signature=aabb nonce=ccdd public_key=eeff ciphertext=1122';
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error(secret));
+
+    let thrown: unknown;
+    try {
+      await service.fetchBytes(cid);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(warn).toHaveBeenCalledTimes(gateways.length);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(secret);
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).not.toContain(secret);
   });
 
   /** Не выполняет сетевой запрос для неверного CID или опасного пути. */

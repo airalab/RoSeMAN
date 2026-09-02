@@ -5,6 +5,7 @@ import { Logger, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
+import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { appConfig, cpsConfig, ipfsConfig } from '../config/index.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { ConnectivityRecordMapper } from '../measurement/connectivity-record.mapper.js';
@@ -51,7 +52,7 @@ async function run(): Promise<void> {
 run().catch((error: unknown) => {
   new Logger('CpsBackfill').error(
     'CPS backfill failed',
-    error instanceof Error ? error.stack : String(error),
+    formatSafeErrorForLog(error),
   );
   process.exitCode = 1;
 });

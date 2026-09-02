@@ -13,6 +13,7 @@ import {
   ConnectivityRecordDecodeStatus,
   ConnectivitySignatureStatus,
 } from '../common/constants/connectivity-storage.enum.js';
+import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { ConnectivityPayloadRepository } from '../database/repositories/connectivity-payload.repository.js';
 import {
   type ConnectivityRecordInput,
@@ -414,9 +415,6 @@ export class CpsAnchorProcessorService
 
   /** Записывает ошибку фонового poll без содержимого обрабатываемого payload. */
   private logPollError(error: unknown): void {
-    this.logger.error(
-      'CPS poll error',
-      error instanceof Error ? error.stack : String(error),
-    );
+    this.logger.error('CPS poll error', formatSafeErrorForLog(error));
   }
 }

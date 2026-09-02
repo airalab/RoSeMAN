@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
 import { decodeCpsPayloadCid } from './cps-payload.decoder.js';
 import { readCpsNodeAt } from './cps-node.reader.js';
@@ -21,10 +22,7 @@ export class CpsSnapshotService implements OnModuleInit {
   onModuleInit(): void {
     if (!this.config.get<boolean>('cps.enabled', false)) return;
     void this.snapshot().catch((error: unknown) => {
-      this.logger.error(
-        'CPS snapshot failed',
-        error instanceof Error ? error.stack : String(error),
-      );
+      this.logger.error('CPS snapshot failed', formatSafeErrorForLog(error));
     });
   }
 

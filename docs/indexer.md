@@ -193,6 +193,8 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 
 CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128 and stores private sections as BSON Binary without decrypting them. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
 
+CPS operational logs contain only provenance identifiers, envelope indexes, stable status/error codes and aggregate counts. Unexpected errors are reduced to a validated class name and optional machine code: their message, stack, cause and arbitrary fields are never logged. Raw payload/message bytes, signatures, nonce, sensor/owner public keys and encrypted private ciphertext are never rendered into logs.
+
 ### Canonical CPS backfill
 
 `npm run backfill-connectivity -- [options]` processes only anchors whose main ingestion status is `PROCESSED` or `PROCESSED_WITH_ERRORS`. It writes `connectivity_payloads` and `connectivity_records` without rewriting legacy `measurements` or `cities`, and stores progress in separate `backfill_*` fields.

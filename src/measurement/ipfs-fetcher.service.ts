@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isIpfsCid } from '../common/utils/ipfs.util.js';
+import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { DEFAULT_IPFS_MAX_RESPONSE_BYTES } from '../config/ipfs.config.js';
 
 class IpfsResponseTooLargeError extends Error {}
@@ -78,9 +79,7 @@ export class IpfsFetcherService {
 
         lastError = controller.signal.aborted
           ? `timeout after ${this.timeout}ms at ${gateway}`
-          : err instanceof Error
-            ? err.message
-            : String(err);
+          : formatSafeErrorForLog(err);
         this.logger.warn(`Gateway ${gateway} failed for ${cid}: ${lastError}`);
       } finally {
         clearTimeout(timer);
