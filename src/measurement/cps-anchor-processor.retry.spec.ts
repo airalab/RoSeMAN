@@ -33,6 +33,7 @@ import { MeasurementRepository } from '../database/repositories/measurement.repo
 import { SensorRepository } from '../database/repositories/sensor.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
+import { CpsMetricsService } from '../metrics/cps-metrics.service.js';
 import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { CpsAnchorProcessorService } from './cps-anchor-processor.service.js';
 import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
@@ -61,6 +62,7 @@ interface RetryHarness {
   readonly upsertMany: jest.Mock;
   readonly bulkUpsert: jest.Mock;
   readonly updateStatus: jest.Mock;
+  readonly recordCompletedAnchor: jest.Mock;
 }
 
 /** Создаёт raw batch с GPS и одним scalar measurement для проверки всех writes. */
@@ -160,6 +162,8 @@ async function createRetryHarness(
   const upsertMany = jest.fn().mockResolvedValue(undefined);
   const bulkUpsert = jest.fn().mockResolvedValue(undefined);
   const updateStatus = jest.fn().mockResolvedValue(undefined);
+  const recordCompletedAnchor = jest.fn();
+  const recordProjectionErrors = jest.fn();
 
   if (failurePoint === 'fetch') {
     fetchBytes.mockRejectedValueOnce(transientError);
@@ -208,6 +212,10 @@ async function createRetryHarness(
     { bulkUpsert } as unknown as SensorRepository,
     new CpsMeasurementTransformer(config),
     new ConnectivityRecordMapper(config),
+    {
+      recordCompletedAnchor,
+      recordProjectionErrors,
+    } as unknown as CpsMetricsService,
   );
 
   return {
@@ -220,6 +228,7 @@ async function createRetryHarness(
     upsertMany,
     bulkUpsert,
     updateStatus,
+    recordCompletedAnchor,
   };
 }
 
@@ -273,5 +282,6 @@ describe('CpsAnchorProcessorService retry idempotency', () => {
       harness.anchor.source_key,
       'decoded',
     );
+    expect(harness.recordCompletedAnchor).toHaveBeenCalledTimes(1);
   });
 });

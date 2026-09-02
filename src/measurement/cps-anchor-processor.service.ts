@@ -23,6 +23,7 @@ import { MeasurementRepository } from '../database/repositories/measurement.repo
 import { SensorRepository } from '../database/repositories/sensor.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
+import { CpsMetricsService } from '../metrics/cps-metrics.service.js';
 import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
 import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
@@ -69,6 +70,7 @@ export class CpsAnchorProcessorService
     private readonly sensorRepo: SensorRepository,
     private readonly transformer: CpsMeasurementTransformer,
     private readonly connectivityRecordMapper: ConnectivityRecordMapper,
+    private readonly cpsMetrics: CpsMetricsService,
   ) {
     this.enabled = config.get<boolean>('cps.enabled', false);
     this.canonicalStorageEnabled = config.get<boolean>(
@@ -305,6 +307,7 @@ export class CpsAnchorProcessorService
             projection_error_code: 'LEGACY_PROJECTION_FAILED',
           });
         }
+        this.cpsMetrics.recordProjectionErrors(projectedRecords.length);
         throw error;
       }
 
@@ -344,6 +347,13 @@ export class CpsAnchorProcessorService
         ...(invalidEnvelopeCount > 0
           ? { errorCode: CpsAnchorErrorCode.EnvelopeErrors }
           : {}),
+      });
+      this.cpsMetrics.recordCompletedAnchor({
+        rawPayloadBytes: this.rawPayloadStorageEnabled ? bytes.byteLength : 0,
+        storedRecords: storedRecordCount,
+        invalidSignatures: invalidSignatureCount,
+        unsupportedMessages: unsupportedCount,
+        privateSections: privateSectionCount,
       });
       this.logger.debug(
         `CPS anchor ${anchor.source_key}: saved ${measurements.length}, rejected ${invalidEnvelopeCount}`,

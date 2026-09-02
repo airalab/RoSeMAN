@@ -33,12 +33,33 @@ import { MeasurementRepository } from '../database/repositories/measurement.repo
 import { SensorRepository } from '../database/repositories/sensor.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
+import { CpsMetricsService } from '../metrics/cps-metrics.service.js';
 import { CpsAnchorProcessorService } from './cps-anchor-processor.service.js';
 import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
 import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 import { buildEnvelopeSigningBytes } from './protocol/envelope-signature-verifier.js';
 import { ProtocolBatchWireFormat } from './protocol/signed-envelope-batch-payload.decoder.js';
+
+interface CpsMetricsMock {
+  readonly service: CpsMetricsService;
+  readonly recordCompletedAnchor: jest.Mock;
+  readonly recordProjectionErrors: jest.Mock;
+}
+
+/** Создаёт mock CPS-метрик для изолированной проверки processor. */
+function createCpsMetricsMock(): CpsMetricsMock {
+  const recordCompletedAnchor = jest.fn();
+  const recordProjectionErrors = jest.fn();
+  return {
+    service: {
+      recordCompletedAnchor,
+      recordProjectionErrors,
+    } as unknown as CpsMetricsService,
+    recordCompletedAnchor,
+    recordProjectionErrors,
+  };
+}
 
 /** Создаёт raw batch с одним валидно подписанным Urban-сообщением. */
 async function createSignedBatch(withGeo: boolean): Promise<Uint8Array> {
@@ -140,6 +161,7 @@ describe('CpsAnchorProcessorService', () => {
       { bulkUpsert } as unknown as SensorRepository,
       new CpsMeasurementTransformer(config),
       new ConnectivityRecordMapper(config),
+      createCpsMetricsMock().service,
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -218,6 +240,7 @@ describe('CpsAnchorProcessorService', () => {
       { bulkUpsert } as unknown as SensorRepository,
       new CpsMeasurementTransformer(config),
       new ConnectivityRecordMapper(config),
+      createCpsMetricsMock().service,
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -283,6 +306,7 @@ describe('CpsAnchorProcessorService', () => {
     const upsertRecord = jest.fn().mockResolvedValue(undefined);
     const upsertMany = jest.fn().mockResolvedValue(undefined);
     const bulkUpsert = jest.fn().mockResolvedValue(undefined);
+    const metrics = createCpsMetricsMock();
     const processor = new CpsAnchorProcessorService(
       config,
       {
@@ -298,6 +322,7 @@ describe('CpsAnchorProcessorService', () => {
       { bulkUpsert } as unknown as SensorRepository,
       new CpsMeasurementTransformer(config),
       new ConnectivityRecordMapper(config),
+      metrics.service,
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -363,6 +388,16 @@ describe('CpsAnchorProcessorService', () => {
     expect(updateDecodeStatus.mock.invocationCallOrder[0]).toBeLessThan(
       updateStatus.mock.invocationCallOrder[0],
     );
+    expect(metrics.recordCompletedAnchor).toHaveBeenCalledWith({
+      rawPayloadBytes: batchBytes.byteLength,
+      storedRecords: 1,
+      invalidSignatures: 0,
+      unsupportedMessages: 0,
+      privateSections: 0,
+    });
+    expect(
+      metrics.recordCompletedAnchor.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(updateStatus.mock.invocationCallOrder[0]);
   });
 
   it('фиксирует ошибку legacy projection и оставляет anchor для retry', async () => {
@@ -396,6 +431,7 @@ describe('CpsAnchorProcessorService', () => {
       .mockResolvedValueOnce(null);
     const updateStatus = jest.fn().mockResolvedValue(undefined);
     const upsertRecord = jest.fn().mockResolvedValue(undefined);
+    const metrics = createCpsMetricsMock();
     const processor = new CpsAnchorProcessorService(
       config,
       {
@@ -410,6 +446,7 @@ describe('CpsAnchorProcessorService', () => {
       { bulkUpsert: jest.fn() } as unknown as SensorRepository,
       new CpsMeasurementTransformer(config),
       new ConnectivityRecordMapper(config),
+      metrics.service,
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -430,5 +467,7 @@ describe('CpsAnchorProcessorService', () => {
     expect(statusCall[1]).toBe(CpsAnchorStatus.RETRY_PENDING);
     expect(statusCall[2].errorCode).toBe('TRANSIENT_ERROR');
     expect(statusCall[2].availableAt).toBeInstanceOf(Date);
+    expect(metrics.recordProjectionErrors).toHaveBeenCalledWith(1);
+    expect(metrics.recordCompletedAnchor).not.toHaveBeenCalled();
   });
 });
