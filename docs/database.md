@@ -108,9 +108,11 @@ Without claiming a complete list (each file is worth reading in full), here are 
 
 ### Connectivity repositories
 
-- `ConnectivityPayloadRepository.upsertFetched(...)` — stores exact transport bytes, size and SHA-256 with `$setOnInsert` before decode; a repeated payload key must match size/checksum or fails with `PAYLOAD_CONTENT_CONFLICT`.
+- `ConnectivityPayloadRepository.upsertFetched(...)` — stores exact transport bytes, size and SHA-256 with `$setOnInsert` before decode; `payload_key` is the sole canonical transport identity, and a repeated key must match size/checksum or fails with `PAYLOAD_CONTENT_CONFLICT`.
 - `ConnectivityPayloadRepository.updateDecodeStatus(...)` — finalizes decode status without replacing archived bytes.
 - `ConnectivityRecordRepository.upsertRecord(...)` — idempotently updates one occurrence using deterministic `record_key=<payload_key>:<envelope_index>`.
+- `ConnectivityRecordRepository.findMessagePage(...)` — reads only valid/signed/decoded records with materialized `message_json` and the SignedEnvelope fields needed by the API, filters measurement types through compact `measurement_types`, and uses stable cursor ordering by millisecond timestamp plus MongoDB `_id`.
+- `ConnectivityRecordRepository.findLatestMessages(...)` — scans the bounded public date range from newest to oldest and groups by `sensor_id`, returning only the first matching record for each sensor without pagination.
 
 ### MeasurementRepository
 

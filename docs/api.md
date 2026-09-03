@@ -29,12 +29,13 @@ This implies four shared properties:
 
 Current controllers (`src/api/`):
 
-| Controller           | Path                | Purpose                                             |
-|----------------------|---------------------|-----------------------------------------------------|
-| `StatusController`   | `/api/status`       | Indexer state (agents, last-block)                  |
-| `SensorController`   | `/api/sensor`       | V1 — sensor data, cities, messages                  |
-| `SensorV2Controller` | `/api/v2/sensor`    | V2 — `maxdata`, aggregated lists (`list`/`urban`/`markers`), `owner/:owner` |
-| `StoryController`    | `/api/v2/story`     | Stories (`list`, `last/:sensor_id`)                 |
+| Controller               | Path             | Purpose                                                                     |
+| ------------------------ | ---------------- | --------------------------------------------------------------------------- |
+| `StatusController`       | `/api/status`    | Indexer state (agents, last-block)                                          |
+| `SensorController`       | `/api/sensor`    | V1 — sensor data, cities, messages                                          |
+| `SensorV2Controller`     | `/api/v2/sensor` | V2 — `maxdata`, aggregated lists (`list`/`urban`/`markers`), `owner/:owner` |
+| `StoryController`        | `/api/v2/story`  | Stories (`list`, `last/:sensor_id`)                                         |
+| `ConnectivityController` | `/api/v3`        | Public protocol-aware Connectivity messages                                 |
 
 Versioning is done **through the path, not via `enableVersioning()`** — V2 lives in a separate controller with the `v2/...` prefix. This allows V1 and V2 to share a common service (`SensorService`) while exposing different endpoint signatures.
 
@@ -101,6 +102,121 @@ The `message` field is normalized: if the exception carries an object payload (`
 ### SensorV2Controller — `:type` validation
 
 In the path `/api/v2/sensor/maxdata/:type/:start/:end` the `type` parameter is additionally validated against the regexp `/^[a-z0-9_]+$/`. This guards against injection into field names when building dynamic queries against measurements.
+
+### ConnectivityController — public protocol messages
+
+`GET /api/v3/messages` reads the canonical `connectivity_records` collection. It always selects only structurally valid, correctly signed and successfully decoded records that have a materialized `message_json`. Results are sorted by `{ recorded_at: -1, _id: -1 }` so records with the same millisecond timestamp have a deterministic order.
+
+All query parameters are optional. `start` and `end` can be supplied
+independently:
+
+| Parameter          | Meaning                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `limit`            | Page size, `1..1000`, default `1000`                                         |
+| `cursor`           | Opaque `next_cursor` returned by the previous page                           |
+| `start`            | Optional inclusive lower bound in Unix milliseconds (`recorded_at >= start`) |
+| `end`              | Optional exclusive upper bound in Unix milliseconds (`recorded_at < end`)    |
+| `sensor_id`        | Lowercase 64-character Ed25519 public-key hex                                |
+| `owner`            | SS58 owner address                                                           |
+| `payload_type`     | `urban` or `insight`                                                         |
+| `measurement_type` | Public measurement type such as `temperature` or `pm10`                      |
+
+Cursor pagination starts with a request that does not include `cursor`. For
+example, this request selects the Samara calendar day of 7 September 2026 and
+limits the page to 1000 items:
+
+```text
+http://127.0.0.1:3001/api/v3/messages?start=1788724800000&end=1788811200000&limit=1000
+```
+
+When more records are available, the response contains an opaque 28-character
+URL-safe token in `result.next_cursor`. It compactly encodes the format version,
+millisecond timestamp and MongoDB ObjectId. Pass it unchanged in the next
+request while keeping the same filters and page limit:
+
+```text
+http://127.0.0.1:3001/api/v3/messages?start=1788724800000&end=1788811200000&limit=1000&cursor=<NEXT_CURSOR>
+```
+
+Continue until `next_cursor` is `null`, which marks the last page. The cursor
+must not be decoded or edited. Pagination currently moves forward only; the API
+does not return a previous-page cursor. Every page request must repeat the same
+filters and whichever date boundaries were used on the first page. If both
+boundaries are present, `start` must be less than `end`; there is no maximum
+range restriction for this endpoint.
+
+Response example:
+
+```json
+{
+  "result": {
+    "items": [
+      {
+        "sensorId": "4F...",
+        "timestamp": "1788429600123",
+        "nonce": "q80=",
+        "message": {
+          "metadata": {
+            "owner": "4H..."
+          },
+          "urban": {
+            "public": [
+              {
+                "bme280": {
+                  "temperature": {
+                    "celsius": 22.5
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "signature": "EjQ...=="
+      }
+    ],
+    "next_cursor": "AgAAAaBmtgV7aLla4HeWaWJAVmoB"
+  }
+}
+```
+
+Each item is the JSON representation of `crypto.v1.SignedEnvelope`, with its binary `message` field materialized as `core.v1.Message` protobuf JSON during indexing. API reads do not decode `message_raw`. The envelope `timestamp` remains a decimal string so the protocol `uint64` value is not rounded by JavaScript. `sensorId` and `message.metadata.owner` use SS58 with `CPS_OWNER_SS58_PREFIX`; the envelope nonce/signature and byte fields inside encrypted private sections use standard base64. If the original message contains `urban.private` or `insight.private`, its encrypted sections are included unchanged in protobuf JSON form; the API never decrypts them. Pagination metadata remains outside the envelope items. Records indexed before `message_json` was introduced require canonical backfill with `--force` before they appear in this endpoint.
+
+### Latest Connectivity message per sensor
+
+`GET /api/v3/messages/latest` returns at most one item for each `sensor_id`: the
+newest valid, correctly signed and decoded message inside the requested date
+range. Sensors without matching messages in `[start, end)` are omitted. Items
+have exactly the same SignedEnvelope JSON format as `GET /api/v3/messages` and
+are ordered from newest to oldest.
+
+The endpoint requires `start` and `end` in Unix milliseconds and applies the
+same maximum range of 24 hours. Optional filters are `sensor_id`, `owner`,
+`payload_type` and `measurement_type`. It does not use `limit` or `cursor` and
+does not return `next_cursor`.
+
+Example:
+
+```text
+http://127.0.0.1:3001/api/v3/messages/latest?start=1788724800000&end=1788811200000
+```
+
+Response shape:
+
+```json
+{
+  "result": {
+    "items": [
+      {
+        "sensorId": "4F...",
+        "timestamp": "1788429600123",
+        "nonce": "q80=",
+        "message": {},
+        "signature": "EjQ...=="
+      }
+    ]
+  }
+}
+```
 
 ## Full endpoint list
 

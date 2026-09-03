@@ -8,7 +8,7 @@
 - **IPFS loader** — asynchronous processing of `datalog` records with CIDs: fetches JSON via a list of gateways with fallback, parses it and stores sensor measurements.
 - **CPS ingestion** — snapshots configured numeric NodeIds, handles realtime `cps.PayloadSet`, reads binary CIDs, decodes raw/XZ/zlib protobuf batches and verifies Ed25519 signatures before storing public Urban/Insight measurements.
 - **Reverse geocoding** — derives country/region/city from sensor coordinates.
-- **REST API** — sensor data (V1/V2), story list, indexer status. See [docs/api_endpoints.md](./docs/api_endpoints.md).
+- **REST API** — sensor data (V1/V2), public Connectivity Protocol messages (V3), story list and indexer status. See [docs/api_endpoints.md](./docs/api_endpoints.md).
 - **Prometheus metrics** at `/metrics`.
 - **Flexible composition** — every functional module (`API`, `INDEXER`, `MEASUREMENT`, `GEOCODING`) is toggled by environment flags, which makes it possible to run the REST API, indexer and IPFS processor as separate instances.
 
@@ -26,7 +26,7 @@ A detailed description of the indexer, data formats and DB schemas is in [docs/i
 
 ```
 src/
-├── api/                  REST controllers: sensor (V1/V2), story, status
+├── api/                  REST controllers: sensor (V1/V2), connectivity (V3), story, status
 ├── robonomics/           chain connection, block indexer, CPS snapshot and handlers
 ├── measurement/          legacy/CPS processors, IPFS fetcher and protocol codecs
 ├── geocoding/            sensor reverse geocoding

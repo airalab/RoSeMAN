@@ -8,7 +8,6 @@ import { ConfigService } from '@nestjs/config';
 import { CpsAnchorStatus } from '../common/constants/cps-anchor-status.enum.js';
 import { CpsAnchorErrorCode } from '../common/constants/cps-anchor-error-code.enum.js';
 import {
-  ConnectivityLegacyProjectionStatus,
   ConnectivityPayloadDecodeStatus,
   ConnectivityRecordDecodeStatus,
   ConnectivitySignatureStatus,
@@ -145,7 +144,6 @@ export class CpsAnchorProcessorService
       if (this.rawPayloadStorageEnabled) {
         await this.connectivityPayloadRepo.upsertFetched({
           payloadKey: anchor.source_key,
-          sourceId: anchor.source_key,
           nodeId: anchor.node_id,
           block: anchor.block,
           cid: anchor.cid,
@@ -186,10 +184,7 @@ export class CpsAnchorProcessorService
       let unsupportedCount = 0;
       let privateSectionCount = 0;
       const measurements: Measurement[] = [];
-      const projectedRecords: Array<{
-        record: ConnectivityRecordInput;
-        measurement: Measurement;
-      }> = [];
+      const projectedRecords: ConnectivityRecordInput[] = [];
 
       if (this.canonicalStorageEnabled) {
         for (const [envelopeIndex, codes] of structuralErrors) {
@@ -223,8 +218,6 @@ export class CpsAnchorProcessorService
               signature_status: ConnectivitySignatureStatus.Invalid,
               decode_status: ConnectivityRecordDecodeStatus.NotAttempted,
               error_code: verification.reason,
-              legacy_projection_status:
-                ConnectivityLegacyProjectionStatus.NotAttempted,
             };
             await this.connectivityRecordRepo.upsertRecord(record);
           }
@@ -260,8 +253,6 @@ export class CpsAnchorProcessorService
             if (record) {
               record = {
                 ...record,
-                legacy_projection_status:
-                  ConnectivityLegacyProjectionStatus.Skipped,
                 projection_error_code: transformed.code,
               };
               await this.connectivityRecordRepo.upsertRecord(record);
@@ -273,10 +264,7 @@ export class CpsAnchorProcessorService
           }
           measurements.push(transformed.measurement);
           if (record) {
-            projectedRecords.push({
-              record,
-              measurement: transformed.measurement,
-            });
+            projectedRecords.push(record);
           }
         } catch (error) {
           if (!(error instanceof ProtocolMessageDecodeError)) throw error;
@@ -287,8 +275,6 @@ export class CpsAnchorProcessorService
               signature_status: ConnectivitySignatureStatus.Valid,
               decode_status: ConnectivityRecordDecodeStatus.Error,
               error_code: 'MALFORMED_MESSAGE',
-              legacy_projection_status:
-                ConnectivityLegacyProjectionStatus.NotAttempted,
             };
             await this.connectivityRecordRepo.upsertRecord(record);
           }
@@ -301,24 +287,14 @@ export class CpsAnchorProcessorService
           await this.upsertSensors(measurements);
         }
       } catch (error) {
-        for (const { record } of projectedRecords) {
+        for (const record of projectedRecords) {
           await this.connectivityRecordRepo.upsertRecord({
             ...record,
-            legacy_projection_status: ConnectivityLegacyProjectionStatus.Error,
             projection_error_code: 'LEGACY_PROJECTION_FAILED',
           });
         }
         this.cpsMetrics.recordProjectionErrors(projectedRecords.length);
         throw error;
-      }
-
-      for (const { record, measurement } of projectedRecords) {
-        await this.connectivityRecordRepo.upsertRecord({
-          ...record,
-          legacy_projection_status:
-            ConnectivityLegacyProjectionStatus.Projected,
-          legacy_measurement_key: `${measurement.sensor_id}:${measurement.timestamp}`,
-        });
       }
 
       if (this.rawPayloadStorageEnabled) {

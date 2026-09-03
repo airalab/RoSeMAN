@@ -16,9 +16,6 @@ export class ConnectivityPayload {
   @Prop({ required: true, type: String })
   source_type!: string;
 
-  @Prop({ required: true, type: String })
-  source_id!: string;
-
   @Prop({ type: String })
   node_id?: string;
 
@@ -71,8 +68,4 @@ export const ConnectivityPayloadSchema =
 
 ConnectivityPayloadSchema.index({ payload_key: 1 }, { unique: true });
 ConnectivityPayloadSchema.index({ cid: 1 });
-ConnectivityPayloadSchema.index(
-  { source_type: 1, source_id: 1 },
-  { unique: true },
-);
 ConnectivityPayloadSchema.index({ decode_status: 1, fetched_at: 1 });

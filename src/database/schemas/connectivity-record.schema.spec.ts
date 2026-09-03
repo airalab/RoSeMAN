@@ -1,6 +1,5 @@
 import { model, Types } from 'mongoose';
 import {
-  ConnectivityLegacyProjectionStatus,
   ConnectivityRecordDecodeStatus,
   ConnectivitySignatureStatus,
   ConnectivityStructureStatus,
@@ -18,6 +17,10 @@ describe('ConnectivityRecordSchema', () => {
         ],
       ]),
     );
+    expect(ConnectivityRecordSchema.indexes()).toContainEqual([
+      { recorded_at: -1, _id: -1 },
+      { background: true },
+    ]);
   });
 
   it('объявляет начальные индексы time-range фильтров', () => {
@@ -40,21 +43,23 @@ describe('ConnectivityRecordSchema', () => {
       payload_key: 'cps:1:cid',
       envelope_index: 0,
       source_type: 'cps',
-      source_id: 'cps:1:cid',
-      protocol: 'connectivity',
-      schema_package: 'core.v1',
-      schema_revision: 'revision',
       timestamp_ms: '18446744073709551615',
+      message_json: {
+        metadata: { owner: '4owner' },
+        urban: { public: [{ bme280: { temperature: { celsius: 22.5 } } }] },
+      },
       structure_status: ConnectivityStructureStatus.Valid,
       signature_status: ConnectivitySignatureStatus.Valid,
       decode_status: ConnectivityRecordDecodeStatus.Decoded,
-      public_events: [],
-      private_sections: [],
-      legacy_projection_status: ConnectivityLegacyProjectionStatus.Skipped,
+      measurement_types: ['temperature'],
     });
 
     expect(document.validateSync()).toBeUndefined();
     expect(document.timestamp_ms).toBeInstanceOf(Types.Decimal128);
     expect(document.timestamp_ms?.toString()).toBe('18446744073709551615');
+    expect(document.message_json).toEqual({
+      metadata: { owner: '4owner' },
+      urban: { public: [{ bme280: { temperature: { celsius: 22.5 } } }] },
+    });
   });
 });

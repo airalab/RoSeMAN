@@ -4,9 +4,3 @@ export const CONNECTIVITY_SCHEMA_REVISION =
 
 /** Protobuf package транспортного SignedEnvelopeBatch. */
 export const CONNECTIVITY_ENVELOPE_SCHEMA_PACKAGE = 'crypto.v1';
-
-/** Protobuf package вложенного сообщения устройства. */
-export const CONNECTIVITY_MESSAGE_SCHEMA_PACKAGE = 'core.v1';
-
-/** Название протокола для сохранённой канонической записи. */
-export const CONNECTIVITY_PROTOCOL = 'connectivity';

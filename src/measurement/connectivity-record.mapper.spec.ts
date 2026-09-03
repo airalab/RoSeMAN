@@ -62,7 +62,7 @@ describe('ConnectivityRecordMapper', () => {
     });
   });
 
-  it('сохраняет порядок public events, GPS height и exact private bytes', () => {
+  it('сохраняет protobuf JSON и компактные типы публичных измерений', () => {
     const owner = new Uint8Array(32).fill(7);
     const privateSection = {
       version: 1,
@@ -125,37 +125,31 @@ describe('ConnectivityRecordMapper', () => {
     expect(record.payload_type).toBe(ConnectivityPayloadType.Urban);
     expect(record.owner_raw).toEqual(Buffer.from(owner));
     expect(record.owner).toBe(encodeAddress(owner, 32));
-    expect(record.public_events).toEqual([
-      {
-        sensor_type: 'bme280',
-        measurement_type: 'temperature',
-        value: 21.25,
-        unit: 'celsius',
+    expect(record.message_json).toEqual({
+      metadata: { owner: encodeAddress(owner, 32) },
+      urban: {
+        public: [
+          { bme280: { temperature: { celsius: 21.25 } } },
+          { gps: { lat: 53.1, lon: 50.2, heightM: 81.5 } },
+          { bme280: { humidity: { percent: 45.5 } } },
+        ],
+        private: [
+          {
+            version: 1,
+            algorithm: 'xchacha20',
+            from: 'CAk=',
+            nonce: 'CgsM',
+            ciphertext: 'DQ4P',
+          },
+        ],
       },
-      {
-        sensor_type: 'gps',
-        measurement_type: 'location',
-        unit: 'wgs84',
-        lat: 53.1,
-        lon: 50.2,
-        height_m: 81.5,
-      },
-      {
-        sensor_type: 'bme280',
-        measurement_type: 'humidity',
-        value: 45.5,
-        unit: 'percent',
-      },
+    });
+    expect(record.measurement_types).toEqual([
+      'temperature',
+      'location',
+      'humidity',
     ]);
-    expect(record.private_sections).toEqual([
-      {
-        version: 1,
-        algorithm: 'xchacha20',
-        from: Buffer.from(privateSection.from),
-        nonce: Buffer.from(privateSection.nonce),
-        ciphertext: Buffer.from(privateSection.ciphertext),
-      },
-    ]);
+    expect(record).not.toHaveProperty('private_sections');
   });
 
   it('оставляет неизвестный payload как unsupported record', () => {
@@ -169,8 +163,8 @@ describe('ConnectivityRecordMapper', () => {
     expect(record).toMatchObject({
       payload_type: ConnectivityPayloadType.Unknown,
       decode_status: ConnectivityRecordDecodeStatus.Unsupported,
-      public_events: [],
-      private_sections: [],
+      message_json: {},
+      measurement_types: [],
     });
   });
 });

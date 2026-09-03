@@ -41,15 +41,6 @@ export enum ConnectivityRecordDecodeStatus {
   NotAttempted = 'not_attempted',
 }
 
-/** Состояние совместимой проекции в коллекцию measurements. */
-export enum ConnectivityLegacyProjectionStatus {
-  Pending = 'pending',
-  Projected = 'projected',
-  Skipped = 'skipped',
-  Error = 'error',
-  NotAttempted = 'not_attempted',
-}
-
 /** Поддерживаемый тип payload корневого protocol message. */
 export enum ConnectivityPayloadType {
   Urban = 'urban',

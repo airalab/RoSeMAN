@@ -19,7 +19,6 @@ import {
 export interface ConnectivityPayloadInput {
   readonly payloadKey: string;
   readonly sourceType?: string;
-  readonly sourceId: string;
   readonly nodeId?: string;
   readonly block?: number;
   readonly cid?: string;
@@ -68,7 +67,6 @@ export class ConnectivityPayloadRepository {
     const document = {
       payload_key: input.payloadKey,
       source_type: input.sourceType ?? ConnectivitySourceType.Cps,
-      source_id: input.sourceId,
       node_id: input.nodeId,
       block: input.block,
       cid: input.cid,

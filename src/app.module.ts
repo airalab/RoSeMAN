@@ -7,6 +7,7 @@ import {
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
+import { ConnectivityModule } from './api/connectivity/connectivity.module.js';
 import { SensorModule } from './api/sensor/sensor.module.js';
 import { StatusModule } from './api/status/status.module.js';
 import { StoryModule } from './api/story/story.module.js';
@@ -63,6 +64,7 @@ function buildImports(): Array<
 
   if (process.env.API_ENABLED !== 'false') {
     modules.push(
+      ConnectivityModule,
       StatusModule,
       SensorModule,
       StoryModule,

@@ -1,16 +1,11 @@
 import { ConnectivityPayloadSchema } from './connectivity-payload.schema.js';
 
 describe('ConnectivityPayloadSchema', () => {
-  it('обеспечивает идемпотентность payload и transport identity', () => {
-    expect(ConnectivityPayloadSchema.indexes()).toEqual(
-      expect.arrayContaining([
-        [{ payload_key: 1 }, { unique: true, background: true }],
-        [
-          { source_type: 1, source_id: 1 },
-          { unique: true, background: true },
-        ],
-      ]),
-    );
+  it('обеспечивает идемпотентность payload по каноническому ключу', () => {
+    expect(ConnectivityPayloadSchema.indexes()).toContainEqual([
+      { payload_key: 1 },
+      { unique: true, background: true },
+    ]);
   });
 
   it('объявляет индексы CID и очереди декодирования', () => {

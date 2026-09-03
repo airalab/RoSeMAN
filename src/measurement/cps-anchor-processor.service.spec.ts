@@ -333,7 +333,7 @@ describe('CpsAnchorProcessorService', () => {
         rawPayload: batchBytes,
       }),
     );
-    expect(upsertRecord).toHaveBeenCalledTimes(3);
+    expect(upsertRecord).toHaveBeenCalledTimes(2);
     const recordCalls = upsertRecord.mock.calls as unknown as Array<
       [ConnectivityRecordInput]
     >;
@@ -343,20 +343,19 @@ describe('CpsAnchorProcessorService', () => {
       decode_status: 'pending',
     });
     expect(recordCalls[0][0].message_raw).toBeInstanceOf(Buffer);
-    expect(recordCalls[2][0]).toMatchObject({
+    expect(recordCalls[1][0]).toMatchObject({
       signature_status: 'valid',
       decode_status: 'decoded',
-      legacy_projection_status: 'projected',
+      measurement_types: ['location', 'temperature'],
+      message_json: {
+        urban: {
+          public: [
+            { gps: { lat: 53.1, lon: 50.2 } },
+            { bme280: { temperature: { celsius: 22.3 } } },
+          ],
+        },
+      },
     });
-    expect(
-      recordCalls[2][0].public_events.map((event) => [
-        event.sensor_type,
-        event.measurement_type,
-      ]),
-    ).toEqual([
-      ['gps', 'location'],
-      ['bme280', 'temperature'],
-    ]);
     expect(updateDecodeStatus).toHaveBeenCalledWith(
       anchor.source_key,
       'decoded',
@@ -382,8 +381,8 @@ describe('CpsAnchorProcessorService', () => {
     expect(upsertRecord.mock.invocationCallOrder[0]).toBeLessThan(
       upsertMany.mock.invocationCallOrder[0],
     );
-    expect(upsertMany.mock.invocationCallOrder[0]).toBeLessThan(
-      upsertRecord.mock.invocationCallOrder[2],
+    expect(upsertRecord.mock.invocationCallOrder[1]).toBeLessThan(
+      upsertMany.mock.invocationCallOrder[0],
     );
     expect(updateDecodeStatus.mock.invocationCallOrder[0]).toBeLessThan(
       updateStatus.mock.invocationCallOrder[0],
@@ -455,7 +454,6 @@ describe('CpsAnchorProcessorService', () => {
       [ConnectivityRecordInput]
     >;
     expect(recordCalls.at(-1)?.[0]).toMatchObject({
-      legacy_projection_status: 'error',
       projection_error_code: 'LEGACY_PROJECTION_FAILED',
     });
     const statusCall = updateStatus.mock.calls[0] as unknown as [

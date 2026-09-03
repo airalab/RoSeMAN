@@ -48,7 +48,7 @@ type FailurePoint =
   | 'record-decoded'
   | 'measurement'
   | 'sensor'
-  | 'record-projected'
+  | 'projection-error-record'
   | 'payload-status'
   | 'anchor-status';
 
@@ -179,7 +179,8 @@ async function createRetryHarness(
     upsertMany.mockRejectedValueOnce(transientError);
   } else if (failurePoint === 'sensor') {
     bulkUpsert.mockRejectedValueOnce(transientError);
-  } else if (failurePoint === 'record-projected') {
+  } else if (failurePoint === 'projection-error-record') {
+    upsertMany.mockRejectedValueOnce(transientError);
     upsertRecord
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
@@ -240,7 +241,7 @@ describe('CpsAnchorProcessorService retry idempotency', () => {
     'record-decoded',
     'measurement',
     'sensor',
-    'record-projected',
+    'projection-error-record',
     'payload-status',
     'anchor-status',
   ])('без дублей продолжает обработку после сбоя на шаге %s', async (step) => {

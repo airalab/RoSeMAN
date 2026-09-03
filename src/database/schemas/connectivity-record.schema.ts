@@ -1,7 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 import {
-  ConnectivityLegacyProjectionStatus,
   ConnectivityPayloadType,
   ConnectivityRecordDecodeStatus,
   ConnectivitySignatureStatus,
@@ -9,58 +8,7 @@ import {
 } from '../../common/constants/connectivity-storage.enum.js';
 
 export type ConnectivityRecordDocument = HydratedDocument<ConnectivityRecord>;
-
-/** Нормализованное публичное событие с сохранением позиции в сообщении. */
-@Schema({ _id: false })
-export class ConnectivityPublicEvent {
-  @Prop({ required: true, type: String })
-  sensor_type!: string;
-
-  @Prop({ type: String })
-  measurement_type?: string;
-
-  @Prop({ type: Number })
-  value?: number;
-
-  @Prop({ type: String })
-  unit?: string;
-
-  @Prop({ type: Number })
-  lat?: number;
-
-  @Prop({ type: Number })
-  lon?: number;
-
-  @Prop({ type: Number })
-  height_m?: number;
-}
-
-const ConnectivityPublicEventSchema = SchemaFactory.createForClass(
-  ConnectivityPublicEvent,
-);
-
-/** Зашифрованная private-секция без попытки расшифровки. */
-@Schema({ _id: false })
-export class ConnectivityPrivateSection {
-  @Prop({ required: true, type: Number })
-  version!: number;
-
-  @Prop({ required: true, type: String })
-  algorithm!: string;
-
-  @Prop({ required: true, type: Buffer })
-  from!: Buffer;
-
-  @Prop({ required: true, type: Buffer })
-  nonce!: Buffer;
-
-  @Prop({ required: true, type: Buffer })
-  ciphertext!: Buffer;
-}
-
-const ConnectivityPrivateSectionSchema = SchemaFactory.createForClass(
-  ConnectivityPrivateSection,
-);
+export type ConnectivityMessageJson = Record<string, unknown>;
 
 /** Каноническая запись одного occurrence envelope в конкретном payload. */
 @Schema({ collection: 'connectivity_records', timestamps: true })
@@ -77,9 +25,6 @@ export class ConnectivityRecord {
   @Prop({ required: true, type: String })
   source_type!: string;
 
-  @Prop({ required: true, type: String })
-  source_id!: string;
-
   @Prop({ type: String })
   node_id?: string;
 
@@ -88,15 +33,6 @@ export class ConnectivityRecord {
 
   @Prop({ type: String })
   cid?: string;
-
-  @Prop({ required: true, type: String })
-  protocol!: string;
-
-  @Prop({ required: true, type: String })
-  schema_package!: string;
-
-  @Prop({ required: true, type: String })
-  schema_revision!: string;
 
   @Prop({ type: String })
   sensor_id?: string;
@@ -115,6 +51,9 @@ export class ConnectivityRecord {
 
   @Prop({ type: Buffer })
   message_raw?: Buffer;
+
+  @Prop({ type: SchemaTypes.Mixed })
+  message_json?: ConnectivityMessageJson;
 
   @Prop({ type: Buffer })
   signature?: Buffer;
@@ -152,25 +91,8 @@ export class ConnectivityRecord {
   @Prop({ type: String, enum: ConnectivityPayloadType })
   payload_type?: ConnectivityPayloadType;
 
-  @Prop({ required: true, type: [ConnectivityPublicEventSchema], default: [] })
-  public_events!: ConnectivityPublicEvent[];
-
-  @Prop({
-    required: true,
-    type: [ConnectivityPrivateSectionSchema],
-    default: [],
-  })
-  private_sections!: ConnectivityPrivateSection[];
-
-  @Prop({
-    required: true,
-    type: String,
-    enum: ConnectivityLegacyProjectionStatus,
-  })
-  legacy_projection_status!: ConnectivityLegacyProjectionStatus;
-
-  @Prop({ type: String })
-  legacy_measurement_key?: string;
+  @Prop({ required: true, type: [String], default: [] })
+  measurement_types!: string[];
 
   @Prop({ type: String })
   projection_error_code?: string;
@@ -187,3 +109,4 @@ ConnectivityRecordSchema.index(
 ConnectivityRecordSchema.index({ sensor_id: 1, recorded_at: 1 });
 ConnectivityRecordSchema.index({ owner: 1, recorded_at: 1 });
 ConnectivityRecordSchema.index({ payload_type: 1, recorded_at: 1 });
+ConnectivityRecordSchema.index({ recorded_at: -1, _id: -1 });

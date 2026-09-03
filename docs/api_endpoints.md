@@ -7,53 +7,63 @@
 **File:** `src/api/status/status.controller.ts`
 **Prefix:** `status`
 
-| Method | Path | Handler | Description |
-|--------|------|---------|-------------|
-| GET | `/api/status/agents` | `getAgents()` | List of agent addresses from configuration |
-| GET | `/api/status/last-block` | `getLastBlock()` | Number of the last processed block. Query: `?chain=` (default `polkadot_robonomics`) |
+| Method | Path                     | Handler          | Description                                                                          |
+| ------ | ------------------------ | ---------------- | ------------------------------------------------------------------------------------ |
+| GET    | `/api/status/agents`     | `getAgents()`    | List of agent addresses from configuration                                           |
+| GET    | `/api/status/last-block` | `getLastBlock()` | Number of the last processed block. Query: `?chain=` (default `polkadot_robonomics`) |
 
 ## Sensor Controller (V1)
 
 **File:** `src/api/sensor/sensor.controller.ts`
 **Prefix:** `sensor`
 
-| Method | Path | Handler | Description |
-|--------|------|---------|-------------|
-| GET | `/api/sensor/cities` | `getCities()` | List of cities grouped by countries and regions |
-| GET | `/api/sensor/json` | `getSensorJson()` | Sensor data from a GPS area or city for a time range. Query: `?start=&end=` (required) + `&bound=lat1,lng1\|lat2,lng2` or `&city=`. Guard: `DateRangeGuard` |
-| GET | `/api/sensor/csv/:start/:end/:city` | `getSensorCsv()` | CSV (TSV) file with city sensor data for a time range. Headers: timestamp, sensor_id, geo, pm10, pm25, + dynamic. Guard: `DateRangeGuard` |
-| GET | `/api/sensor/measurements/:start/:end` | `getMeasurementTypes()` | Unique measurement types for the period (unix timestamps). Guard: `DateRangeGuard` |
-| GET | `/api/sensor/messages/:start/:end` | `getMessages()` | Messages (model=MESSAGE) for the period. Returns id, message, author, images, geo. Guard: `DateRangeGuard` |
-| GET | `/api/sensor/:sensor/:start/:end` | `getSensorData()` | Sensor data for the period (unix timestamps). Guard: `DateRangeGuard` |
+| Method | Path                                   | Handler                 | Description                                                                                                                                                 |
+| ------ | -------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/sensor/cities`                   | `getCities()`           | List of cities grouped by countries and regions                                                                                                             |
+| GET    | `/api/sensor/json`                     | `getSensorJson()`       | Sensor data from a GPS area or city for a time range. Query: `?start=&end=` (required) + `&bound=lat1,lng1\|lat2,lng2` or `&city=`. Guard: `DateRangeGuard` |
+| GET    | `/api/sensor/csv/:start/:end/:city`    | `getSensorCsv()`        | CSV (TSV) file with city sensor data for a time range. Headers: timestamp, sensor_id, geo, pm10, pm25, + dynamic. Guard: `DateRangeGuard`                   |
+| GET    | `/api/sensor/measurements/:start/:end` | `getMeasurementTypes()` | Unique measurement types for the period (unix timestamps). Guard: `DateRangeGuard`                                                                          |
+| GET    | `/api/sensor/messages/:start/:end`     | `getMessages()`         | Messages (model=MESSAGE) for the period. Returns id, message, author, images, geo. Guard: `DateRangeGuard`                                                  |
+| GET    | `/api/sensor/:sensor/:start/:end`      | `getSensorData()`       | Sensor data for the period (unix timestamps). Guard: `DateRangeGuard`                                                                                       |
 
 ## Sensor Controller (V2)
 
 **File:** `src/api/sensor/sensor-v2.controller.ts`
 **Prefix:** `v2/sensor`
 
-| Method | Path | Handler | Description |
-|--------|------|---------|-------------|
-| GET | `/api/v2/sensor/maxdata/:type/:start/:end` | `getMaxData()` | Maximum measurement values of the given type for each sensor in the period. `:type` is validated by `/^[a-z0-9_]+$/`. Guard: `DateRangeGuard` |
-| GET | `/api/v2/sensor/list/:start/:end` | `getSensorList()` | List of sensors with data for the given period. Guard: `DateRangeGuard` |
-| GET | `/api/v2/sensor/urban/:start/:end` | `getUrbanSensorList()` | Sensors whose latest `device_model` contains `urban` (case-insensitive) or is absent. Guard: `DateRangeGuard` |
-| GET | `/api/v2/sensor/markers/:start/:end` | `getMarkerSensorList()` | List of sensors for map markers in the period: urban sensors, sensors without `device_model`, and insight sensors whose owner has no urban sensor. Urban entries also carry a `sensors` array of the owner's other sensors. Guard: `DateRangeGuard` |
-| GET | `/api/v2/sensor/owner/:owner` | `getSensorsByOwner()` | List of sensor IDs whose **current** owner is the given one (the `owner` field of the sensor's latest measurement in the `measurements` collection). Response: `{ result: string[] }` (sorted) |
-| GET | `/api/v2/sensor/:sensor/:start/:end` | `getSensorDataWithOwner()` | Sensor data for the period + data of all sensors with the same owner. Response: `{ result, sensor: { owner, sensors, data } }`. Guard: `DateRangeGuard` |
+| Method | Path                                       | Handler                    | Description                                                                                                                                                                                                                                         |
+| ------ | ------------------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v2/sensor/maxdata/:type/:start/:end` | `getMaxData()`             | Maximum measurement values of the given type for each sensor in the period. `:type` is validated by `/^[a-z0-9_]+$/`. Guard: `DateRangeGuard`                                                                                                       |
+| GET    | `/api/v2/sensor/list/:start/:end`          | `getSensorList()`          | List of sensors with data for the given period. Guard: `DateRangeGuard`                                                                                                                                                                             |
+| GET    | `/api/v2/sensor/urban/:start/:end`         | `getUrbanSensorList()`     | Sensors whose latest `device_model` contains `urban` (case-insensitive) or is absent. Guard: `DateRangeGuard`                                                                                                                                       |
+| GET    | `/api/v2/sensor/markers/:start/:end`       | `getMarkerSensorList()`    | List of sensors for map markers in the period: urban sensors, sensors without `device_model`, and insight sensors whose owner has no urban sensor. Urban entries also carry a `sensors` array of the owner's other sensors. Guard: `DateRangeGuard` |
+| GET    | `/api/v2/sensor/owner/:owner`              | `getSensorsByOwner()`      | List of sensor IDs whose **current** owner is the given one (the `owner` field of the sensor's latest measurement in the `measurements` collection). Response: `{ result: string[] }` (sorted)                                                      |
+| GET    | `/api/v2/sensor/:sensor/:start/:end`       | `getSensorDataWithOwner()` | Sensor data for the period + data of all sensors with the same owner. Response: `{ result, sensor: { owner, sensors, data } }`. Guard: `DateRangeGuard`                                                                                             |
 
 ## Story Controller (V2)
 
 **File:** `src/api/story/story.controller.ts`
 **Prefix:** `v2/story`
 
-| Method | Path | Handler | Description |
-|--------|------|---------|-------------|
-| GET | `/api/v2/story/list` | `getList()` | Page of stories (sorted by timestamp desc). Query: `?limit=` (max 50, default 50), `?page=` (default 1), `?start=`, `?end=` — all optional. Response: `{ result: { totalPages, list } }` |
-| GET | `/api/v2/story/last/:sensor_id` | `getLast()` | Last story for the given sensor. Response: `{ result: { author, message, date, timestamp, icon } }` or `{ result: null }` |
+| Method | Path                            | Handler     | Description                                                                                                                                                                              |
+| ------ | ------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v2/story/list`            | `getList()` | Page of stories (sorted by timestamp desc). Query: `?limit=` (max 50, default 50), `?page=` (default 1), `?start=`, `?end=` — all optional. Response: `{ result: { totalPages, list } }` |
+| GET    | `/api/v2/story/last/:sensor_id` | `getLast()` | Last story for the given sensor. Response: `{ result: { author, message, date, timestamp, icon } }` or `{ result: null }`                                                                |
+
+## Connectivity Controller (V3)
+
+**File:** `src/api/connectivity/connectivity.controller.ts`
+**Prefix:** `v3`
+
+| Method | Path                      | Handler               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | ------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v3/messages`        | `getMessages()`       | Valid/verified Connectivity Protocol records with `message_json` materialized during indexing. All query parameters are optional: independent Unix-millisecond `start` and `end` bounds, `limit` (1–1000, default 1000), opaque 28-character `cursor`, `sensor_id`, `owner`, `payload_type`, `measurement_type`. There is no maximum date range; when both bounds are supplied, `start` must be less than `end`. Pass `next_cursor` unchanged as `cursor` with the same filters to read the next page; `null` marks the last page. Response: `{ result: { items, next_cursor } }`; every item represents `crypto.v1.SignedEnvelope` as JSON with decoded `core.v1.Message`. |
+| GET    | `/api/v3/messages/latest` | `getLatestMessages()` | The newest valid/verified Connectivity Protocol message for every sensor that has data in the required `[start, end)` range of at most 24 hours. Optional filters: `sensor_id`, `owner`, `payload_type`, `measurement_type`. No `limit`, `cursor` or `next_cursor`; item format is identical to `/api/v3/messages`.                                                                                                                                                                                                                                                                                                                                                         |
 
 ## Summary
 
-- **Total endpoints:** 16
+- **Total endpoints:** 18
 - **All methods:** GET only
 - **Versioning:** V2 is implemented in a separate controller with the `v2/sensor` prefix
-- **Controllers with endpoints** live in `StatusModule`, `SensorModule`, `StoryModule`
+- **Controllers with endpoints** live in `StatusModule`, `SensorModule`, `StoryModule`, `ConnectivityModule`
 - Background modules contain no HTTP controllers and are controlled independently: `RobonomicsModule` by `INDEXER_ENABLED`, `MeasurementModule` by `MEASUREMENT_ENABLED`, and `GeocodingModule` by `GEOCODING_ENABLED`. CPS work additionally requires `CPS_ENABLED=true`

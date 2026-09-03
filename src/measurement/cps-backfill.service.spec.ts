@@ -166,17 +166,22 @@ describe('CpsBackfillService', () => {
     >;
     expect(recordCalls.at(-1)?.[0]).toMatchObject({
       decode_status: 'decoded',
-      legacy_projection_status: 'not_attempted',
-      private_sections: [
-        {
-          version: 1,
-          algorithm: 'xchacha20',
-          from: Buffer.from([1, 2]),
-          nonce: Buffer.from([3, 4]),
-          ciphertext: Buffer.from([5, 6, 7]),
+      measurement_types: [],
+      message_json: {
+        urban: {
+          private: [
+            {
+              version: 1,
+              algorithm: 'xchacha20',
+              from: 'AQI=',
+              nonce: 'AwQ=',
+              ciphertext: 'BQYH',
+            },
+          ],
         },
-      ],
+      },
     });
+    expect(recordCalls.at(-1)?.[0]).not.toHaveProperty('private_sections');
     expect(updateBackfillResult).toHaveBeenCalledWith(
       anchor.source_key,
       CpsBackfillStatus.Processed,

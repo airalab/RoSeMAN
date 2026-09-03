@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { CpsBackfillErrorCode } from '../common/constants/cps-backfill-error-code.enum.js';
 import { CpsBackfillStatus } from '../common/constants/cps-backfill-status.enum.js';
 import {
-  ConnectivityLegacyProjectionStatus,
   ConnectivityPayloadDecodeStatus,
   ConnectivityRecordDecodeStatus,
   ConnectivitySignatureStatus,
@@ -192,7 +191,6 @@ export class CpsBackfillService {
     const bytes = await this.ipfsFetcher.fetchBytes(anchor.cid);
     await this.payloadRepo.upsertFetched({
       payloadKey: anchor.source_key,
-      sourceId: anchor.source_key,
       nodeId: anchor.node_id,
       block: anchor.block,
       cid: anchor.cid,
@@ -238,11 +236,8 @@ export class CpsBackfillService {
     }
 
     for (const envelope of batch.envelopes) {
-      let record: ConnectivityRecordInput = {
-        ...this.recordMapper.createEnvelopeRecord(anchor, envelope),
-        legacy_projection_status:
-          ConnectivityLegacyProjectionStatus.NotAttempted,
-      };
+      let record: ConnectivityRecordInput =
+        this.recordMapper.createEnvelopeRecord(anchor, envelope);
       await this.recordRepo.upsertRecord(record);
       recordCount += 1;
 
@@ -261,21 +256,17 @@ export class CpsBackfillService {
 
       try {
         const message = this.messageDecoder.decode(verification.envelope);
-        record = {
-          ...this.recordMapper.applyDecodedMessage(record, message),
-          legacy_projection_status:
-            ConnectivityLegacyProjectionStatus.NotAttempted,
-        };
+        record = this.recordMapper.applyDecodedMessage(record, message);
         if (
-          record.decode_status === ConnectivityRecordDecodeStatus.Unsupported
+          message.payload.case !== 'urban' &&
+          message.payload.case !== 'insight'
         ) {
           unsupportedCount += 1;
         } else {
-          privateSectionCount += record.private_sections.length;
-          if (
-            record.public_events.length === 0 &&
-            record.private_sections.length > 0
-          ) {
+          const payload = message.payload.value;
+          const privateCount = payload.private.length;
+          privateSectionCount += privateCount;
+          if (payload.public.length === 0 && privateCount > 0) {
             privateOnlyCount += 1;
           }
         }

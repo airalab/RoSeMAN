@@ -186,12 +186,12 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 3. With `CPS_RAW_PAYLOAD_STORAGE_ENABLED=true`, upserts exact downloaded bytes and their SHA-256 into `connectivity_payloads` before any decompression or decode.
 4. Decodes the explicitly configured `raw`, `xz` or `zlib` wire format with compressed/decompressed/envelope-count limits.
 5. Validates each `SignedEnvelope`, reconstructs `sensor_id || timestamp_le_u64 || nonce || message` and verifies Ed25519 before decoding `core.v1.Message`.
-6. With `CPS_CANONICAL_STORAGE_ENABLED=true`, stores each occurrence in `connectivity_records`, including envelope bytes, millisecond timestamp, ordered public events, GPS height, encrypted private sections and processing statuses.
+6. With `CPS_CANONICAL_STORAGE_ENABLED=true`, stores each occurrence in `connectivity_records`, including envelope bytes, millisecond timestamp, materialized protobuf JSON, compact measurement types and validation statuses.
 7. Accepts public Urban/Insight measurements with a valid owner and useful scalar readings; GPS is optional, but validated when present.
 8. Upserts `measurements` and `cities`, finalizes canonical/raw statuses, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
 9. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
 
-CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128 and stores private sections as BSON Binary without decrypting them. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
+CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128; encrypted private sections remain in materialized protobuf JSON and exact raw bytes without a second BSON projection. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
 
 CPS operational logs contain only provenance identifiers, envelope indexes, stable status/error codes and aggregate counts. Unexpected errors are reduced to a validated class name and optional machine code: their message, stack, cause and arbitrary fields are never logged. Raw payload/message bytes, signatures, nonce, sensor/owner public keys and encrypted private ciphertext are never rendered into logs.
 
@@ -411,13 +411,15 @@ Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, node
 
 Lossless archive of the exact transport payload. `raw_payload` is stored before decompression and decode together with `raw_size`, `raw_sha256`, wire format, schema revision, CPS provenance and a decode status. No TTL is declared.
 
-Indexes: unique `{payload_key}`, unique `{source_type, source_id}`, CID lookup `{cid}`, and decode queue `{decode_status, fetched_at}`.
+Indexes: unique `{payload_key}`, CID lookup `{cid}`, and decode queue `{decode_status, fetched_at}`. `source_id` is not stored because the CPS implementation previously duplicated `payload_key` exactly.
 
 ### Collection `connectivity_records` (ConnectivityRecord)
 
-One document per envelope occurrence in a payload. It stores `record_key=<payload_key>:<envelope_index>`, provenance, exact envelope binary fields, `timestamp_ms` as Decimal128, optional `recorded_at`, signature/decode/projection statuses, owner metadata, ordered `public_events` (including sensor type and GPS height), and ordered encrypted `private_sections`. Invalid envelopes receive a diagnostic occurrence record while their exact source bytes remain in `connectivity_payloads`.
+One document per envelope occurrence in a payload. It stores `record_key=<payload_key>:<envelope_index>`, `payload_key`, compact provenance, exact envelope binary fields, `timestamp_ms` as Decimal128, optional `recorded_at`, structure/signature/decode statuses, owner metadata, materialized `message_json`, and unique `measurement_types` for API filtering. `source_id`, repeated protocol/schema metadata, a second private-section projection and legacy projection success keys are intentionally omitted. Sparse `projection_error_code` remains for failed or skipped legacy projection. `message_json` is created once during successful protocol decoding and serves API reads without repeated protobuf decoding. Invalid envelopes receive a diagnostic occurrence record while their exact source bytes remain in `connectivity_payloads`.
 
-Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, and time-range indexes by `sensor_id`, `owner`, and `payload_type` paired with `recorded_at`.
+Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, time-range indexes by `sensor_id`, `owner`, and `payload_type` paired with `recorded_at`, and `{recorded_at: -1, _id: -1}` for stable cursor pagination in the public protocol-aware API.
+
+The public `GET /api/v3/messages/latest` endpoint uses the bounded 24-hour range, scans matching records in `{recorded_at: -1, _id: -1}` order and keeps the first record for each `sensor_id`. Sensors without a matching record are omitted; the endpoint has no pagination metadata.
 
 ### Collection `measurements` (Measurement)
 

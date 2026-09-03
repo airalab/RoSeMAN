@@ -1,14 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Message } from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
+import { toJson, type JsonObject } from '@bufbuild/protobuf';
+import {
+  type Message,
+  MessageSchema,
+} from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
 import { encodeAddress } from '@polkadot/util-crypto';
 import {
-  CONNECTIVITY_MESSAGE_SCHEMA_PACKAGE,
-  CONNECTIVITY_PROTOCOL,
-  CONNECTIVITY_SCHEMA_REVISION,
-} from '../common/constants/connectivity-protocol.constants.js';
-import {
-  ConnectivityLegacyProjectionStatus,
   ConnectivityPayloadType,
   ConnectivityRecordDecodeStatus,
   ConnectivitySignatureStatus,
@@ -17,10 +15,6 @@ import {
 } from '../common/constants/connectivity-storage.enum.js';
 import type { ConnectivityRecordInput } from '../database/repositories/connectivity-record.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
-import type {
-  ConnectivityPrivateSection,
-  ConnectivityPublicEvent,
-} from '../database/schemas/connectivity-record.schema.js';
 import type { UntrustedSignedEnvelope } from './protocol/signed-envelope.types.js';
 
 interface ScalarMeasurement {
@@ -31,8 +25,6 @@ interface ScalarMeasurement {
 interface PublicSensorValue {
   readonly measurement?: ScalarMeasurement;
   readonly lat?: number;
-  readonly lon?: number;
-  readonly heightM?: number;
 }
 
 interface PublicSensor {
@@ -42,27 +34,16 @@ interface PublicSensor {
   };
 }
 
-interface PrivateSection {
-  readonly version: number;
-  readonly algorithm: string;
-  readonly from: Uint8Array;
-  readonly nonce: Uint8Array;
-  readonly ciphertext: Uint8Array;
-}
-
-const SCALAR_MAPPINGS: Record<
-  string,
-  { readonly field: string; readonly unit: string }
-> = {
-  temperature: { field: 'celsius', unit: 'celsius' },
-  humidity: { field: 'percent', unit: 'percent' },
-  pressure: { field: 'pascal', unit: 'pascal' },
-  co2: { field: 'ppm', unit: 'ppm' },
-  pm25: { field: 'ugM3', unit: 'ug/m3' },
-  pm10: { field: 'ugM3', unit: 'ug/m3' },
-  noiseMax: { field: 'db', unit: 'db' },
-  noiseAvg: { field: 'db', unit: 'db' },
-};
+const SUPPORTED_MEASUREMENT_TYPES = new Set([
+  'temperature',
+  'humidity',
+  'pressure',
+  'co2',
+  'pm25',
+  'pm10',
+  'noiseMax',
+  'noiseAvg',
+]);
 
 /** Строит lossless-связанную read model одного protocol envelope. */
 @Injectable()
@@ -100,9 +81,7 @@ export class ConnectivityRecordMapper {
       structure_status: ConnectivityStructureStatus.Valid,
       signature_status: ConnectivitySignatureStatus.Pending,
       decode_status: ConnectivityRecordDecodeStatus.Pending,
-      public_events: [],
-      private_sections: [],
-      legacy_projection_status: ConnectivityLegacyProjectionStatus.Pending,
+      measurement_types: [],
     };
   }
 
@@ -125,9 +104,7 @@ export class ConnectivityRecordMapper {
       signature_status: ConnectivitySignatureStatus.NotChecked,
       decode_status: ConnectivityRecordDecodeStatus.NotAttempted,
       error_code: errorCode,
-      public_events: [],
-      private_sections: [],
-      legacy_projection_status: ConnectivityLegacyProjectionStatus.NotAttempted,
+      measurement_types: [],
     };
   }
 
@@ -142,10 +119,12 @@ export class ConnectivityRecordMapper {
     message: Message,
   ): ConnectivityRecordInput {
     const ownerRaw = message.metadata?.owner;
+    const owner = ownerRaw ? this.toOwner(ownerRaw) : undefined;
     const ownerFields = {
       ...(ownerRaw ? { owner_raw: Buffer.from(ownerRaw) } : {}),
-      ...(ownerRaw ? this.toOwner(ownerRaw) : {}),
+      ...(owner ? { owner } : {}),
     };
+    const messageJson = this.toMessageJson(message, owner);
 
     if (
       message.payload.case !== 'urban' &&
@@ -154,6 +133,7 @@ export class ConnectivityRecordMapper {
       return {
         ...record,
         ...ownerFields,
+        message_json: messageJson,
         signature_status: ConnectivitySignatureStatus.Valid,
         decode_status: ConnectivityRecordDecodeStatus.Unsupported,
         payload_type: ConnectivityPayloadType.Unknown,
@@ -165,11 +145,11 @@ export class ConnectivityRecordMapper {
     return {
       ...record,
       ...ownerFields,
+      message_json: messageJson,
       signature_status: ConnectivitySignatureStatus.Valid,
       decode_status: ConnectivityRecordDecodeStatus.Decoded,
       payload_type: this.toPayloadType(message.payload.case),
-      public_events: this.mapPublicEvents(payload.public),
-      private_sections: this.mapPrivateSections(payload.private),
+      measurement_types: this.mapMeasurementTypes(payload.public),
     };
   }
 
@@ -183,26 +163,18 @@ export class ConnectivityRecordMapper {
     | 'payload_key'
     | 'envelope_index'
     | 'source_type'
-    | 'source_id'
     | 'node_id'
     | 'block'
     | 'cid'
-    | 'protocol'
-    | 'schema_package'
-    | 'schema_revision'
   > {
     return {
       record_key: `${anchor.source_key}:${envelopeIndex}`,
       payload_key: anchor.source_key,
       envelope_index: envelopeIndex,
       source_type: ConnectivitySourceType.Cps,
-      source_id: anchor.source_key,
       node_id: anchor.node_id,
       block: anchor.block,
       cid: anchor.cid,
-      protocol: CONNECTIVITY_PROTOCOL,
-      schema_package: CONNECTIVITY_MESSAGE_SCHEMA_PACKAGE,
-      schema_revision: CONNECTIVITY_SCHEMA_REVISION,
     };
   }
 
@@ -216,13 +188,27 @@ export class ConnectivityRecordMapper {
   }
 
   /** Возвращает SS58 owner только для корректного 32-байтового ключа. */
-  private toOwner(owner: Uint8Array): { readonly owner?: string } {
-    if (owner.byteLength !== 32) return {};
+  private toOwner(owner: Uint8Array): string | undefined {
+    if (owner.byteLength !== 32) return undefined;
     try {
-      return { owner: encodeAddress(owner, this.ownerSs58Prefix) };
+      return encodeAddress(owner, this.ownerSs58Prefix);
     } catch {
-      return {};
+      return undefined;
     }
+  }
+
+  /** Создаёт готовый protobuf JSON и заменяет корректный owner на SS58. */
+  private toMessageJson(message: Message, owner?: string): JsonObject {
+    const messageJson = toJson(MessageSchema, message) as JsonObject;
+    if (owner && this.isJsonObject(messageJson.metadata)) {
+      messageJson.metadata.owner = owner;
+    }
+    return messageJson;
+  }
+
+  /** Проверяет, что protobuf JSON-значение является объектом. */
+  private isJsonObject(value: unknown): value is JsonObject {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   /** Нормализует известный oneof payload, не отбрасывая неизвестный вариант. */
@@ -234,52 +220,23 @@ export class ConnectivityRecordMapper {
     return ConnectivityPayloadType.Unknown;
   }
 
-  /** Преобразует public events по одному, не меняя их порядок и повторы. */
-  private mapPublicEvents(
-    sensors: readonly PublicSensor[],
-  ): ConnectivityPublicEvent[] {
-    return sensors.map((entry) => {
-      const sensorType = entry.sensor.case ?? 'unknown';
-      const value = entry.sensor.value;
-      if (sensorType === 'gps' && value) {
-        return {
-          sensor_type: sensorType,
-          measurement_type: 'location',
-          unit: 'wgs84',
-          lat: value.lat,
-          lon: value.lon,
-          height_m: value.heightM,
-        };
+  /** Собирает уникальные типы измерений для компактной API-фильтрации. */
+  private mapMeasurementTypes(sensors: readonly PublicSensor[]): string[] {
+    const measurementTypes = new Set<string>();
+    for (const entry of sensors) {
+      if (entry.sensor.case === 'gps' && entry.sensor.value) {
+        measurementTypes.add('location');
+        continue;
       }
-
-      const scalar = value?.measurement;
-      const measurementType = scalar?.case;
-      const mapping = measurementType
-        ? SCALAR_MAPPINGS[measurementType]
-        : undefined;
-      if (!measurementType || !mapping || !scalar?.value) {
-        return { sensor_type: sensorType };
+      const measurement = entry.sensor.value?.measurement;
+      if (
+        measurement?.case &&
+        measurement.value &&
+        SUPPORTED_MEASUREMENT_TYPES.has(measurement.case)
+      ) {
+        measurementTypes.add(measurement.case);
       }
-
-      return {
-        sensor_type: sensorType,
-        measurement_type: measurementType,
-        value: scalar.value[mapping.field] as number,
-        unit: mapping.unit,
-      };
-    });
-  }
-
-  /** Копирует encrypted private sections без расшифровки и изменения порядка. */
-  private mapPrivateSections(
-    sections: readonly PrivateSection[],
-  ): ConnectivityPrivateSection[] {
-    return sections.map((section) => ({
-      version: section.version,
-      algorithm: section.algorithm,
-      from: Buffer.from(section.from),
-      nonce: Buffer.from(section.nonce),
-      ciphertext: Buffer.from(section.ciphertext),
-    }));
+    }
+    return [...measurementTypes];
   }
 }

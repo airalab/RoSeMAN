@@ -32,7 +32,6 @@ describe('ConnectivityPayloadRepository', () => {
 
     await repository.upsertFetched({
       payloadKey: 'cps:1:cid',
-      sourceId: 'cps:1:cid',
       nodeId: '1',
       block: 42,
       cid: 'cid',
@@ -99,7 +98,6 @@ describe('ConnectivityPayloadRepository', () => {
     await expect(
       repository.upsertFetched({
         payloadKey: 'cps:1:cid',
-        sourceId: 'cps:1:cid',
         wireFormat: ProtocolBatchWireFormat.Raw,
         rawPayload: new Uint8Array([1, 2, 3]),
       }),
