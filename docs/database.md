@@ -43,8 +43,8 @@ Runs `src/scripts/sync-indexes.ts`: boots a minimal context (DB connection + all
 
 ```bash
 npm run sync-indexes
-# for another environment / database:
-DOTENV_CONFIG_PATH=.env.kusama npm run sync-indexes
+# for the Polkadot indexer environment:
+DOTENV_CONFIG_PATH=.env.polkadot npm run sync-indexes
 ```
 
 ⚠️ `syncIndexes()` makes the collection match the schema exactly — it creates missing indexes **and drops indexes that are no longer declared**. Review the schemas before running it in production.
@@ -142,7 +142,7 @@ Without claiming a complete list (each file is worth reading in full), here are 
 
 ### IndexStateRepository
 
-- `getValue(key)` / `upsertValue(key, value)` — reads/writes the indexer's progress (`last_indexed_block` under keys `polkadot_robonomics`, `kusama_robonomics`, etc.).
+- `getValue(key)` / `upsertValue(key, value)` — reads/writes the indexer's progress (`last_indexed_block` under the configured key, currently `polkadot_robonomics`).
 - `getAllIndex()` — for the `roseman_block_read{chain=...}` metric (see [metrics.md](./metrics.md)).
 
 ## Where to look in the code

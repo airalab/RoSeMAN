@@ -19,7 +19,7 @@ Default Node.js metrics (`process_cpu_seconds_total`, `nodejs_eventloop_lag_seco
 
 | Metric                    | Type  | Labels    | Description                                      |
 |---------------------------|-------|-----------|--------------------------------------------------|
-| `roseman_block_read`      | gauge | `chain`   | Number of the last processed block for each `index_state` key (`polkadot_robonomics`, `kusama_robonomics`, …) |
+| `roseman_block_read`      | gauge | `chain`   | Number of the last processed block for each `index_state` key (currently `polkadot_robonomics`) |
 | `roseman_ipfs_queue`      | gauge | —         | Count of `datalogs` records with status `IPFS_PENDING` (unprocessed IPFS CIDs)            |
 
 ## Exported CPS counters
@@ -68,7 +68,6 @@ Useful queries:
 | Query (PromQL)                                                  | What it shows                                            |
 |-----------------------------------------------------------------|----------------------------------------------------------|
 | `roseman_block_read{chain="polkadot_robonomics"}`               | Current progress of the Polkadot indexer                 |
-| `rate(roseman_block_read{chain="kusama_robonomics"}[5m])`       | Block processing rate of the Kusama indexer (blocks/sec) |
 | `roseman_ipfs_queue`                                            | Size of the unprocessed IPFS-CID queue (growth = problem) |
 | `delta(roseman_ipfs_queue[10m])`                                | Queue change over 10 minutes                             |
 

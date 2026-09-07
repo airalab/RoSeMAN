@@ -4,13 +4,12 @@ This document describes practical scenarios for running RoSeMAN. The architectur
 
 ## Environment files
 
-The repository root contains three `.example` files from which you should create real `.env` files:
+The repository root contains two `.example` files from which you should create real `.env` files:
 
 | File            | Role                                                                                                                                                                 |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.env`          | Base: MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings                                                                                   |
-| `.env.polkadot` | **Polkadot** indexer: `ROBONOMICS_WS`, `ROBONOMICS_STATE_KEY=polkadot_robonomics`, `ROBONOMICS_START_BLOCK`, `API_ENABLED=false`, the desired `ENABLED_HANDLERS` set |
-| `.env.kusama`   | **Kusama** indexer: same as above, but with the Kusama endpoint and start block                                                                                      |
+| `.env`          | Base: Docker Compose settings, MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings                                                          |
+| `.env.polkadot` | **Polkadot** CPS/RWS worker: indexer connection, CPS storage/processing and the `cps-payload-set,rws-extrinsic,rws-story` handler allowlist                         |
 
 The loading cascade (`src/env-bootstrap.ts`):
 
@@ -29,12 +28,9 @@ npm run start:dev
 
 # Headless: Polkadot indexer only (loads .env.polkadot on top of .env)
 npm run start:dev:polkadot
-
-# Headless: Kusama indexer only
-npm run start:dev:kusama
 ```
 
-`start:dev*` uses `nest start --watch` — changes in `src/` restart the process. To connect to a local MongoDB, set `MONGODB_URI=mongodb://localhost:27017/roseman` in `.env` or run MongoDB in Docker (see below). CPS remains off unless `CPS_ENABLED=true`.
+`start:dev*` uses `nest start --watch` — changes in `src/` restart the process. To connect to a local MongoDB, set `MONGODB_URI=mongodb://localhost:27017/roseman` in `.env` or run MongoDB in Docker (see below). The base REST profile does not run background workers; `.env.polkadot` enables CPS indexing, processing and storage.
 
 ## Production
 
@@ -45,10 +41,9 @@ npm run build
 
 npm run start:prod         # API from .env
 npm run start:polkadot     # Polkadot indexer (.env.polkadot)
-npm run start:kusama       # Kusama indexer  (.env.kusama)
 ```
 
-`start:polkadot` and `start:kusama` propagate `DOTENV_CONFIG_PATH` via `dotenv` and start `dist/main`. See `package.json`.
+`start:polkadot` propagates `DOTENV_CONFIG_PATH` via `dotenv` and starts `dist/main`. See `package.json`.
 
 ### Indexes on first deploy
 
@@ -56,8 +51,8 @@ Automatic index creation is **disabled by default** (`autoIndex: false`), so on 
 
 ```bash
 npm run sync-indexes
-# per environment / database, if they differ:
-DOTENV_CONFIG_PATH=.env.kusama npm run sync-indexes
+# for the Polkadot indexer environment, if it uses another database:
+DOTENV_CONFIG_PATH=.env.polkadot npm run sync-indexes
 ```
 
 For large collections, create indexes manually via `mongosh` instead (online build, no drops). See [database.md → Index management](./database.md#index-management).
@@ -68,42 +63,41 @@ The repository root contains `Dockerfile` and `docker-compose.yml`.
 
 ### Image
 
-The `Dockerfile` copies a **prebuilt `dist/`**, so the TypeScript build happens **before** the image build:
+The multi-stage `Dockerfile` installs the locked dependencies and builds TypeScript inside the builder stage. The runtime stage contains compiled `dist/` and production dependencies only, so no host-side build is required:
 
 ```bash
-npm run build
-docker build -t vol4/roseman:v0.1.0 .
+docker build -t roseman:local .
 ```
 
-The current image runs plain `npm ci`, so it does contain `devDependencies` and the TypeScript toolchain from the lockfile. It is reproducible, but not production-minimal; changing that would require a Dockerfile update such as a production-only dependency stage.
+Compose uses the same Dockerfile and builds the image from the repository root. `ROSEMAN_IMAGE` in `.env` controls its tag.
 
 ### Docker Compose
 
-`docker-compose.yml` brings up four services:
+`docker-compose.yml` brings up three services:
 
-| Service            | Image                 | Purpose                                                                |
-| ------------------ | --------------------- | ---------------------------------------------------------------------- |
-| `mongodb`          | `mongo:8`             | DB, healthcheck via `db.adminCommand('ping')`, volume `./mongodb-data` |
-| `rest-api`         | `vol4/roseman:v0.1.0` | REST API (reads `.env`)                                                |
-| `indexer-polkadot` | `vol4/roseman:v0.1.0` | Polkadot indexer (`DOTENV_CONFIG_PATH=/app/.env.polkadot`)             |
-| `indexer-kusama`   | `vol4/roseman:v0.1.0` | Kusama indexer (`DOTENV_CONFIG_PATH=/app/.env.kusama`)                 |
+| Service            | Image                         | Purpose                                                          |
+| ------------------ | ----------------------------- | ---------------------------------------------------------------- |
+| `mongodb`          | `mongo:8`                     | DB with authenticated healthcheck and named volume               |
+| `rest-api`         | `${ROSEMAN_IMAGE}` / built    | REST API; reads `.env`                                           |
+| `indexer-polkadot` | `${ROSEMAN_IMAGE}` / built    | Polkadot CPS/RWS worker; reads `.env`, then `.env.polkadot`       |
 
-Configuration is supplied to the containers via **bind-mounts** of the corresponding `.env` files in read-only mode. All applications depend on `mongodb` with `condition: service_healthy`. The checked-in example files keep `CPS_ENABLED=false`, so the root Compose stack does not index CPS until its environment is explicitly changed.
+Configuration is supplied through Compose `env_file`; environment files are not copied into the image or mounted into containers. Compose overrides `MONGODB_URI` with the internal `mongodb` hostname and the credentials from `.env`. All applications depend on the authenticated MongoDB healthcheck. The Polkadot example enables CPS with canonical and raw storage. Its explicit handler allowlist enables `cps-payload-set`, `rws-extrinsic` and `rws-story`, so legacy `datalog-new-record` remains disabled.
 
 ```bash
 cp .env.example .env
 cp .env.polkadot.example .env.polkadot
-cp .env.kusama.example .env.kusama
 
-docker compose up -d
+docker compose up -d --build
 docker compose logs -f indexer-polkadot
 ```
 
 After startup:
 
-- REST API: `http://localhost:3000/api`
-- Metrics: `http://localhost:3000/metrics`
-- MongoDB: `localhost:27017` (`admin` / `secret` by default — change via `MONGO_ROOT_USER` / `MONGO_ROOT_PASSWORD`)
+- REST API: `http://localhost:${REST_PORT:-3000}/api`
+- Metrics: `http://localhost:${REST_PORT:-3000}/metrics`
+- MongoDB: `localhost:${MONGO_PORT:-27017}` (`admin` / `secret` in the local example; change `MONGO_ROOT_USER` / `MONGO_ROOT_PASSWORD` outside local development)
+
+The database uses the Compose-managed `mongodb-data` volume. Stop containers without deleting data with `docker compose down`; use `docker compose down -v` only when the local database should be recreated.
 
 ## Multi-instance deployment
 
@@ -111,34 +105,26 @@ A typical production setup is to **split the roles across processes** so that ea
 
 ```
 ┌──────────────────────────┐    ┌────────────────────────────┐
-│ REST API + Geocoding     │    │ Indexer Polkadot           │
-│ + Measurement processor  │    │ (headless, datalog only)   │
+│ REST API                 │    │ Polkadot CPS/RWS worker    │
 │ API_ENABLED=true         │    │ API_ENABLED=false          │
-│ MEASUREMENT_ENABLED=true │    │ INDEXER_ENABLED=true       │
-│ GEOCODING_ENABLED=true   │    │ ENABLED_HANDLERS=          │
-│ INDEXER_ENABLED=false    │    │   datalog-new-record       │
+│ MEASUREMENT_ENABLED=false│    │ INDEXER_ENABLED=true       │
+│ GEOCODING_ENABLED=false  │    │ MEASUREMENT_ENABLED=true   │
+│ INDEXER_ENABLED=false    │    │ ENABLED_HANDLERS=          │
+│                          │    │   cps-payload-set,          │
+│                          │    │   rws-extrinsic,rws-story   │
 └────────────┬─────────────┘    └─────────────┬──────────────┘
              │                                │
-             │       ┌────────────────────────┴───┐
-             │       │ Indexer Kusama             │
-             │       │ (headless, datalog only)   │
-             │       │ API_ENABLED=false          │
-             │       │ INDEXER_ENABLED=true       │
-             │       │ ENABLED_HANDLERS=          │
-             │       │   datalog-new-record       │
-             │       └────────────┬───────────────┘
-             │                    │
-             ▼                    ▼
+             ▼                                ▼
         ┌────────────────────────────────┐
         │           MongoDB              │
-        │  index_state.{polkadot,kusama} │
+        │ index_state.polkadot_robonomics │
         └────────────────────────────────┘
 ```
 
 Key points:
 
-- **Indexer state is separated by `ROBONOMICS_STATE_KEY`** in the `index_state` collection (`polkadot_robonomics`, `kusama_robonomics`, …). One MongoDB serves both indexers without conflicts.
-- **`MEASUREMENT_ENABLED` only needs to be enabled on one instance** — it starts both `MeasurementProcessorService` and `CpsAnchorProcessorService`. The legacy processor polls `datalogs`; when `CPS_ENABLED=true`, the CPS processor atomically claims `cps_anchors` with a lease. Unique measurement indexes keep repeated writes idempotent, but extra processor instances are usually redundant.
+- **Indexer state uses `ROBONOMICS_STATE_KEY=polkadot_robonomics`** in the `index_state` collection, so the Polkadot checkpoint is stable across process restarts.
+- **`MEASUREMENT_ENABLED` is enabled on the Polkadot worker only** — it starts both `MeasurementProcessorService` and `CpsAnchorProcessorService`. The CPS processor atomically claims `cps_anchors` with a lease. The legacy processor may drain old pending rows, but no new datalog rows are created because `datalog-new-record` is absent from `ENABLED_HANDLERS`.
 - **`GEOCODING_ENABLED`** — same idea; it makes sense to keep it on a single instance because of Nominatim's rate limit.
 - **The REST API can be horizontally scaled** — it is stateless and reads the DB through repositories. Behind a load balancer you can put N instances with `API_ENABLED=true` and all the other flags set to `false`.
 
@@ -181,7 +167,7 @@ The command uses the configured `MONGODB_URI`, IPFS gateways, CPS wire format an
 
 ## Healthcheck and shutdown
 
-- **MongoDB:** in `docker-compose.yml` — `healthcheck: db.adminCommand('ping')`. All `roseman` services start only after `service_healthy`.
+- **MongoDB:** in `docker-compose.yml` — authenticated `healthcheck: db.adminCommand('ping')`. All `roseman` services start only after `service_healthy`.
 - **RoSeMAN:** `app.enableShutdownHooks()` is enabled in both modes (API/headless). On `SIGTERM`/`SIGINT` NestJS calls `OnModuleDestroy`, in particular `RobonomicsService.onModuleDestroy()`, which cleanly closes the WebSocket.
 - There is currently no HTTP healthcheck endpoint (`/health`). For containerized infrastructure you can rely on `/api/status/last-block` or Prometheus metrics.
 

@@ -9,7 +9,7 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 ### Getting started
 
 - **[Architecture](./architecture.md)** — project modules, run modes (full / headless / indexer), `.env` loading cascade, data flow between services.
-- **[Deployment](./deployment.md)** — local launch, Docker Compose, multi-instance configuration (Polkadot + Kusama + REST API on a single DB).
+- **[Deployment](./deployment.md)** — local launch and Docker Compose configuration for Polkadot and REST API on a single DB.
 
 ### Services
 
@@ -45,7 +45,7 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 | A specific endpoint                        | [api_endpoints.md](./api_endpoints.md)                  |
 | Repository pattern, DB access              | [database.md](./database.md)                            |
 | `roseman_block_read`, `roseman_ipfs_queue` | [metrics.md](./metrics.md)                              |
-| Running Polkadot + Kusama at once          | [deployment.md → Multi-instance](./deployment.md#multi-instance-deployment) |
+| Running API and Polkadot indexer separately | [deployment.md → Multi-instance](./deployment.md#multi-instance-deployment) |
 
 ## Stack
 

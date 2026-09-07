@@ -8,7 +8,7 @@
 // Запуск:
 //   npm run dedup-measurements               # реальное удаление
 //   npm run dedup-measurements -- --dry-run  # только подсчёт, без удаления
-//   DOTENV_CONFIG_PATH=.env.kusama npm run dedup-measurements
+//   DOTENV_CONFIG_PATH=.env.polkadot npm run dedup-measurements
 //
 // Обработка идёт по одному сенсору (через индекс sensor_id_1), чтобы не строить
 // гигантскую группировку по всей коллекции.

@@ -1,5 +1,18 @@
-services:
+name: ${COMPOSE_PROJECT_NAME:-roseman}
 
+x-roseman-service: &roseman-service
+  image: ${ROSEMAN_IMAGE:-roseman:local}
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  depends_on:
+    mongodb:
+      condition: service_healthy
+  networks:
+    - app-network
+
+services:
   mongodb:
     image: mongo:8
     restart: unless-stopped
@@ -7,58 +20,43 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-secret}
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
-      - ./mongodb-data:/data/db
+      - mongodb-data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --username ${MONGO_ROOT_USER:-admin} --password ${MONGO_ROOT_PASSWORD:-secret} --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 })'",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
 
   rest-api:
-    image: vol4/roseman:v0.1.0
-    restart: unless-stopped
-    volumes:
-      - ./.env:/app/.env:ro
+    <<: *roseman-service
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-secret}@mongodb:27017/${MONGO_DATABASE:-roseman}?authSource=admin"
     ports:
-      - "3000:3000"
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - app-network
+      - "${REST_PORT:-3000}:3000"
 
   indexer-polkadot:
-    image: vol4/roseman:v0.1.0
-    restart: unless-stopped
+    <<: *roseman-service
+    env_file:
+      - .env
+      - .env.polkadot
     environment:
-      DOTENV_CONFIG_PATH: /app/.env.polkadot
-    volumes:
-      - ./.env:/app/.env:ro
-      - ./.env.polkadot:/app/.env.polkadot:ro
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - app-network
+      MONGODB_URI: "mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-secret}@mongodb:27017/${MONGO_DATABASE:-roseman}?authSource=admin"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  indexer-kusama:
-    image: vol4/roseman:v0.1.0
-    restart: unless-stopped
-    environment:
-      DOTENV_CONFIG_PATH: /app/.env.kusama
-    volumes:
-      - ./.env:/app/.env:ro
-      - ./.env.kusama:/app/.env.kusama:ro
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - app-network
+volumes:
+  mongodb-data:
 
 networks:
   app-network:

@@ -39,17 +39,16 @@ Typical configurations:
 |-------------------------------------|-------|-----------|---------------|-------------|--------------------------------------------------|
 | All-in-one (dev)                    | ✅    | ✅        | ✅            | ✅          | Local development                                |
 | REST API + IPFS + geocoder          | ✅    | ❌        | ✅            | ✅          | Read-side instance without chain reads           |
-| Polkadot indexer                    | ❌    | ✅        | ❌            | ❌          | Headless, reads only Polkadot blocks             |
-| Kusama indexer (datalog only)       | ❌    | ✅        | ❌            | ❌          | Headless, `ENABLED_HANDLERS=datalog-new-record`  |
+| Polkadot CPS/RWS worker             | ❌    | ✅        | ✅            | ❌          | Headless, CPS processing and selected RWS handlers |
 | IPFS processor                      | ❌    | ❌        | ✅            | ❌          | Headless, legacy processor; CPS too when `CPS_ENABLED=true` |
 | CPS indexer + processor              | ❌    | ✅        | ✅            | ❌          | `CPS_ENABLED=true`, `ENABLED_HANDLERS=cps-payload-set` |
 
-Ready-made `.env` examples for typical roles live at the repository root: `.env.example`, `.env.polkadot.example`, `.env.kusama.example`.
+Ready-made `.env` examples for typical roles live at the repository root: `.env.example` and `.env.polkadot.example`.
 
 ## Data flow
 
 ```
-Robonomics (Polkadot/Kusama) ──────▶ BlockIndexerService
+Robonomics (Polkadot) ─────────────▶ BlockIndexerService
                                      │
               ┌──────────────────────┼────────────────────────┐
               ▼                      ▼                        ▼
@@ -82,7 +81,7 @@ Algorithm:
 1. `dotenv.config()` — reads the base `.env` from cwd.
 2. If `DOTENV_CONFIG_PATH` is set — calls `dotenv.config({ path, override: true })` again, overwriting matching variables.
 
-This produces a two-layer configuration: a base `.env` for shared settings (e.g. `MONGODB_URI`, `PORT`) + a specialized file (`.env.polkadot`, `.env.kusama`) that defines the instance role.
+This produces a two-layer configuration: a base `.env` for shared settings (e.g. `MONGODB_URI`, `PORT`) plus `.env.polkadot`, which defines the indexer role.
 
 Example: `DOTENV_CONFIG_PATH=.env.polkadot node dist/main` — the shared `.env` provides the MongoDB URI, while `.env.polkadot` disables the API, enables the indexer and sets `ROBONOMICS_WS`/`ROBONOMICS_STATE_KEY` for the Polkadot network.
 

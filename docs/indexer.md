@@ -85,7 +85,7 @@ A generic block scanner (`src/robonomics/block-indexer.service.ts`). It is not t
 1. `onModuleInit` — fire-and-forget `run()`.
 2. `run()` wraps `start()` and on any exception waits `RECONNECT_DELAY = 15s`, calls `RobonomicsService.reconnect()` and restarts the indexer.
 3. `start()`:
-   - reads `last_indexed_block` from the `index_state` collection by the `ROBONOMICS_STATE_KEY` key (e.g. `polkadot_robonomics`, `kusama_robonomics`);
+   - reads `last_indexed_block` from the `index_state` collection by the `ROBONOMICS_STATE_KEY` key (currently `polkadot_robonomics`);
    - **catch-up** — while `from <= finalized`, processes blocks in `BATCH_SIZE = 10` batches, updating `index_state` after each block;
    - **realtime** — subscribes to `subscribeFinalizedHeads`, queues block numbers and processes them strictly sequentially; duplicate notifications are skipped and gaps are caught up from the saved checkpoint;
    - hooks `api.on('error')` and `api.on('disconnected')` to `scheduleReconnect()` with double-fire protection (the `reconnecting` flag).
@@ -478,7 +478,7 @@ Indexes: unique compound `{account, owner}`.
 
 | Field   | Type   | Description                                              |
 | ------- | ------ | -------------------------------------------------------- |
-| `key`   | String | `polkadot_robonomics`, `kusama_robonomics`, … _(unique)_ |
+| `key`   | String | `polkadot_robonomics` _(unique)_                         |
 | `value` | Number | Number of the last processed block                       |
 
 The key is set by `ROBONOMICS_STATE_KEY` — this allows a single MongoDB instance to serve indexers of different networks at the same time.

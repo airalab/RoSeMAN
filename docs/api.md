@@ -97,7 +97,7 @@ The `message` field is normalized: if the exception carries an object payload (`
 
 `/api/status/agents` — list of agent addresses, read directly from `robonomics.accounts` (env `ROBONOMICS_ACCOUNTS`).
 
-`/api/status/last-block?chain=...` — indexer state. The `chain` parameter is the **key in the `index_state` collection** (e.g. `polkadot_robonomics`, `kusama_robonomics`); the default is the current instance's `robonomics.stateKey`. If the record is not found — HTTP 404 with `{ error: 'State not found for chain "<key>"' }`.
+`/api/status/last-block?chain=...` — indexer state. The `chain` parameter is the **key in the `index_state` collection** (currently `polkadot_robonomics`); the default is the current instance's `robonomics.stateKey`. If the record is not found — HTTP 404 with `{ error: 'State not found for chain "<key>"' }`.
 
 ### SensorV2Controller — `:type` validation
 

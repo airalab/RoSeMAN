@@ -3,7 +3,7 @@
 // Запуск (по умолчанию читает .env):
 //   npm run sync-indexes
 // Для другого окружения:
-//   DOTENV_CONFIG_PATH=.env.kusama npm run sync-indexes
+//   DOTENV_CONFIG_PATH=.env.polkadot npm run sync-indexes
 //
 // ВНИМАНИЕ: syncIndexes() создаёт недостающие индексы И УДАЛЯЕТ те, которых
 // больше нет в схеме. На больших «горячих» коллекциях предпочтительнее ручное
