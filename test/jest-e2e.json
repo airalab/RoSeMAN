@@ -4,14 +4,18 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.ts$": [
+    "^.+\\.[tj]s$": [
       "ts-jest",
       {
         "tsconfig": "<rootDir>/../tsconfig.spec.json"
       }
     ]
   },
+  "transformIgnorePatterns": [
+    "node_modules/(?!(@buf/airalab_connectivity-protocol\\.bufbuild_es|multiformats)/)"
+  ],
   "moduleNameMapper": {
+    "^multiformats/(.*)$": "<rootDir>/../node_modules/multiformats/dist/src/$1.js",
     "^(\\.{1,2}/.*)\\.js$": "$1"
   }
 }
