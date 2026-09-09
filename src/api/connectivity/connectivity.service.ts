@@ -1,8 +1,11 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   PayloadTooLargeException,
 } from '@nestjs/common';
+import { create, toBinary } from '@bufbuild/protobuf';
+import { SignedEnvelopeBatchSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
 import { ConfigService } from '@nestjs/config';
 import { encodeAddress } from '@polkadot/util-crypto';
 import {
@@ -21,24 +24,22 @@ import type { ConnectivityMessageListQueryDto } from './dto/connectivity-message
 
 const MAX_RANGE_MILLISECONDS = 24 * 60 * 60 * 1000;
 
-export interface ConnectivitySignedEnvelopeJson {
+export interface ConnectivityMessageJsonResponse {
   readonly sensorId: string;
   readonly timestamp: string;
-  readonly nonce: string;
   readonly message: Record<string, unknown>;
-  readonly signature: string;
 }
 
 export interface ConnectivityMessagePage {
-  readonly items: ConnectivitySignedEnvelopeJson[];
+  readonly items: ConnectivityMessageJsonResponse[];
   readonly next_cursor: string | null;
 }
 
 export interface ConnectivityLatestMessages {
-  readonly items: ConnectivitySignedEnvelopeJson[];
+  readonly items: ConnectivityMessageJsonResponse[];
 }
 
-/** Формирует JSON-выдачу подписанных сообщений Connectivity Protocol. */
+/** Формирует JSON- и protobuf-выдачу подписанных сообщений Connectivity Protocol. */
 @Injectable()
 export class ConnectivityService {
   private readonly ss58Prefix: number;
@@ -56,9 +57,44 @@ export class ConnectivityService {
    * @param query - проверенные query-параметры endpoint
    * @returns элементы и cursor следующей страницы
    */
-  async getMessages(
+  async getMessagesJson(
     query: ConnectivityMessageListQueryDto,
   ): Promise<ConnectivityMessagePage> {
+    const page = await this.getMessageRecords(query);
+    return {
+      items: page.items.map((record) => this.toEnvelopeJson(record)),
+      next_cursor: page.next_cursor,
+    };
+  }
+
+  /**
+   * Возвращает protobuf batch страницы с исходными подписанными полями.
+   * @param query - проверенные query-параметры списка сообщений
+   * @returns бинарный SignedEnvelopeBatch и cursor следующей страницы
+   */
+  async getMessagesProtobuf(
+    query: ConnectivityMessageListQueryDto,
+  ): Promise<{ bytes: Buffer; next_cursor: string | null }> {
+    const page = await this.getMessageRecords(query, true);
+    return {
+      bytes: this.toEnvelopeBatch(page.items),
+      next_cursor: page.next_cursor,
+    };
+  }
+
+  /**
+   * Выбирает одну и ту же страницу записей для обоих форматов ответа.
+   * @param query - проверенные query-параметры списка сообщений
+   * @param includeMessageRaw - нужно ли загружать исходные байты message
+   * @returns записи страницы и cursor следующей страницы
+   */
+  private async getMessageRecords(
+    query: ConnectivityMessageListQueryDto,
+    includeMessageRaw = false,
+  ): Promise<{
+    items: ConnectivityMessageRecord[];
+    next_cursor: string | null;
+  }> {
     this.assertOptionalDateRange(query.start, query.end);
     const filter = this.toPublicFilterQuery(query);
     let cursor;
@@ -76,13 +112,14 @@ export class ConnectivityService {
     const records = await this.recordRepo.findMessagePage({
       ...filter,
       limit: query.limit,
+      ...(includeMessageRaw ? { includeMessageRaw: true } : {}),
       ...(cursor ? { cursor } : {}),
     });
 
     const pageRecords = records.slice(0, query.limit);
     const lastRecord = pageRecords.at(-1);
     return {
-      items: pageRecords.map((record) => this.toEnvelopeJson(record)),
+      items: pageRecords,
       next_cursor:
         records.length > query.limit && lastRecord
           ? encodeConnectivityCursor({
@@ -98,17 +135,71 @@ export class ConnectivityService {
    * @param query - проверенные границы дат и необязательные фильтры
    * @returns элементы SignedEnvelope без pagination metadata
    */
-  async getLatestMessages(
+  async getLatestMessagesJson(
     query: ConnectivityLatestMessageQueryDto,
   ): Promise<ConnectivityLatestMessages> {
+    const records = await this.getLatestMessageRecords(query);
+    return { items: records.map((record) => this.toEnvelopeJson(record)) };
+  }
+
+  /**
+   * Возвращает protobuf batch последних сообщений сенсоров.
+   * @param query - проверенные границы дат и необязательные фильтры
+   * @returns бинарный SignedEnvelopeBatch последних сообщений
+   */
+  async getLatestMessagesProtobuf(
+    query: ConnectivityLatestMessageQueryDto,
+  ): Promise<Buffer> {
+    return this.toEnvelopeBatch(
+      await this.getLatestMessageRecords(query, true),
+    );
+  }
+
+  /**
+   * Выбирает последние записи с общими фильтрами и проверкой диапазона.
+   * @param query - проверенные границы дат и необязательные фильтры
+   * @param includeMessageRaw - нужно ли загружать исходные байты message
+   * @returns последние записи каждого сенсора в заданном диапазоне
+   */
+  private async getLatestMessageRecords(
+    query: ConnectivityLatestMessageQueryDto,
+    includeMessageRaw = false,
+  ): Promise<ConnectivityMessageRecord[]> {
     this.assertBoundedDateRange(query.start, query.end);
     const filter = this.toPublicFilterQuery(query);
-    const records = await this.recordRepo.findLatestMessages({
+    return this.recordRepo.findLatestMessages({
       ...filter,
+      ...(includeMessageRaw ? { includeMessageRaw: true } : {}),
       start: new Date(query.start),
       end: new Date(query.end),
     });
-    return { items: records.map((record) => this.toEnvelopeJson(record)) };
+  }
+
+  /**
+   * Кодирует только внешние конверты, сохраняя message_raw побайтно.
+   * @param records - валидные записи с исходными полями SignedEnvelope
+   * @returns бинарное представление protobuf SignedEnvelopeBatch
+   */
+  private toEnvelopeBatch(
+    records: readonly ConnectivityMessageRecord[],
+  ): Buffer {
+    const batch = create(SignedEnvelopeBatchSchema, {
+      batch: records.map((record) => {
+        if (!record.message_raw?.length) {
+          throw new InternalServerErrorException(
+            'Raw message bytes unavailable',
+          );
+        }
+        return {
+          sensorId: record.sensor_id_raw,
+          timestamp: BigInt(record.timestamp_ms.toString()),
+          nonce: record.nonce,
+          message: record.message_raw,
+          signature: record.signature,
+        };
+      }),
+    });
+    return Buffer.from(toBinary(SignedEnvelopeBatchSchema, batch));
   }
 
   /** Проверяет порядок двух необязательных границ списка сообщений. */
@@ -150,16 +241,18 @@ export class ConnectivityService {
     };
   }
 
-  /** Создаёт JSON SignedEnvelope с декодированным core.v1.Message. */
+  /**
+   * Создаёт публичное JSON-представление сообщения без nonce и signature.
+   * @param record - валидная запись Connectivity Protocol
+   * @returns идентификатор сенсора, timestamp и декодированное core.v1.Message
+   */
   private toEnvelopeJson(
     record: ConnectivityMessageRecord,
-  ): ConnectivitySignedEnvelopeJson {
+  ): ConnectivityMessageJsonResponse {
     return {
       sensorId: encodeAddress(record.sensor_id_raw, this.ss58Prefix),
       timestamp: record.timestamp_ms.toString(),
-      nonce: record.nonce.toString('base64'),
       message: record.message_json,
-      signature: record.signature.toString('base64'),
     };
   }
 }

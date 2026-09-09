@@ -47,19 +47,22 @@ export interface ConnectivityMessageRecord {
   readonly recorded_at: Date;
   readonly nonce: Buffer;
   readonly message_json: ConnectivityMessageJson;
+  readonly message_raw?: Buffer;
   readonly signature: Buffer;
 }
 
 type LeanConnectivityMessageRecord = Omit<
   ConnectivityMessageRecord,
-  'sensor_id_raw' | 'nonce' | 'signature'
+  'sensor_id_raw' | 'nonce' | 'signature' | 'message_raw'
 > & {
   readonly sensor_id_raw: Buffer | mongo.Binary;
   readonly nonce: Buffer | mongo.Binary;
   readonly signature: Buffer | mongo.Binary;
+  readonly message_raw?: Buffer | mongo.Binary;
 };
 
 export interface ConnectivityPublicFilterQuery {
+  readonly includeMessageRaw?: boolean;
   readonly start?: Date;
   readonly end?: Date;
   readonly sensorId?: string;
@@ -149,11 +152,14 @@ function buildPublicMessageFilter(
 function normalizeMessageRecords(
   records: readonly LeanConnectivityMessageRecord[],
 ): ConnectivityMessageRecord[] {
-  return records.map((record) => ({
+  return records.map(({ message_raw, ...record }) => ({
     ...record,
     sensor_id_raw: toNodeBuffer(record.sensor_id_raw),
     nonce: toNodeBuffer(record.nonce),
     signature: toNodeBuffer(record.signature),
+    ...(message_raw !== undefined
+      ? { message_raw: toNodeBuffer(message_raw) }
+      : {}),
   }));
 }
 
@@ -218,7 +224,10 @@ export class ConnectivityRecordRepository {
     };
 
     const records = await this.model
-      .find(filter, MESSAGE_RECORD_PROJECTION)
+      .find(filter, {
+        ...MESSAGE_RECORD_PROJECTION,
+        ...(query.includeMessageRaw ? { message_raw: 1 } : {}),
+      })
       .sort({ recorded_at: -1, _id: -1 })
       .limit(query.limit + 1)
       .lean<LeanConnectivityMessageRecord[]>()
@@ -247,7 +256,12 @@ export class ConnectivityRecordRepository {
         },
         { $replaceRoot: { newRoot: '$record' } },
         { $sort: { recorded_at: -1, _id: -1 } },
-        { $project: MESSAGE_RECORD_PROJECTION },
+        {
+          $project: {
+            ...MESSAGE_RECORD_PROJECTION,
+            ...(query.includeMessageRaw ? { message_raw: 1 } : {}),
+          },
+        },
       ])
       .exec();
 

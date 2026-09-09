@@ -1,3 +1,5 @@
+import { fromBinary } from '@bufbuild/protobuf';
+import { SignedEnvelopeBatchSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
 import { BadRequestException, PayloadTooLargeException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { encodeAddress } from '@polkadot/util-crypto';
@@ -69,7 +71,7 @@ function createService(records: ConnectivityMessageRecord[] = []): {
 }
 
 describe('ConnectivityService', () => {
-  it('возвращает страницу SignedEnvelope JSON и cursor', async () => {
+  it('возвращает страницу JSON без nonce и signature и с cursor', async () => {
     const first = createRecord(
       '68b95ae07796696240566a03',
       '2026-09-03T10:00:00.123Z',
@@ -91,7 +93,7 @@ describe('ConnectivityService', () => {
       measurement_type: 'temperature',
     });
 
-    const result = await service.getMessages(query);
+    const result = await service.getMessagesJson(query);
 
     expect(findMessagePage).toHaveBeenCalledWith({
       limit: 2,
@@ -104,7 +106,6 @@ describe('ConnectivityService', () => {
     expect(result.items[0]).toEqual({
       sensorId: encodeAddress(first.sensor_id_raw, 32),
       timestamp: '1788429600123',
-      nonce: 'AwQ=',
       message: {
         metadata: { owner: encodeAddress(new Uint8Array(32).fill(2), 32) },
         urban: {
@@ -120,8 +121,9 @@ describe('ConnectivityService', () => {
           ],
         },
       },
-      signature: 'BQY=',
     });
+    expect(result.items[0]).not.toHaveProperty('nonce');
+    expect(result.items[0]).not.toHaveProperty('signature');
     expect(result.next_cursor).not.toBeNull();
     expect(decodeConnectivityCursor(result.next_cursor!)).toEqual({
       recordedAt: second.recorded_at,
@@ -135,7 +137,7 @@ describe('ConnectivityService', () => {
     ]);
 
     await expect(
-      service.getMessages(
+      service.getMessagesJson(
         Object.assign(new ConnectivityMessageListQueryDto(), {
           start: START,
           end: END,
@@ -157,7 +159,7 @@ describe('ConnectivityService', () => {
       measurement_type: 'temperature',
     });
 
-    const result = await service.getLatestMessages(query);
+    const result = await service.getLatestMessagesJson(query);
 
     expect(findLatestMessages).toHaveBeenCalledWith({
       start: new Date(START),
@@ -170,12 +172,12 @@ describe('ConnectivityService', () => {
         {
           sensorId: encodeAddress(record.sensor_id_raw, 32),
           timestamp: '1788429600123',
-          nonce: 'AwQ=',
           message: record.message_json,
-          signature: 'BQY=',
         },
       ],
     });
+    expect(result.items[0]).not.toHaveProperty('nonce');
+    expect(result.items[0]).not.toHaveProperty('signature');
     expect(result).not.toHaveProperty('next_cursor');
   });
 
@@ -183,7 +185,7 @@ describe('ConnectivityService', () => {
     const { service, findMessagePage } = createService();
 
     await expect(
-      service.getMessages(new ConnectivityMessageListQueryDto()),
+      service.getMessagesJson(new ConnectivityMessageListQueryDto()),
     ).resolves.toEqual({ items: [], next_cursor: null });
     expect(findMessagePage).toHaveBeenCalledWith({ limit: 1000 });
   });
@@ -191,13 +193,13 @@ describe('ConnectivityService', () => {
   it('разрешает односторонние границы и диапазон больше 24 часов', async () => {
     const { service, findMessagePage } = createService();
 
-    await service.getMessages(
+    await service.getMessagesJson(
       Object.assign(new ConnectivityMessageListQueryDto(), { start: START }),
     );
-    await service.getMessages(
+    await service.getMessagesJson(
       Object.assign(new ConnectivityMessageListQueryDto(), { end: END }),
     );
-    await service.getMessages(
+    await service.getMessagesJson(
       Object.assign(new ConnectivityMessageListQueryDto(), {
         start: 0,
         end: 86_400_001,
@@ -223,7 +225,7 @@ describe('ConnectivityService', () => {
     const { service, findMessagePage } = createService();
 
     await expect(
-      service.getMessages(
+      service.getMessagesJson(
         Object.assign(new ConnectivityMessageListQueryDto(), {
           start: 2,
           end: 1,
@@ -237,10 +239,10 @@ describe('ConnectivityService', () => {
     const { service, findLatestMessages } = createService();
 
     await expect(
-      service.getLatestMessages(new ConnectivityLatestMessageQueryDto()),
+      service.getLatestMessagesJson(new ConnectivityLatestMessageQueryDto()),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      service.getLatestMessages(
+      service.getLatestMessagesJson(
         Object.assign(new ConnectivityLatestMessageQueryDto(), {
           start: 0,
           end: 86_400_001,
@@ -254,7 +256,7 @@ describe('ConnectivityService', () => {
     const { service, findMessagePage } = createService();
 
     await expect(
-      service.getMessages(
+      service.getMessagesJson(
         Object.assign(new ConnectivityMessageListQueryDto(), {
           start: START,
           end: END,
@@ -263,5 +265,26 @@ describe('ConnectivityService', () => {
       ),
     ).rejects.toThrow('Invalid cursor');
     expect(findMessagePage).not.toHaveBeenCalled();
+  });
+  it('сохраняет uint64 без округления и не меняет подписанные Buffer', async () => {
+    const record = {
+      ...createRecord('68b95ae07796696240566a01', '2026-09-03T10:00:00.123Z'),
+      timestamp_ms: Types.Decimal128.fromString('18446744073709551615'),
+      message_raw: Buffer.from([0xa0, 0x06, 0x01, 0x0a, 0x00]),
+    };
+    const { service } = createService([record]);
+    const result = await service.getMessagesProtobuf(
+      new ConnectivityMessageListQueryDto(),
+    );
+    const envelope = fromBinary(SignedEnvelopeBatchSchema, result.bytes)
+      .batch[0];
+    expect(envelope.timestamp).toBe(18446744073709551615n);
+    expect(Buffer.from(envelope.message)).toEqual(record.message_raw);
+    expect(Buffer.from(envelope.sensorId)).toEqual(record.sensor_id_raw);
+    expect(Buffer.from(envelope.nonce)).toEqual(record.nonce);
+    expect(Buffer.from(envelope.signature)).toEqual(record.signature);
+    expect(record.message_raw).toEqual(
+      Buffer.from([0xa0, 0x06, 0x01, 0x0a, 0x00]),
+    );
   });
 });

@@ -145,106 +145,133 @@ describe('ConnectivityRecordRepository', () => {
     );
   });
 
-  it('агрегирует самое новое сообщение каждого сенсора', async () => {
-    const sensorId = Buffer.alloc(32, 1);
-    const nonce = Buffer.alloc(16, 2);
-    const signature = Buffer.alloc(64, 3);
-    const record = {
-      _id: new Types.ObjectId('68b95ae07796696240566a01'),
-      sensor_id_raw: new mongo.Binary(sensorId),
-      timestamp_ms: Types.Decimal128.fromString('1788517399949'),
-      recorded_at: new Date('2026-09-04T10:23:19.949Z'),
-      nonce: new mongo.Binary(nonce),
-      message_json: { metadata: {} },
-      signature: new mongo.Binary(signature),
-    };
-    const exec = jest.fn().mockResolvedValue([record]);
-    const aggregate = jest.fn().mockReturnValue({ exec });
-    const model = { aggregate } as unknown as Model<ConnectivityRecordDocument>;
-    const repository = new ConnectivityRecordRepository(model);
-    const start = new Date('2026-09-04T00:00:00.000Z');
-    const end = new Date('2026-09-05T00:00:00.000Z');
+  it.each([false, true])(
+    'агрегирует последние сообщения с includeMessageRaw=%s',
+    async (includeMessageRaw) => {
+      const sensorId = Buffer.alloc(32, 1);
+      const nonce = Buffer.alloc(16, 2);
+      const signature = Buffer.alloc(64, 3);
+      const messageRaw = new mongo.Binary();
+      messageRaw.put(255);
+      messageRaw.put(0);
+      const record = {
+        _id: new Types.ObjectId('68b95ae07796696240566a01'),
+        sensor_id_raw: new mongo.Binary(sensorId),
+        timestamp_ms: Types.Decimal128.fromString('1788517399949'),
+        recorded_at: new Date('2026-09-04T10:23:19.949Z'),
+        nonce: new mongo.Binary(nonce),
+        message_json: { metadata: {} },
+        signature: new mongo.Binary(signature),
+        ...(includeMessageRaw ? { message_raw: messageRaw } : {}),
+      };
+      const exec = jest.fn().mockResolvedValue([record]);
+      const aggregate = jest.fn().mockReturnValue({ exec });
+      const model = {
+        aggregate,
+      } as unknown as Model<ConnectivityRecordDocument>;
+      const repository = new ConnectivityRecordRepository(model);
+      const start = new Date('2026-09-04T00:00:00.000Z');
+      const end = new Date('2026-09-05T00:00:00.000Z');
 
-    const result = await repository.findLatestMessages({
-      start,
-      end,
-      measurementType: 'temperature',
-    });
+      const result = await repository.findLatestMessages({
+        includeMessageRaw,
+        start,
+        end,
+        measurementType: 'temperature',
+      });
 
-    expect(aggregate).toHaveBeenCalledWith([
-      {
-        $match: {
-          structure_status: ConnectivityStructureStatus.Valid,
-          signature_status: ConnectivitySignatureStatus.Valid,
-          decode_status: ConnectivityRecordDecodeStatus.Decoded,
-          message_json: { $type: 'object' },
-          recorded_at: { $gte: start, $lt: end },
-          measurement_types: 'temperature',
+      expect(aggregate).toHaveBeenCalledWith([
+        {
+          $match: {
+            structure_status: ConnectivityStructureStatus.Valid,
+            signature_status: ConnectivitySignatureStatus.Valid,
+            decode_status: ConnectivityRecordDecodeStatus.Decoded,
+            message_json: { $type: 'object' },
+            recorded_at: { $gte: start, $lt: end },
+            measurement_types: 'temperature',
+          },
         },
-      },
-      { $sort: { recorded_at: -1, _id: -1 } },
-      { $group: { _id: '$sensor_id', record: { $first: '$$ROOT' } } },
-      { $replaceRoot: { newRoot: '$record' } },
-      { $sort: { recorded_at: -1, _id: -1 } },
-      {
-        $project: {
-          _id: 1,
-          sensor_id_raw: 1,
-          timestamp_ms: 1,
-          recorded_at: 1,
-          nonce: 1,
-          message_json: 1,
-          signature: 1,
+        { $sort: { recorded_at: -1, _id: -1 } },
+        { $group: { _id: '$sensor_id', record: { $first: '$$ROOT' } } },
+        { $replaceRoot: { newRoot: '$record' } },
+        { $sort: { recorded_at: -1, _id: -1 } },
+        {
+          $project: {
+            _id: 1,
+            sensor_id_raw: 1,
+            timestamp_ms: 1,
+            recorded_at: 1,
+            nonce: 1,
+            message_json: 1,
+            signature: 1,
+            ...(includeMessageRaw ? { message_raw: 1 } : {}),
+          },
         },
-      },
-    ]);
-    expect(result).toEqual([
-      {
-        ...record,
-        sensor_id_raw: sensorId,
-        nonce,
-        signature,
-      },
-    ]);
-  });
+      ]);
+      expect(result).toEqual([
+        {
+          ...record,
+          sensor_id_raw: sensorId,
+          nonce,
+          signature,
+          ...(includeMessageRaw ? { message_raw: Buffer.from([255, 0]) } : {}),
+        },
+      ]);
+    },
+  );
 
-  it('нормализует BSON Binary из lean-результата в Buffer', async () => {
-    const sensorId = Buffer.alloc(32, 1);
-    const nonce = Buffer.alloc(16, 2);
-    const signature = Buffer.alloc(64, 3);
-    const record = {
-      _id: new Types.ObjectId('68b95ae07796696240566a01'),
-      sensor_id_raw: new mongo.Binary(sensorId),
-      timestamp_ms: Types.Decimal128.fromString('1788517399949'),
-      recorded_at: new Date('2026-09-04T10:23:19.949Z'),
-      nonce: new mongo.Binary(nonce),
-      message_json: { metadata: {} },
-      signature: new mongo.Binary(signature),
-    };
-    const exec = jest.fn().mockResolvedValue([record]);
-    const lean = jest.fn().mockReturnValue({ exec });
-    const limit = jest.fn().mockReturnValue({ lean });
-    const sort = jest.fn().mockReturnValue({ limit });
-    const find = jest.fn().mockReturnValue({ sort });
-    const model = { find } as unknown as Model<ConnectivityRecordDocument>;
-    const repository = new ConnectivityRecordRepository(model);
+  it.each([false, true])(
+    'нормализует BSON Binary с includeMessageRaw=%s',
+    async (includeMessageRaw) => {
+      const sensorId = Buffer.alloc(32, 1);
+      const nonce = Buffer.alloc(16, 2);
+      const signature = Buffer.alloc(64, 3);
+      const messageRaw = new mongo.Binary();
+      messageRaw.put(255);
+      messageRaw.put(0);
+      const record = {
+        _id: new Types.ObjectId('68b95ae07796696240566a01'),
+        sensor_id_raw: new mongo.Binary(sensorId),
+        timestamp_ms: Types.Decimal128.fromString('1788517399949'),
+        recorded_at: new Date('2026-09-04T10:23:19.949Z'),
+        nonce: new mongo.Binary(nonce),
+        message_json: { metadata: {} },
+        signature: new mongo.Binary(signature),
+        ...(includeMessageRaw ? { message_raw: messageRaw } : {}),
+      };
+      const exec = jest.fn().mockResolvedValue([record]);
+      const lean = jest.fn().mockReturnValue({ exec });
+      const limit = jest.fn().mockReturnValue({ lean });
+      const sort = jest.fn().mockReturnValue({ limit });
+      const find = jest.fn().mockReturnValue({ sort });
+      const model = { find } as unknown as Model<ConnectivityRecordDocument>;
+      const repository = new ConnectivityRecordRepository(model);
 
-    const result = await repository.findMessagePage({
-      limit: 1,
-      start: new Date('2026-09-04T00:00:00.000Z'),
-      end: new Date('2026-09-05T00:00:00.000Z'),
-    });
+      const result = await repository.findMessagePage({
+        includeMessageRaw,
+        limit: 1,
+        start: new Date('2026-09-04T00:00:00.000Z'),
+        end: new Date('2026-09-05T00:00:00.000Z'),
+      });
 
-    expect(result).toEqual([
-      {
-        ...record,
-        sensor_id_raw: sensorId,
-        nonce,
-        signature,
-      },
-    ]);
-    expect(Buffer.isBuffer(result[0].sensor_id_raw)).toBe(true);
-    expect(Buffer.isBuffer(result[0].nonce)).toBe(true);
-    expect(Buffer.isBuffer(result[0].signature)).toBe(true);
-  });
+      expect(result).toEqual([
+        {
+          ...record,
+          sensor_id_raw: sensorId,
+          nonce,
+          signature,
+          ...(includeMessageRaw ? { message_raw: Buffer.from([255, 0]) } : {}),
+        },
+      ]);
+      expect(find).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          ...(includeMessageRaw ? { message_raw: 1 } : { message_json: 1 }),
+        }),
+      );
+      expect(Buffer.isBuffer(result[0].sensor_id_raw)).toBe(true);
+      expect(Buffer.isBuffer(result[0].nonce)).toBe(true);
+      expect(Buffer.isBuffer(result[0].signature)).toBe(true);
+    },
+  );
 });

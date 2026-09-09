@@ -105,7 +105,7 @@ In the path `/api/v2/sensor/maxdata/:type/:start/:end` the `type` parameter is a
 
 ### ConnectivityController — public protocol messages
 
-`GET /api/v3/messages` reads the canonical `connectivity_records` collection. It always selects only structurally valid, correctly signed and successfully decoded records that have a materialized `message_json`. Results are sorted by `{ recorded_at: -1, _id: -1 }` so records with the same millisecond timestamp have a deterministic order.
+`GET /api/v3/messages/json` reads the canonical `connectivity_records` collection and returns JSON. It always selects only structurally valid, correctly signed and successfully decoded records that have a materialized `message_json`. Results are sorted by `{ recorded_at: -1, _id: -1 }` so records with the same millisecond timestamp have a deterministic order.
 
 All query parameters are optional. `start` and `end` can be supplied
 independently:
@@ -126,7 +126,7 @@ example, this request selects the Samara calendar day of 7 September 2026 and
 limits the page to 1000 items:
 
 ```text
-http://127.0.0.1:3001/api/v3/messages?start=1788724800000&end=1788811200000&limit=1000
+http://127.0.0.1:3001/api/v3/messages/json?start=1788724800000&end=1788811200000&limit=1000
 ```
 
 When more records are available, the response contains an opaque 28-character
@@ -135,7 +135,7 @@ millisecond timestamp and MongoDB ObjectId. Pass it unchanged in the next
 request while keeping the same filters and page limit:
 
 ```text
-http://127.0.0.1:3001/api/v3/messages?start=1788724800000&end=1788811200000&limit=1000&cursor=<NEXT_CURSOR>
+http://127.0.0.1:3001/api/v3/messages/json?start=1788724800000&end=1788811200000&limit=1000&cursor=<NEXT_CURSOR>
 ```
 
 Continue until `next_cursor` is `null`, which marks the last page. The cursor
@@ -154,7 +154,6 @@ Response example:
       {
         "sensorId": "4F...",
         "timestamp": "1788429600123",
-        "nonce": "q80=",
         "message": {
           "metadata": {
             "owner": "4H..."
@@ -170,8 +169,7 @@ Response example:
               }
             ]
           }
-        },
-        "signature": "EjQ...=="
+        }
       }
     ],
     "next_cursor": "AgAAAaBmtgV7aLla4HeWaWJAVmoB"
@@ -179,14 +177,14 @@ Response example:
 }
 ```
 
-Each item is the JSON representation of `crypto.v1.SignedEnvelope`, with its binary `message` field materialized as `core.v1.Message` protobuf JSON during indexing. API reads do not decode `message_raw`. The envelope `timestamp` remains a decimal string so the protocol `uint64` value is not rounded by JavaScript. `sensorId` and `message.metadata.owner` use SS58 with `CPS_OWNER_SS58_PREFIX`; the envelope nonce/signature and byte fields inside encrypted private sections use standard base64. If the original message contains `urban.private` or `insight.private`, its encrypted sections are included unchanged in protobuf JSON form; the API never decrypts them. Pagination metadata remains outside the envelope items. Records indexed before `message_json` was introduced require canonical backfill with `--force` before they appear in this endpoint.
+Each item is a public JSON view of `crypto.v1.SignedEnvelope`, with its binary `message` field materialized as `core.v1.Message` protobuf JSON during indexing. The top-level envelope fields `nonce` and `signature` are omitted; clients that need the complete signed envelope must use the protobuf endpoints. API reads do not decode `message_raw`. The envelope `timestamp` remains a decimal string so the protocol `uint64` value is not rounded by JavaScript. `sensorId` and `message.metadata.owner` use SS58 with `CPS_OWNER_SS58_PREFIX`; byte fields inside encrypted private sections use standard base64. If the original message contains `urban.private` or `insight.private`, its encrypted sections are included unchanged in protobuf JSON form; the API never decrypts them. Pagination metadata remains outside the envelope items. Records indexed before `message_json` was introduced require canonical backfill with `--force` before they appear in this endpoint.
 
 ### Latest Connectivity message per sensor
 
-`GET /api/v3/messages/latest` returns at most one item for each `sensor_id`: the
+`GET /api/v3/messages/latest/json` returns at most one JSON item for each `sensor_id`: the
 newest valid, correctly signed and decoded message inside the requested date
 range. Sensors without matching messages in `[start, end)` are omitted. Items
-have exactly the same SignedEnvelope JSON format as `GET /api/v3/messages` and
+have exactly the same public JSON format as `GET /api/v3/messages/json` and
 are ordered from newest to oldest.
 
 The endpoint requires `start` and `end` in Unix milliseconds and applies the
@@ -197,7 +195,7 @@ does not return `next_cursor`.
 Example:
 
 ```text
-http://127.0.0.1:3001/api/v3/messages/latest?start=1788724800000&end=1788811200000
+http://127.0.0.1:3001/api/v3/messages/latest/json?start=1788724800000&end=1788811200000
 ```
 
 Response shape:
@@ -209,13 +207,44 @@ Response shape:
       {
         "sensorId": "4F...",
         "timestamp": "1788429600123",
-        "nonce": "q80=",
-        "message": {},
-        "signature": "EjQ...=="
+        "message": {}
       }
     ]
   }
 }
+```
+
+### Connectivity protobuf responses
+
+- `GET /api/v3/messages` returns a protobuf page with the same parameters, filters, order, and `limit` constraint as `/api/v3/messages/json`.
+- `GET /api/v3/messages/latest` returns the latest sensor messages as protobuf, with the same filters and required range of at most 24 hours as `/api/v3/messages/latest/json`.
+
+A successful response has HTTP status `200`, `Content-Type: application/protobuf`, and a binary `crypto.v1.SignedEnvelopeBatch` body defined by the existing Connectivity Protocol (`crypto/v1/envelope.proto`). Its `batch` field contains a list of `SignedEnvelope` messages. An empty list is encoded as an empty protobuf batch: HTTP `200` with a zero-byte body. Validation errors (`400`, `413`) and server errors retain the standard JSON API format.
+
+For paginated responses, the `X-Next-Cursor` header contains the opaque cursor for the next request. Pass it unchanged as the `cursor` query parameter and keep all other filters. An absent header marks the last page. Browsers can access this header through `Access-Control-Expose-Headers: X-Next-Cursor`. The `latest` endpoint does not return a cursor.
+
+Example that saves the binary response and headers:
+
+```sh
+curl -D headers.txt -o messages.pb 'http://127.0.0.1:3001/api/v3/messages?limit=100'
+curl -o latest.pb 'http://127.0.0.1:3001/api/v3/messages/latest?start=1788724800000&end=1788811200000'
+```
+
+Frontend decoding example with `@bufbuild/protobuf`:
+
+```ts
+import { fromBinary } from '@bufbuild/protobuf';
+import { SignedEnvelopeBatchSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
+
+const response = await fetch('/api/v3/messages?limit=100');
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+const { batch } = fromBinary(
+  SignedEnvelopeBatchSchema,
+  new Uint8Array(await response.arrayBuffer()),
+);
+const nextCursor = response.headers.get('X-Next-Cursor'); // string | null
+// batch[i].message contains the original Uint8Array used for signature verification.
+// Verify the signature before decoding the nested Message.
 ```
 
 ## Full endpoint list
