@@ -17,8 +17,8 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 
 ### REST API
 
-- **[REST API design](./api.md)** — global prefix, CORS, validation (`ValidationPipe` + DTO), error handling (`AllExceptionsFilter`), `DateRangeGuard`, response format, versioning (V1/V2).
-- **[Endpoint reference](./api_endpoints.md)** — full reference of all REST endpoints with parameters and descriptions.
+- **[REST API design](./api.md)** — V3/V2/legacy versioning, timestamp conventions, response formats, validation, errors, pagination and protobuf decoding.
+- **[Endpoint reference](./api_endpoints.md)** — complete newest-first reference of all REST endpoints with parameters, response examples and behavioral notes.
 
 ### Data
 

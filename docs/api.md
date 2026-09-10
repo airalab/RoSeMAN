@@ -1,236 +1,162 @@
-# REST API
+# REST API design
 
-This document describes the **overall design** of the RoSeMAN HTTP layer: bootstrap, versioning, error handling, validation and shared guards. The full endpoint reference is in [api_endpoints.md](./api_endpoints.md).
+This document describes the shared behavior and versioning of the RoSeMAN HTTP API. For request parameters and response shapes of every route, see the [endpoint reference](./api_endpoints.md).
 
-## Bootstrap
+## API generations
 
-The REST API is started only if `API_ENABLED !== 'false'`. In that case `main.ts` does:
+The newest API is listed first throughout the documentation.
 
-```ts
-const app = await NestFactory.create(AppModule);
+| Generation | Base path                    | Scope                                                              | Status                     |
+| ---------- | ---------------------------- | ------------------------------------------------------------------ | -------------------------- |
+| V3         | `/api/v3`                    | Verified Connectivity Protocol messages in JSON and protobuf       | Current protocol-aware API |
+| V2         | `/api/v2`                    | Aggregated sensor views, owner relationships and stories           | Current legacy-data API    |
+| Legacy     | `/api/sensor`, `/api/status` | Original sensor exports, measurements, messages and indexer status | Retained for compatibility |
 
-app.enableCors();
-app.setGlobalPrefix('api', { exclude: ['/metrics'] });
-app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-app.useGlobalFilters(new AllExceptionsFilter());
-app.enableShutdownHooks();
+Versioning is path-based. The application does not use NestJS `enableVersioning()`: each generation is mounted by its controller prefix. Adding a new generation therefore does not change the behavior of older routes.
 
-await app.listen(port);
+## Starting and addressing the API
+
+The HTTP server starts unless `API_ENABLED=false`. The default port is `3000`; `PORT` can override it through application configuration.
+
+All controller routes have the global `/api` prefix. The only exception is the Prometheus endpoint at `/metrics`, documented separately in [metrics.md](./metrics.md).
+
+Examples in this documentation use:
+
+```text
+http://127.0.0.1:3000/api
 ```
 
-This implies four shared properties:
+The bootstrap configuration in `src/main.ts` also:
 
-1. **CORS is open** — `enableCors()` without parameters allows requests from any origin.
-2. **Global `/api` prefix** — every controller is mounted under `/api/...`. The exception is the Prometheus endpoint `/metrics` (see [metrics.md](./metrics.md)).
-3. **Global DTO validation** — `ValidationPipe` with `whitelist: true, transform: true`: unknown fields in query/body are stripped, types are coerced (`@Type(() => Number)` from `class-transformer` + `@IsInt()` etc.).
-4. **Unified error format** via `AllExceptionsFilter`.
+- enables CORS with NestJS defaults;
+- enables DTO transformation and validation;
+- strips properties that are not declared by the bound DTO;
+- installs the shared exception filter;
+- enables graceful shutdown hooks.
 
-## Controllers and versioning
+## Time and range conventions
 
-Current controllers (`src/api/`):
+The API generations do not use the same timestamp unit. Clients should choose the unit from the requested route, not from the data being displayed.
 
-| Controller               | Path             | Purpose                                                                     |
-| ------------------------ | ---------------- | --------------------------------------------------------------------------- |
-| `StatusController`       | `/api/status`    | Indexer state (agents, last-block)                                          |
-| `SensorController`       | `/api/sensor`    | V1 — sensor data, cities, messages                                          |
-| `SensorV2Controller`     | `/api/v2/sensor` | V2 — `maxdata`, aggregated lists (`list`/`urban`/`markers`), `owner/:owner` |
-| `StoryController`        | `/api/v2/story`  | Stories (`list`, `last/:sensor_id`)                                         |
-| `ConnectivityController` | `/api/v3`        | Public protocol-aware Connectivity messages                                 |
+| Routes               | Timestamp unit    | Range semantics                                             | Maximum range                                           |
+| -------------------- | ----------------- | ----------------------------------------------------------- | ------------------------------------------------------- |
+| V3 `/messages*`      | Unix milliseconds | `[start, end)`; `start` is inclusive and `end` is exclusive | None for paginated routes; 24 hours for `latest` routes |
+| V2 sensor routes     | Unix seconds      | `[start, end]`; both bounds are inclusive                   | `MAX_PERIOD_DAYS`, default 31 days                      |
+| V2 story routes      | Unix seconds      | `[start, end]`; either bound may be omitted                 | No guard-based limit                                    |
+| Legacy sensor routes | Unix seconds      | `[start, end]`; both bounds are inclusive                   | `MAX_PERIOD_DAYS`, default 31 days                      |
 
-Versioning is done **through the path, not via `enableVersioning()`** — V2 lives in a separate controller with the `v2/...` prefix. This allows V1 and V2 to share a common service (`SensorService`) while exposing different endpoint signatures.
+For all bounded V3 requests, `start` must be less than `end`. The V2 and legacy `DateRangeGuard` only enforces the maximum span; integer route parameters are validated separately by `ParseIntPipe`.
 
-The full list of paths, methods, query parameters and response formats is in [api_endpoints.md](./api_endpoints.md).
+## Responses
 
-## Response format
+### JSON
 
-The vast majority of endpoints return a wrapper object with a single `result` key:
+JSON endpoints normally return an object with a top-level `result` property:
 
 ```json
-{ "result": [...] }
+{
+  "result": []
+}
 ```
 
-This makes it easier for clients to move between endpoints and keeps responses uniform. Exceptions exist where the result is structurally more complex — for example, `getList()` returns `{ result: { totalPages, list } }`, and the CSV endpoint returns `text/csv` in the body without a wrapper.
+Pagination metadata stays inside `result`. For example, the V3 message list returns:
 
-## Validation and DTOs
+```json
+{
+  "result": {
+    "items": [],
+    "next_cursor": null
+  }
+}
+```
 
-DTO classes live in `src/api/<module>/dto/`. They use:
+The V2 sensor-by-owner view is the only JSON route with an additional top-level property: it returns `{ "result": [...], "sensor": ... }`.
 
-- `class-validator` — decorators `@IsInt()`, `@IsString()`, `@IsOptional()`, `@Max()`, `@Min()`, etc.
-- `class-transformer` — `@Type(() => Number)` for coercing query strings into numbers.
+### Binary and text
 
-Because `ValidationPipe` with `whitelist: true` is global, validation and stripping of unknown fields are enabled automatically for every `@Query()` and `@Body()` parameter bound to a DTO class.
+- V3 protobuf endpoints return `application/protobuf` and a `crypto.v1.SignedEnvelopeBatch` body.
+- The legacy CSV endpoint returns `text/csv; charset=utf-8`; its content is tab-separated despite the `.csv` filename.
 
-## Guards
+### Empty results
 
-### DateRangeGuard
+JSON list endpoints return an empty array, object or `null` according to their documented response shape. An empty protobuf batch is a successful HTTP `200` response with a zero-byte body.
 
-File: `src/api/common/guards/date-range.guard.ts`. Protects "heavy" endpoints from requests with an excessively wide time range.
+## Validation and errors
 
-- Reads `start` and `end` from `request.params` (priority) or `request.query`.
-- Compares the difference against `MAX_PERIOD_DAYS` (default `31`, overridable via env).
-- If exceeded, throws `PayloadTooLargeException(`Max period ${maxDays} days`)` → HTTP 413.
+DTOs in `src/api/<module>/dto/` use `class-validator` and `class-transformer`. Query-string numbers are transformed to numbers where the DTO declares `@Type(() => Number)`. Undeclared query or body properties are removed because the global `ValidationPipe` uses `whitelist: true`.
 
-Applied via `@UseGuards(DateRangeGuard)` to endpoints that accept a time range. See the "Guard" column in [api_endpoints.md](./api_endpoints.md).
+Route parameters such as `:start` and `:end` use `ParseIntPipe` where applicable. Validation failures return HTTP `400`.
 
-## Error handling
+`AllExceptionsFilter` converts every exception to the same JSON envelope:
 
-`AllExceptionsFilter` (`src/api/common/filters/http-exception.filter.ts`) — a global `@Catch()` without arguments — intercepts **any** exception thrown in controllers or services:
+```json
+{
+  "statusCode": 400,
+  "message": "start must be less than end",
+  "timestamp": "2026-09-10T12:34:56.789Z"
+}
+```
 
-- `HttpException` (including `BadRequestException`, `NotFoundException`, `PayloadTooLargeException`, etc.) — status and message come from the exception.
-- Any other exception → HTTP 500 with the message `'Internal server error'`.
+For NestJS validation errors, `message` can be an array of strings. If an `HttpException` contains a custom object without a `message` property, that object is returned as the value of `message`. Unexpected errors return HTTP `500` with `"Internal server error"`.
 
-Response format:
+`DateRangeGuard` protects the V2 and legacy sensor routes that accept a period. It reads `start` and `end` from route parameters first and then from the query string. A span greater than `MAX_PERIOD_DAYS` produces HTTP `413`:
 
 ```json
 {
   "statusCode": 413,
   "message": "Max period 31 days",
-  "timestamp": "2026-04-29T12:34:56.789Z"
+  "timestamp": "2026-09-10T12:34:56.789Z"
 }
 ```
 
-The `message` field is normalized: if the exception carries an object payload (`getResponse()` returns an object), its `message` field is used; otherwise the object itself.
+## V3: Connectivity Protocol API
 
-## Controller specifics
+The V3 API reads the canonical `connectivity_records` collection. Public results include only records that:
 
-### StatusController
+- have a valid envelope structure;
+- have a valid signature;
+- were decoded successfully;
+- have a materialized `message_json` object.
 
-`/api/status/agents` — list of agent addresses, read directly from `robonomics.accounts` (env `ROBONOMICS_ACCOUNTS`).
+Records are ordered by `recorded_at` descending and then MongoDB `_id` descending. The secondary key makes pagination deterministic when multiple records have the same millisecond timestamp.
 
-`/api/status/last-block?chain=...` — indexer state. The `chain` parameter is the **key in the `index_state` collection** (currently `polkadot_robonomics`); the default is the current instance's `robonomics.stateKey`. If the record is not found — HTTP 404 with `{ error: 'State not found for chain "<key>"' }`.
+### Available representations
 
-### SensorV2Controller — `:type` validation
+Each V3 selection has a default protobuf representation and an explicit JSON representation:
 
-In the path `/api/v2/sensor/maxdata/:type/:start/:end` the `type` parameter is additionally validated against the regexp `/^[a-z0-9_]+$/`. This guards against injection into field names when building dynamic queries against measurements.
+| Selection                 | Protobuf (default)            | JSON                               |
+| ------------------------- | ----------------------------- | ---------------------------------- |
+| Paginated messages        | `GET /api/v3/messages`        | `GET /api/v3/messages/json`        |
+| Latest message per sensor | `GET /api/v3/messages/latest` | `GET /api/v3/messages/latest/json` |
 
-### ConnectivityController — public protocol messages
+The routes without a format suffix return protobuf. Their `/json` variants are intended for clients that cannot consume protobuf. Paired routes use the same filters, ordering and range rules; protobuf preserves the original signed envelope fields required for independent signature verification.
 
-`GET /api/v3/messages/json` reads the canonical `connectivity_records` collection and returns JSON. It always selects only structurally valid, correctly signed and successfully decoded records that have a materialized `message_json`. Results are sorted by `{ recorded_at: -1, _id: -1 }` so records with the same millisecond timestamp have a deterministic order.
+### Protobuf responses
 
-All query parameters are optional. `start` and `end` can be supplied
-independently:
+The binary body is `crypto.v1.SignedEnvelopeBatch` from `crypto/v1/envelope.proto`. Each `batch` item contains the original envelope `message` bytes, `nonce` and `signature`. Verify the signature before decoding the nested message.
 
-| Parameter          | Meaning                                                                      |
-| ------------------ | ---------------------------------------------------------------------------- |
-| `limit`            | Page size, `1..1000`, default `1000`                                         |
-| `cursor`           | Opaque `next_cursor` returned by the previous page                           |
-| `start`            | Optional inclusive lower bound in Unix milliseconds (`recorded_at >= start`) |
-| `end`              | Optional exclusive upper bound in Unix milliseconds (`recorded_at < end`)    |
-| `sensor_id`        | Lowercase 64-character Ed25519 public-key hex                                |
-| `owner`            | SS58 owner address                                                           |
-| `payload_type`     | `urban` or `insight`                                                         |
-| `measurement_type` | Public measurement type such as `temperature` or `pm10`                      |
+### Cursor pagination
 
-Cursor pagination starts with a request that does not include `cursor`. For
-example, this request selects the Samara calendar day of 7 September 2026 and
-limits the page to 1000 items:
+Start a paginated request against the default protobuf endpoint without `cursor`:
 
 ```text
-http://127.0.0.1:3001/api/v3/messages/json?start=1788724800000&end=1788811200000&limit=1000
+GET /api/v3/messages?start=1788724800000&end=1788811200000&limit=100
 ```
 
-When more records are available, the response contains an opaque 28-character
-URL-safe token in `result.next_cursor`. It compactly encodes the format version,
-millisecond timestamp and MongoDB ObjectId. Pass it unchanged in the next
-request while keeping the same filters and page limit:
+If more records exist, JSON returns an opaque token in `result.next_cursor`; protobuf returns the same token in `X-Next-Cursor`. Pass it unchanged as the next request's `cursor` and repeat the original filters, date boundaries and limit. A `null` JSON cursor or absent protobuf header marks the last page.
 
-```text
-http://127.0.0.1:3001/api/v3/messages/json?start=1788724800000&end=1788811200000&limit=1000&cursor=<NEXT_CURSOR>
-```
+Pagination moves only from newer to older records. Cursors are implementation details: clients should neither decode nor edit them.
 
-Continue until `next_cursor` is `null`, which marks the last page. The cursor
-must not be decoded or edited. Pagination currently moves forward only; the API
-does not return a previous-page cursor. Every page request must repeat the same
-filters and whichever date boundaries were used on the first page. If both
-boundaries are present, `start` must be less than `end`; there is no maximum
-range restriction for this endpoint.
+The protobuf list route exposes `X-Next-Cursor` through `Access-Control-Expose-Headers`, so browser clients can read it.
 
-Response example:
-
-```json
-{
-  "result": {
-    "items": [
-      {
-        "sensorId": "4F...",
-        "timestamp": "1788429600123",
-        "message": {
-          "metadata": {
-            "owner": "4H..."
-          },
-          "urban": {
-            "public": [
-              {
-                "bme280": {
-                  "temperature": {
-                    "celsius": 22.5
-                  }
-                }
-              }
-            ]
-          }
-        }
-      }
-    ],
-    "next_cursor": "AgAAAaBmtgV7aLla4HeWaWJAVmoB"
-  }
-}
-```
-
-Each item is a public JSON view of `crypto.v1.SignedEnvelope`, with its binary `message` field materialized as `core.v1.Message` protobuf JSON during indexing. The top-level envelope fields `nonce` and `signature` are omitted; clients that need the complete signed envelope must use the protobuf endpoints. API reads do not decode `message_raw`. The envelope `timestamp` remains a decimal string so the protocol `uint64` value is not rounded by JavaScript. `sensorId` and `message.metadata.owner` use SS58 with `CPS_OWNER_SS58_PREFIX`; byte fields inside encrypted private sections use standard base64. If the original message contains `urban.private` or `insight.private`, its encrypted sections are included unchanged in protobuf JSON form; the API never decrypts them. Pagination metadata remains outside the envelope items. Records indexed before `message_json` was introduced require canonical backfill with `--force` before they appear in this endpoint.
-
-### Latest Connectivity message per sensor
-
-`GET /api/v3/messages/latest/json` returns at most one JSON item for each `sensor_id`: the
-newest valid, correctly signed and decoded message inside the requested date
-range. Sensors without matching messages in `[start, end)` are omitted. Items
-have exactly the same public JSON format as `GET /api/v3/messages/json` and
-are ordered from newest to oldest.
-
-The endpoint requires `start` and `end` in Unix milliseconds and applies the
-same maximum range of 24 hours. Optional filters are `sensor_id`, `owner`,
-`payload_type` and `measurement_type`. It does not use `limit` or `cursor` and
-does not return `next_cursor`.
-
-Example:
-
-```text
-http://127.0.0.1:3001/api/v3/messages/latest/json?start=1788724800000&end=1788811200000
-```
-
-Response shape:
-
-```json
-{
-  "result": {
-    "items": [
-      {
-        "sensorId": "4F...",
-        "timestamp": "1788429600123",
-        "message": {}
-      }
-    ]
-  }
-}
-```
-
-### Connectivity protobuf responses
-
-- `GET /api/v3/messages` returns a protobuf page with the same parameters, filters, order, and `limit` constraint as `/api/v3/messages/json`.
-- `GET /api/v3/messages/latest` returns the latest sensor messages as protobuf, with the same filters and required range of at most 24 hours as `/api/v3/messages/latest/json`.
-
-A successful response has HTTP status `200`, `Content-Type: application/protobuf`, and a binary `crypto.v1.SignedEnvelopeBatch` body defined by the existing Connectivity Protocol (`crypto/v1/envelope.proto`). Its `batch` field contains a list of `SignedEnvelope` messages. An empty list is encoded as an empty protobuf batch: HTTP `200` with a zero-byte body. Validation errors (`400`, `413`) and server errors retain the standard JSON API format.
-
-For paginated responses, the `X-Next-Cursor` header contains the opaque cursor for the next request. Pass it unchanged as the `cursor` query parameter and keep all other filters. An absent header marks the last page. Browsers can access this header through `Access-Control-Expose-Headers: X-Next-Cursor`. The `latest` endpoint does not return a cursor.
-
-Example that saves the binary response and headers:
+### Protobuf decoding
 
 ```sh
-curl -D headers.txt -o messages.pb 'http://127.0.0.1:3001/api/v3/messages?limit=100'
-curl -o latest.pb 'http://127.0.0.1:3001/api/v3/messages/latest?start=1788724800000&end=1788811200000'
+curl -D headers.txt -o messages.pb \
+  'http://127.0.0.1:3000/api/v3/messages?limit=100'
 ```
 
-Frontend decoding example with `@bufbuild/protobuf`:
+Example with `@bufbuild/protobuf`:
 
 ```ts
 import { fromBinary } from '@bufbuild/protobuf';
@@ -238,15 +164,63 @@ import { SignedEnvelopeBatchSchema } from '@buf/airalab_connectivity-protocol.bu
 
 const response = await fetch('/api/v3/messages?limit=100');
 if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
 const { batch } = fromBinary(
   SignedEnvelopeBatchSchema,
   new Uint8Array(await response.arrayBuffer()),
 );
-const nextCursor = response.headers.get('X-Next-Cursor'); // string | null
-// batch[i].message contains the original Uint8Array used for signature verification.
-// Verify the signature before decoding the nested Message.
+const nextCursor = response.headers.get('X-Next-Cursor');
 ```
 
-## Full endpoint list
+### JSON envelope view
 
-See **[api_endpoints.md](./api_endpoints.md)**.
+The `/json` endpoints return items in this shape:
+
+```json
+{
+  "sensorId": "4F...",
+  "timestamp": "1788429600123",
+  "message": {
+    "metadata": {
+      "owner": "4H..."
+    },
+    "urban": {
+      "public": []
+    }
+  }
+}
+```
+
+The JSON view omits the envelope-level `nonce` and `signature`. The nested binary `message` is materialized as protobuf JSON for `core.v1.Message`. The envelope `timestamp` remains a decimal string to avoid rounding a protobuf `uint64` in JavaScript.
+
+`sensorId` and `message.metadata.owner` are SS58-encoded with `CPS_OWNER_SS58_PREFIX`. Byte fields in encrypted private sections use standard base64. Private sections are returned in their encrypted protobuf JSON form and are never decrypted by the API.
+
+Records indexed before `message_json` was introduced must be canonically backfilled with `--force` before they can appear in the public V3 API.
+
+## V2 API
+
+V2 consists of two controllers:
+
+| Controller           | Prefix           | Responsibility                                                               |
+| -------------------- | ---------------- | ---------------------------------------------------------------------------- |
+| `SensorV2Controller` | `/api/v2/sensor` | Aggregated sensor lists, marker data, owner relationships and sensor history |
+| `StoryController`    | `/api/v2/story`  | Paginated stories and the latest story for a sensor                          |
+
+V2 sensor routes continue to use the legacy `measurements` collection and Unix-second timestamps. The `maxdata` measurement type is restricted to lowercase letters, digits and underscores because it becomes part of a dynamic measurement field path.
+
+Owner-based sensor results derive ownership from measurement records, not from blockchain subscriptions. The exact time scope differs by endpoint and is called out in the [endpoint reference](./api_endpoints.md#v2-api).
+
+## Legacy API
+
+The unversioned controllers are retained for existing clients:
+
+| Controller         | Prefix        | Responsibility                                                                        |
+| ------------------ | ------------- | ------------------------------------------------------------------------------------- |
+| `SensorController` | `/api/sensor` | Cities, area queries, text export, measurement types, messages and per-sensor history |
+| `StatusController` | `/api/status` | Configured indexer agents and last processed block                                    |
+
+These routes use data from the legacy indexing pipeline. New Connectivity Protocol integrations should use V3.
+
+## Endpoint reference
+
+See [api_endpoints.md](./api_endpoints.md) for the complete V3 → V2 → legacy route list, parameters and response shapes.
