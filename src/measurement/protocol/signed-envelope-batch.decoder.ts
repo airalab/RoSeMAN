@@ -141,14 +141,6 @@ export class SignedEnvelopeBatchDecoder {
       });
     }
 
-    if (envelope.timestamp <= 0n) {
-      errors.push({
-        envelopeIndex,
-        code: EnvelopeValidationErrorCode.InvalidTimestamp,
-        message: 'timestamp must be a positive uint64 value',
-      });
-    }
-
     if (
       envelope.nonce.byteLength < MIN_NONCE_LENGTH ||
       envelope.nonce.byteLength > MAX_NONCE_LENGTH
@@ -193,7 +185,6 @@ export class SignedEnvelopeBatchDecoder {
     return {
       envelopeIndex,
       sensorId: envelope.sensorId.slice(),
-      timestamp: envelope.timestamp,
       nonce: envelope.nonce.slice(),
       message: envelope.message.slice(),
       signature: envelope.signature.slice(),

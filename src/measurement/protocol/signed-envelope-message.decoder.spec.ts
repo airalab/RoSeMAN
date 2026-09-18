@@ -32,7 +32,6 @@ async function signMessage(
   const envelope = {
     envelopeIndex: 4,
     sensorId: pair.publicKey,
-    timestamp: 1_787_594_400_000n,
     nonce: new Uint8Array(16).fill(9),
     message,
     signature: new Uint8Array(),
@@ -49,7 +48,10 @@ describe('SignedEnvelopeMessageDecoder', () => {
     const messageBytes = toBinary(
       MessageSchema,
       create(MessageSchema, {
-        metadata: create(MetaSchema, { owner: new Uint8Array(32).fill(1) }),
+        metadata: create(MetaSchema, {
+          nodeId: 42n,
+          timestamp: 1_787_594_400_000n,
+        }),
         payload: {
           case: 'urban',
           value: create(UrbanSchema, { public: [], private: [] }),
@@ -69,7 +71,10 @@ describe('SignedEnvelopeMessageDecoder', () => {
     const message = new SignedEnvelopeMessageDecoder().decode(
       verification.envelope,
     );
-    expect(message.metadata?.owner).toEqual(new Uint8Array(32).fill(1));
+    expect(message.metadata).toMatchObject({
+      nodeId: 42n,
+      timestamp: 1_787_594_400_000n,
+    });
     expect(message.payload.case).toBe('urban');
   });
 

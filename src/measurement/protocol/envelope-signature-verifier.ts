@@ -4,7 +4,7 @@ import type { UntrustedSignedEnvelope } from './signed-envelope.types.js';
 const verifiedEnvelopeBrand: unique symbol = Symbol('verifiedEnvelope');
 
 /**
- * Конверт, подпись которого успешно проверена по alpha-контракту connectivity.
+ * Конверт, подпись которого успешно проверена по контракту v1-beta.2.
  */
 export interface VerifiedSignedEnvelope extends UntrustedSignedEnvelope {
   readonly [verifiedEnvelopeBrand]: true;
@@ -66,42 +66,21 @@ export class PendingEnvelopeSignatureVerifier implements EnvelopeSignatureVerifi
 }
 
 /**
- * Кодирует uint64 timestamp в нормативные 8 байт little-endian.
- * @param timestamp - timestamp конверта в миллисекундах
- * @returns восемь байт без преобразования через JavaScript number
- */
-export function timestampToLittleEndianBytes(timestamp: bigint): Uint8Array {
-  const bytes = new Uint8Array(8);
-  new DataView(bytes.buffer).setBigUint64(0, timestamp, true);
-  return bytes;
-}
-
-/**
- * Собирает нормативные байты подписи alpha-протокола connectivity.
+ * Собирает нормативные байты подписи Connectivity Protocol v1-beta.2.
  * @param envelope - структурно корректный недоверенный конверт
- * @returns sensor_id || timestamp_le || nonce || message
+ * @returns sensor_id || nonce || message
  */
 export function buildEnvelopeSigningBytes(
-  envelope: Pick<
-    UntrustedSignedEnvelope,
-    'sensorId' | 'timestamp' | 'nonce' | 'message'
-  >,
+  envelope: Pick<UntrustedSignedEnvelope, 'sensorId' | 'nonce' | 'message'>,
 ): Uint8Array {
-  const timestampBytes = timestampToLittleEndianBytes(envelope.timestamp);
   const size =
     envelope.sensorId.byteLength +
-    timestampBytes.byteLength +
     envelope.nonce.byteLength +
     envelope.message.byteLength;
   const result = new Uint8Array(size);
   let offset = 0;
 
-  for (const part of [
-    envelope.sensorId,
-    timestampBytes,
-    envelope.nonce,
-    envelope.message,
-  ]) {
+  for (const part of [envelope.sensorId, envelope.nonce, envelope.message]) {
     result.set(part, offset);
     offset += part.byteLength;
   }
@@ -114,7 +93,7 @@ export function buildEnvelopeSigningBytes(
  */
 export class Ed25519EnvelopeSignatureVerifier implements EnvelopeSignatureVerifier {
   /**
-   * Проверяет Ed25519-подпись над нормативными байтами alpha-протокола.
+   * Проверяет Ed25519-подпись над нормативными байтами v1-beta.2.
    * @param envelope - структурно корректный недоверенный конверт
    * @returns проверенный конверт либо машинно-читаемая причина отказа
    */

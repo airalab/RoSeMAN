@@ -8,6 +8,7 @@ import { create, toBinary } from '@bufbuild/protobuf';
 import { SignedEnvelopeBatchSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
 import { ConfigService } from '@nestjs/config';
 import { encodeAddress } from '@polkadot/util-crypto';
+import { normalizeCpsNodeId } from '../../common/utils/cps-node-id.util.js';
 import {
   type ConnectivityMessageRecord,
   type ConnectivityPublicFilterQuery,
@@ -26,7 +27,6 @@ const MAX_RANGE_MILLISECONDS = 24 * 60 * 60 * 1000;
 
 export interface ConnectivityMessageJsonResponse {
   readonly sensorId: string;
-  readonly timestamp: string;
   readonly message: Record<string, unknown>;
 }
 
@@ -49,7 +49,7 @@ export class ConnectivityService {
     private readonly recordRepo: ConnectivityRecordRepository,
     private readonly config: ConfigService,
   ) {
-    this.ss58Prefix = config.get<number>('cps.ownerSs58Prefix', 32);
+    this.ss58Prefix = config.get<number>('cps.sensorSs58Prefix', 32);
   }
 
   /**
@@ -192,7 +192,6 @@ export class ConnectivityService {
         }
         return {
           sensorId: record.sensor_id_raw,
-          timestamp: BigInt(record.timestamp_ms.toString()),
           nonce: record.nonce,
           message: record.message_raw,
           signature: record.signature,
@@ -233,7 +232,7 @@ export class ConnectivityService {
       ...(query.start !== undefined ? { start: new Date(query.start) } : {}),
       ...(query.end !== undefined ? { end: new Date(query.end) } : {}),
       ...(query.sensor_id ? { sensorId: query.sensor_id } : {}),
-      ...(query.owner ? { owner: query.owner } : {}),
+      ...(query.node_id ? { nodeId: this.normalizeNodeId(query.node_id) } : {}),
       ...(query.payload_type ? { payloadType: query.payload_type } : {}),
       ...(query.measurement_type
         ? { measurementType: query.measurement_type }
@@ -244,15 +243,27 @@ export class ConnectivityService {
   /**
    * Создаёт публичное JSON-представление сообщения без nonce и signature.
    * @param record - валидная запись Connectivity Protocol
-   * @returns идентификатор сенсора, timestamp и декодированное core.v1.Message
+   * @returns идентификатор сенсора и декодированное core.v1.Message
    */
   private toEnvelopeJson(
     record: ConnectivityMessageRecord,
   ): ConnectivityMessageJsonResponse {
     return {
       sensorId: encodeAddress(record.sensor_id_raw, this.ss58Prefix),
-      timestamp: record.timestamp_ms.toString(),
       message: record.message_json,
     };
+  }
+
+  /**
+   * Проверяет и канонизирует публичный фильтр CPS NodeId.
+   * @param nodeId - значение query-параметра в десятичной форме
+   * @returns каноническая uint64-строка
+   */
+  private normalizeNodeId(nodeId: string): string {
+    try {
+      return normalizeCpsNodeId(nodeId);
+    } catch {
+      throw new BadRequestException('Invalid node_id');
+    }
   }
 }

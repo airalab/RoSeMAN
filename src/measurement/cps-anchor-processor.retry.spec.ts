@@ -72,7 +72,10 @@ async function createSignedBatch(): Promise<Uint8Array> {
   const message = toBinary(
     MessageSchema,
     create(MessageSchema, {
-      metadata: create(MetaSchema, { owner: pair.publicKey }),
+      metadata: create(MetaSchema, {
+        nodeId: 9n,
+        timestamp: 1_787_594_400_555n,
+      }),
       payload: {
         case: 'urban',
         value: create(UrbanSchema, {
@@ -89,7 +92,7 @@ async function createSignedBatch(): Promise<Uint8Array> {
                 value: create(BME280Schema, {
                   measurement: {
                     case: 'temperature',
-                    value: create(TemperatureSchema, { celsius: 20.5 }),
+                    value: create(TemperatureSchema, { centiCelsius: 2050 }),
                   },
                 }),
               },
@@ -101,7 +104,6 @@ async function createSignedBatch(): Promise<Uint8Array> {
   );
   const unsigned = {
     sensorId: pair.publicKey,
-    timestamp: 1_787_594_400_555n,
     nonce: new Uint8Array(16).fill(4),
     message,
     signature: new Uint8Array(),
@@ -135,7 +137,6 @@ async function createRetryHarness(
     'cps.maxAttempts': 5,
     'cps.retryBaseDelay': 1,
     'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
-    'cps.ownerSs58Prefix': 32,
   };
   const config = {
     get: jest.fn((key: string, fallback?: unknown) => values[key] ?? fallback),
@@ -145,6 +146,7 @@ async function createRetryHarness(
     node_id: '9',
     block: 99,
     cid: 'QmRetry',
+    owner: '5Owner',
     attempt_count: 1,
   } as CpsAnchorDocument;
   const retryAnchor = { ...anchor, attempt_count: 2 } as CpsAnchorDocument;
@@ -211,8 +213,8 @@ async function createRetryHarness(
     { upsertRecord } as unknown as ConnectivityRecordRepository,
     { upsertMany } as unknown as MeasurementRepository,
     { bulkUpsert } as unknown as SensorRepository,
-    new CpsMeasurementTransformer(config),
-    new ConnectivityRecordMapper(config),
+    new CpsMeasurementTransformer(),
+    new ConnectivityRecordMapper(),
     {
       recordCompletedAnchor,
       recordProjectionErrors,

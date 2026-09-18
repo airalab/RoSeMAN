@@ -45,6 +45,8 @@ describe('ConnectivityRecordRepository', () => {
     expect(updateCalls[0][1].$unset).toMatchObject({
       error_code: '',
       message_json: '',
+      owner: '',
+      owner_raw: '',
       projection_error_code: '',
     });
     expect(updateCalls[0][2]).toEqual({ upsert: true });
@@ -71,7 +73,7 @@ describe('ConnectivityRecordRepository', () => {
         end,
         cursor: { recordedAt: cursorDate, recordId: cursorId },
         sensorId: 'aa'.repeat(32),
-        owner: 'owner',
+        nodeId: '42',
         payloadType: ConnectivityPayloadType.Urban,
         measurementType: 'temperature',
       }),
@@ -85,7 +87,7 @@ describe('ConnectivityRecordRepository', () => {
         message_json: { $type: 'object' },
         recorded_at: { $gte: start, $lt: end },
         sensor_id: 'aa'.repeat(32),
-        owner: 'owner',
+        node_id: '42',
         payload_type: 'urban',
         measurement_types: 'temperature',
         $or: [

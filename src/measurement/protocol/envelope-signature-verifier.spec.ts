@@ -7,12 +7,11 @@ import {
   buildEnvelopeSigningBytes,
   Ed25519EnvelopeSignatureVerifier,
   SignatureVerificationFailureReason,
-  timestampToLittleEndianBytes,
 } from './envelope-signature-verifier.js';
 import type { UntrustedSignedEnvelope } from './signed-envelope.types.js';
 
 /**
- * Создаёт тестовый конверт, совместимый с alpha-генератором connectivity.
+ * Создаёт тестовый конверт, совместимый с Connectivity Protocol v1-beta.2.
  * @returns недоверенный конверт с детерминированной Ed25519-подписью
  */
 async function createSignedEnvelope(): Promise<UntrustedSignedEnvelope> {
@@ -24,7 +23,6 @@ async function createSignedEnvelope(): Promise<UntrustedSignedEnvelope> {
   const envelope = {
     envelopeIndex: 0,
     sensorId: pair.publicKey,
-    timestamp: 0x01_02_03_04_05_06_07_08n,
     nonce: new Uint8Array(16).fill(8),
     message: new TextEncoder().encode('test-message'),
     signature: new Uint8Array(),
@@ -36,23 +34,16 @@ async function createSignedEnvelope(): Promise<UntrustedSignedEnvelope> {
   };
 }
 
-describe('alpha signing contract', () => {
-  it('кодирует uint64 timestamp как 8 байт little-endian', () => {
-    expect(timestampToLittleEndianBytes(0x01_02_03_04_05_06_07_08n)).toEqual(
-      new Uint8Array([8, 7, 6, 5, 4, 3, 2, 1]),
-    );
-  });
-
+describe('v1-beta.2 signing contract', () => {
   it('собирает поля в нормативном порядке без protobuf re-encode', () => {
     const envelope = {
       sensorId: new Uint8Array([1, 2]),
-      timestamp: 0x01_02_03_04_05_06_07_08n,
       nonce: new Uint8Array([3, 4]),
       message: new Uint8Array([5, 6]),
     };
 
     expect(buildEnvelopeSigningBytes(envelope)).toEqual(
-      new Uint8Array([1, 2, 8, 7, 6, 5, 4, 3, 2, 1, 3, 4, 5, 6]),
+      new Uint8Array([1, 2, 3, 4, 5, 6]),
     );
   });
 });
@@ -67,7 +58,7 @@ describe('Ed25519EnvelopeSignatureVerifier', () => {
 
     expect(result.verified).toBe(true);
     if (result.verified) {
-      expect(result.envelope.timestamp).toBe(envelope.timestamp);
+      expect(result.envelope.message).toEqual(envelope.message);
     }
   });
 

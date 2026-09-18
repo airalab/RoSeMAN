@@ -4,7 +4,6 @@ import {
   IsString,
   Matches,
   MaxLength,
-  MinLength,
 } from 'class-validator';
 import { ConnectivityPayloadType } from '../../../common/constants/connectivity-storage.enum.js';
 
@@ -19,10 +18,9 @@ export class ConnectivityMessageFilterQueryDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(/^[1-9A-HJ-NP-Za-km-z]+$/)
-  owner?: string;
+  @MaxLength(20)
+  @Matches(/^(0|[1-9][0-9]*)$/)
+  node_id?: string;
 
   @IsOptional()
   @IsIn([ConnectivityPayloadType.Urban, ConnectivityPayloadType.Insight])

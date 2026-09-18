@@ -62,13 +62,19 @@ function createCpsMetricsMock(): CpsMetricsMock {
 }
 
 /** Создаёт raw batch с одним валидно подписанным Urban-сообщением. */
-async function createSignedBatch(withGeo: boolean): Promise<Uint8Array> {
+async function createSignedBatch(
+  withGeo: boolean,
+  nodeId = 0n,
+): Promise<Uint8Array> {
   await cryptoWaitReady();
   const pair = ed25519PairFromSeed(new Uint8Array(32).fill(5));
   const message = toBinary(
     MessageSchema,
     create(MessageSchema, {
-      metadata: create(MetaSchema, { owner: pair.publicKey }),
+      metadata: create(MetaSchema, {
+        nodeId,
+        timestamp: 1_787_594_400_000n,
+      }),
       payload: {
         case: 'urban',
         value: create(UrbanSchema, {
@@ -89,7 +95,7 @@ async function createSignedBatch(withGeo: boolean): Promise<Uint8Array> {
                 value: create(BME280Schema, {
                   measurement: {
                     case: 'temperature',
-                    value: create(TemperatureSchema, { celsius: 22.3 }),
+                    value: create(TemperatureSchema, { centiCelsius: 2230 }),
                   },
                 }),
               },
@@ -101,7 +107,6 @@ async function createSignedBatch(withGeo: boolean): Promise<Uint8Array> {
   );
   const unsigned = {
     sensorId: pair.publicKey,
-    timestamp: 1_787_594_400_000n,
     nonce: new Uint8Array(16).fill(2),
     message,
     signature: new Uint8Array(),
@@ -126,7 +131,6 @@ describe('CpsAnchorProcessorService', () => {
       'cps.maxAttempts': 5,
       'cps.retryBaseDelay': 1_000,
       'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
-      'cps.ownerSs58Prefix': 32,
     };
     const config = {
       get: jest.fn(
@@ -138,6 +142,7 @@ describe('CpsAnchorProcessorService', () => {
       node_id: '0',
       block: 10,
       cid: 'QmTest',
+      owner: '5Owner',
       attempt_count: 1,
     } as CpsAnchorDocument;
     const claimNext = jest
@@ -159,8 +164,8 @@ describe('CpsAnchorProcessorService', () => {
       {} as ConnectivityRecordRepository,
       { upsertMany } as unknown as MeasurementRepository,
       { bulkUpsert } as unknown as SensorRepository,
-      new CpsMeasurementTransformer(config),
-      new ConnectivityRecordMapper(config),
+      new CpsMeasurementTransformer(),
+      new ConnectivityRecordMapper(),
       createCpsMetricsMock().service,
     );
 
@@ -203,7 +208,6 @@ describe('CpsAnchorProcessorService', () => {
       'cps.maxAttempts': 5,
       'cps.retryBaseDelay': 1_000,
       'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
-      'cps.ownerSs58Prefix': 32,
     };
     const config = {
       get: jest.fn(
@@ -215,6 +219,7 @@ describe('CpsAnchorProcessorService', () => {
       node_id: '0',
       block: 11,
       cid: 'QmWithoutGeo',
+      owner: '5Owner',
       attempt_count: 1,
     } as CpsAnchorDocument;
     const claimNext = jest
@@ -238,8 +243,8 @@ describe('CpsAnchorProcessorService', () => {
       {} as ConnectivityRecordRepository,
       { upsertMany } as unknown as MeasurementRepository,
       { bulkUpsert } as unknown as SensorRepository,
-      new CpsMeasurementTransformer(config),
-      new ConnectivityRecordMapper(config),
+      new CpsMeasurementTransformer(),
+      new ConnectivityRecordMapper(),
       createCpsMetricsMock().service,
     );
 
@@ -281,7 +286,6 @@ describe('CpsAnchorProcessorService', () => {
       'cps.maxAttempts': 5,
       'cps.retryBaseDelay': 1_000,
       'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
-      'cps.ownerSs58Prefix': 32,
     };
     const config = {
       get: jest.fn(
@@ -293,9 +297,10 @@ describe('CpsAnchorProcessorService', () => {
       node_id: '5',
       block: 12,
       cid: 'QmCanonical',
+      owner: '5Owner',
       attempt_count: 1,
     } as CpsAnchorDocument;
-    const batchBytes = await createSignedBatch(true);
+    const batchBytes = await createSignedBatch(true, 5n);
     const claimNext = jest
       .fn()
       .mockResolvedValueOnce(anchor)
@@ -320,8 +325,8 @@ describe('CpsAnchorProcessorService', () => {
       { upsertRecord } as unknown as ConnectivityRecordRepository,
       { upsertMany } as unknown as MeasurementRepository,
       { bulkUpsert } as unknown as SensorRepository,
-      new CpsMeasurementTransformer(config),
-      new ConnectivityRecordMapper(config),
+      new CpsMeasurementTransformer(),
+      new ConnectivityRecordMapper(),
       metrics.service,
     );
 
@@ -351,7 +356,7 @@ describe('CpsAnchorProcessorService', () => {
         urban: {
           public: [
             { gps: { lat: 53.1, lon: 50.2 } },
-            { bme280: { temperature: { celsius: 22.3 } } },
+            { bme280: { temperature: { centiCelsius: 2230 } } },
           ],
         },
       },
@@ -410,7 +415,6 @@ describe('CpsAnchorProcessorService', () => {
       'cps.maxAttempts': 5,
       'cps.retryBaseDelay': 1_000,
       'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
-      'cps.ownerSs58Prefix': 32,
     };
     const config = {
       get: jest.fn(
@@ -422,6 +426,7 @@ describe('CpsAnchorProcessorService', () => {
       node_id: '5',
       block: 13,
       cid: 'QmProjectionError',
+      owner: '5Owner',
       attempt_count: 1,
     } as CpsAnchorDocument;
     const claimNext = jest
@@ -434,7 +439,9 @@ describe('CpsAnchorProcessorService', () => {
     const processor = new CpsAnchorProcessorService(
       config,
       {
-        fetchBytes: jest.fn().mockResolvedValue(await createSignedBatch(false)),
+        fetchBytes: jest
+          .fn()
+          .mockResolvedValue(await createSignedBatch(false, 5n)),
       } as unknown as IpfsFetcherService,
       { claimNext, updateStatus } as unknown as CpsAnchorRepository,
       {} as ConnectivityPayloadRepository,
@@ -443,8 +450,8 @@ describe('CpsAnchorProcessorService', () => {
         upsertMany: jest.fn().mockRejectedValue(new Error('Mongo unavailable')),
       } as unknown as MeasurementRepository,
       { bulkUpsert: jest.fn() } as unknown as SensorRepository,
-      new CpsMeasurementTransformer(config),
-      new ConnectivityRecordMapper(config),
+      new CpsMeasurementTransformer(),
+      new ConnectivityRecordMapper(),
       metrics.service,
     );
 

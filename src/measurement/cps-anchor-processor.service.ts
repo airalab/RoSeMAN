@@ -246,7 +246,7 @@ export class CpsAnchorProcessorService
           const transformed = this.transformer.transform(
             verification.envelope,
             message,
-            anchor.source_key,
+            anchor,
           );
           if (!transformed.transformed) {
             invalidEnvelopeCount += 1;

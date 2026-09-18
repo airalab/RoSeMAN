@@ -27,7 +27,7 @@ describe('ConnectivityRecordSchema', () => {
     expect(ConnectivityRecordSchema.indexes()).toEqual(
       expect.arrayContaining([
         [{ sensor_id: 1, recorded_at: 1 }, { background: true }],
-        [{ owner: 1, recorded_at: 1 }, { background: true }],
+        [{ node_id: 1, recorded_at: 1 }, { background: true }],
         [{ payload_type: 1, recorded_at: 1 }, { background: true }],
       ]),
     );
@@ -45,8 +45,10 @@ describe('ConnectivityRecordSchema', () => {
       source_type: 'cps',
       timestamp_ms: '18446744073709551615',
       message_json: {
-        metadata: { owner: '4owner' },
-        urban: { public: [{ bme280: { temperature: { celsius: 22.5 } } }] },
+        metadata: { nodeId: '1', timestamp: '18446744073709551615' },
+        urban: {
+          public: [{ bme280: { temperature: { centiCelsius: 2250 } } }],
+        },
       },
       structure_status: ConnectivityStructureStatus.Valid,
       signature_status: ConnectivitySignatureStatus.Valid,
@@ -58,8 +60,10 @@ describe('ConnectivityRecordSchema', () => {
     expect(document.timestamp_ms).toBeInstanceOf(Types.Decimal128);
     expect(document.timestamp_ms?.toString()).toBe('18446744073709551615');
     expect(document.message_json).toEqual({
-      metadata: { owner: '4owner' },
-      urban: { public: [{ bme280: { temperature: { celsius: 22.5 } } }] },
+      metadata: { nodeId: '1', timestamp: '18446744073709551615' },
+      urban: {
+        public: [{ bme280: { temperature: { centiCelsius: 2250 } } }],
+      },
     });
   });
 });

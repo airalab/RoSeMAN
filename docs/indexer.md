@@ -185,11 +185,12 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 2. Downloads exact bytes through `IpfsFetcherService.fetchBytes()`.
 3. With `CPS_RAW_PAYLOAD_STORAGE_ENABLED=true`, upserts exact downloaded bytes and their SHA-256 into `connectivity_payloads` before any decompression or decode.
 4. Decodes the explicitly configured `raw`, `xz` or `zlib` wire format with compressed/decompressed/envelope-count limits.
-5. Validates each `SignedEnvelope`, reconstructs `sensor_id || timestamp_le_u64 || nonce || message` and verifies Ed25519 before decoding `core.v1.Message`.
-6. With `CPS_CANONICAL_STORAGE_ENABLED=true`, stores each occurrence in `connectivity_records`, including envelope bytes, millisecond timestamp, materialized protobuf JSON, compact measurement types and validation statuses.
-7. Accepts public Urban/Insight measurements with a valid owner and useful scalar readings; GPS is optional, but validated when present.
-8. Upserts `measurements` and `cities`, finalizes canonical/raw statuses, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
-9. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
+5. Validates each `SignedEnvelope`, reconstructs the exact `sensor_id || nonce || message` bytes and verifies Ed25519 before decoding `core.v1.Message`.
+6. Validates that `Message.metadata.node_id` matches the CPS anchor NodeId and reads the millisecond timestamp from `Message.metadata.timestamp`.
+7. With `CPS_CANONICAL_STORAGE_ENABLED=true`, stores each occurrence in `connectivity_records`, including envelope bytes, the message timestamp, materialized protobuf JSON, compact measurement types and validation statuses.
+8. Accepts public Urban/Insight measurements with a registry-resolved anchor owner and useful scalar readings; GPS is optional, but validated when present. Scaled integer protocol values are converted back to the legacy units used by `measurements`.
+9. Upserts `measurements` and `cities`, finalizes canonical/raw statuses, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
+10. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
 
 CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128; encrypted private sections remain in materialized protobuf JSON and exact raw bytes without a second BSON projection. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
 
@@ -415,9 +416,9 @@ Indexes: unique `{payload_key}`, CID lookup `{cid}`, and decode queue `{decode_s
 
 ### Collection `connectivity_records` (ConnectivityRecord)
 
-One document per envelope occurrence in a payload. It stores `record_key=<payload_key>:<envelope_index>`, `payload_key`, compact provenance, exact envelope binary fields, `timestamp_ms` as Decimal128, optional `recorded_at`, structure/signature/decode statuses, owner metadata, materialized `message_json`, and unique `measurement_types` for API filtering. `source_id`, repeated protocol/schema metadata, a second private-section projection and legacy projection success keys are intentionally omitted. Sparse `projection_error_code` remains for failed or skipped legacy projection. `message_json` is created once during successful protocol decoding and serves API reads without repeated protobuf decoding. Invalid envelopes receive a diagnostic occurrence record while their exact source bytes remain in `connectivity_payloads`.
+One document per envelope occurrence in a payload. It stores `record_key=<payload_key>:<envelope_index>`, `payload_key`, CPS `node_id`, compact provenance, exact envelope binary fields, message-derived `timestamp_ms` as Decimal128, optional `recorded_at`, structure/signature/decode statuses, materialized `message_json`, and unique `measurement_types` for API filtering. `source_id`, duplicated owner metadata, repeated protocol/schema metadata, a second private-section projection and legacy projection success keys are intentionally omitted. Sparse `projection_error_code` remains for failed or skipped legacy projection. `message_json` is created once during successful protocol decoding and serves API reads without repeated protobuf decoding. Invalid envelopes receive a diagnostic occurrence record while their exact source bytes remain in `connectivity_payloads`.
 
-Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, time-range indexes by `sensor_id`, `owner`, and `payload_type` paired with `recorded_at`, and `{recorded_at: -1, _id: -1}` for stable cursor pagination in the public protocol-aware API.
+Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, time-range indexes by `sensor_id`, `node_id`, and `payload_type` paired with `recorded_at`, and `{recorded_at: -1, _id: -1}` for stable cursor pagination in the public protocol-aware API.
 
 The public `GET /api/v3/messages/latest` endpoint uses the bounded 24-hour range, scans matching records in `{recorded_at: -1, _id: -1}` order and keeps the first record for each `sensor_id`. Sensors without a matching record are omitted; the endpoint has no pagination metadata.
 
@@ -551,7 +552,7 @@ The four module flags are disabled only by the exact value `false` (see `app.mod
 | `CPS_MAX_DECOMPRESSED_BYTES`      | `10485760` | Maximum decoded batch size                                                        |
 | `CPS_MAX_XZ_MEMORY_BYTES`         | `67108864` | XZ decoder memory limit                                                           |
 | `CPS_MAX_ENVELOPE_COUNT`          | `10000`    | Maximum envelopes per batch                                                       |
-| `CPS_OWNER_SS58_PREFIX`           | `32`       | SS58 prefix used for `Message.metadata.owner`                                     |
+| `CPS_SENSOR_SS58_PREFIX`          | `32`       | SS58 prefix used for `sensorId` in the V3 JSON API                                |
 
 If `CPS_NODE_IDS` is empty, snapshot performs no reads and realtime accepts any NodeId. If non-empty, both paths are limited to the listed canonical decimal NodeIds.
 
@@ -664,7 +665,7 @@ ERROR (3)          — fetch/parse error, see errorMessage
 
 - `@polkadot/api`, `@polkadot/types`, `robonomics-api-augment` — parachain interaction.
 - `@buf/airalab_connectivity-protocol.bufbuild_es`, `@bufbuild/protobuf` — generated CPS schemas and protobuf runtime.
-- `@polkadot/util-crypto` — Ed25519 signature verification and SS58 owner encoding.
+- `@polkadot/util-crypto` — Ed25519 signature verification and SS58 sensor encoding.
 - `lzma-native` — bounded XZ/LZMA2 decompression for CPS batches.
 - `multiformats` — strict CID parsing and binary `CID.bytes` conversion.
 - `@nestjs/mongoose`, `mongoose` — MongoDB via the Repository pattern.

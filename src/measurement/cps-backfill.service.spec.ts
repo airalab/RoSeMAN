@@ -36,7 +36,10 @@ async function createSignedBatch(): Promise<Uint8Array> {
   const message = toBinary(
     MessageSchema,
     create(MessageSchema, {
-      metadata: create(MetaSchema, { owner: pair.publicKey }),
+      metadata: create(MetaSchema, {
+        nodeId: 10n,
+        timestamp: 1_787_594_400_777n,
+      }),
       payload: {
         case: 'urban',
         value: create(UrbanSchema, {
@@ -56,7 +59,6 @@ async function createSignedBatch(): Promise<Uint8Array> {
   );
   const unsigned = {
     sensorId: pair.publicKey,
-    timestamp: 1_787_594_400_777n,
     nonce: new Uint8Array(16).fill(3),
     message,
     signature: new Uint8Array(),
@@ -75,7 +77,6 @@ async function createSignedBatch(): Promise<Uint8Array> {
 function createConfig(): ConfigService {
   const values: Record<string, unknown> = {
     'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
-    'cps.ownerSs58Prefix': 32,
   };
   return {
     get: jest.fn((key: string, fallback?: unknown) => values[key] ?? fallback),
@@ -88,6 +89,7 @@ describe('CpsBackfillService', () => {
     node_id: '10',
     block: 100,
     cid: 'QmBackfill',
+    owner: '5Owner',
   } as CpsAnchorDocument;
 
   it('в dry-run только возвращает число кандидатов', async () => {
@@ -103,7 +105,7 @@ describe('CpsBackfillService', () => {
       } as unknown as CpsAnchorRepository,
       {} as ConnectivityPayloadRepository,
       {} as ConnectivityRecordRepository,
-      new ConnectivityRecordMapper(createConfig()),
+      new ConnectivityRecordMapper(),
     );
 
     const report = await service.run({ dryRun: true, limit: 25 });
@@ -140,7 +142,7 @@ describe('CpsBackfillService', () => {
         updateDecodeStatus,
       } as unknown as ConnectivityPayloadRepository,
       { upsertRecord } as unknown as ConnectivityRecordRepository,
-      new ConnectivityRecordMapper(config),
+      new ConnectivityRecordMapper(),
     );
 
     const report = await service.run({ dryRun: false, limit: 10 });
@@ -214,7 +216,7 @@ describe('CpsBackfillService', () => {
         updateDecodeStatus,
       } as unknown as ConnectivityPayloadRepository,
       { upsertRecord: jest.fn() } as unknown as ConnectivityRecordRepository,
-      new ConnectivityRecordMapper(config),
+      new ConnectivityRecordMapper(),
     );
 
     const report = await service.run({ dryRun: false, limit: 10 });

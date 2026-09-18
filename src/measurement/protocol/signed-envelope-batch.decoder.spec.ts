@@ -18,7 +18,6 @@ import {
 
 interface EnvelopeOverrides {
   readonly sensorId?: Uint8Array;
-  readonly timestamp?: bigint;
   readonly nonce?: Uint8Array;
   readonly message?: Uint8Array;
   readonly signature?: Uint8Array;
@@ -33,7 +32,6 @@ interface EnvelopeOverrides {
 function createEnvelope(overrides: EnvelopeOverrides = {}): SignedEnvelope {
   return create(SignedEnvelopeSchema, {
     sensorId: new Uint8Array(32).fill(1),
-    timestamp: 9_007_199_254_740_993n,
     nonce: new Uint8Array(16).fill(2),
     message: new Uint8Array([8, 1]),
     signature: new Uint8Array(64).fill(3),
@@ -56,7 +54,7 @@ function createBatchBytes(envelopes: SignedEnvelope[]): Uint8Array {
 describe('SignedEnvelopeBatchDecoder', () => {
   const decoder = new SignedEnvelopeBatchDecoder();
 
-  it('импортирует схемы SDK и сохраняет точность uint64 timestamp', () => {
+  it('импортирует схемы SDK и декодирует поля нового envelope', () => {
     const result = decoder.decode(createBatchBytes([createEnvelope()]));
 
     expect(SignedEnvelopeBatchSchema.typeName).toBe(
@@ -65,13 +63,12 @@ describe('SignedEnvelopeBatchDecoder', () => {
     expect(MessageSchema.typeName).toBe('core.v1.Message');
     expect(result.errors).toEqual([]);
     expect(result.envelopes).toHaveLength(1);
-    expect(result.envelopes[0].timestamp).toBe(9_007_199_254_740_993n);
+    expect(result.envelopes[0].nonce).toEqual(new Uint8Array(16).fill(2));
   });
 
   it('возвращает типизированные ошибки элемента и продолжает batch', () => {
     const invalidEnvelope = createEnvelope({
       sensorId: new Uint8Array(31),
-      timestamp: 0n,
       nonce: new Uint8Array(15),
       message: new Uint8Array(),
       signature: new Uint8Array(63),
@@ -85,7 +82,6 @@ describe('SignedEnvelopeBatchDecoder', () => {
     expect(result.envelopes[0].envelopeIndex).toBe(1);
     expect(result.errors.map(({ code }) => code)).toEqual([
       EnvelopeValidationErrorCode.InvalidSensorIdLength,
-      EnvelopeValidationErrorCode.InvalidTimestamp,
       EnvelopeValidationErrorCode.InvalidNonceLength,
       EnvelopeValidationErrorCode.EmptyMessage,
       EnvelopeValidationErrorCode.InvalidSignatureLength,

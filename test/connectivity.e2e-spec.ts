@@ -36,9 +36,9 @@ function createRecord(): ConnectivityMessageRecord {
     recorded_at: new Date('2026-09-03T10:00:00.123Z'),
     nonce: Buffer.from([3, 4]),
     message_json: {
-      metadata: { owner: encodeAddress(Buffer.alloc(32, 2), 32) },
+      metadata: { nodeId: '42', timestamp: '1788429600123' },
       urban: {
-        public: [{ bme280: { temperature: { celsius: 22.5 } } }],
+        public: [{ bme280: { temperature: { centiCelsius: 2250 } } }],
         private: [
           {
             version: 1,
@@ -131,11 +131,10 @@ describe('Connectivity API (e2e)', () => {
     });
     expect(response.body.result.items[0]).toEqual({
       sensorId: encodeAddress(Buffer.alloc(32, 1), 32),
-      timestamp: '1788429600123',
       message: {
-        metadata: { owner: encodeAddress(Buffer.alloc(32, 2), 32) },
+        metadata: { nodeId: '42', timestamp: '1788429600123' },
         urban: {
-          public: [{ bme280: { temperature: { celsius: 22.5 } } }],
+          public: [{ bme280: { temperature: { centiCelsius: 2250 } } }],
           private: [
             {
               version: 1,
@@ -173,7 +172,6 @@ describe('Connectivity API (e2e)', () => {
     expect(response.body.result.items).toHaveLength(1);
     expect(response.body.result.items[0]).toEqual({
       sensorId: encodeAddress(Buffer.alloc(32, 1), 32),
-      timestamp: '1788429600123',
       message: createRecord().message_json,
     });
     expect(response.body.result.items[0]).not.toHaveProperty('nonce');
@@ -209,7 +207,7 @@ describe('Connectivity API (e2e)', () => {
     expect(findMessagePage).not.toHaveBeenCalled();
   });
 
-  it('не передаёт удалённые transport-фильтры в repository', async () => {
+  it('передаёт node_id и отбрасывает внутренние transport-фильтры', async () => {
     await request(app.getHttpServer())
       .get('/api/v3/messages/json')
       .query({
@@ -226,6 +224,7 @@ describe('Connectivity API (e2e)', () => {
       limit: 10,
       start: new Date(Number(START)),
       end: new Date(Number(END)),
+      nodeId: '42',
     });
   });
 
@@ -331,7 +330,6 @@ describe('Connectivity API (e2e)', () => {
       // Неизвестные поля и нестандартный порядок полей должны остаться побайтно неизменными.
       const envelope = {
         sensorId: pair.publicKey,
-        timestamp: 1788429600123n,
         nonce: new Uint8Array(16).fill(0xff),
         message: new Uint8Array([0xa0, 0x06, 0x01, 0x0a, 0x00]),
       };
@@ -351,7 +349,7 @@ describe('Connectivity API (e2e)', () => {
           start: START,
           end: END,
           sensor_id: 'ab'.repeat(32),
-          owner: 'owner',
+          node_id: '42',
           payload_type: 'urban',
           measurement_type: 'temperature',
         })
@@ -379,7 +377,7 @@ describe('Connectivity API (e2e)', () => {
           start: new Date(Number(START)),
           end: new Date(Number(END)),
           sensorId: 'ab'.repeat(32),
-          owner: 'owner',
+          nodeId: '42',
           payloadType: 'urban',
           measurementType: 'temperature',
         }),

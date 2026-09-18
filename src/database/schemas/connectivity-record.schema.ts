@@ -82,12 +82,6 @@ export class ConnectivityRecord {
   @Prop({ type: String })
   error_code?: string;
 
-  @Prop({ type: Buffer })
-  owner_raw?: Buffer;
-
-  @Prop({ type: String })
-  owner?: string;
-
   @Prop({ type: String, enum: ConnectivityPayloadType })
   payload_type?: ConnectivityPayloadType;
 
@@ -107,6 +101,6 @@ ConnectivityRecordSchema.index(
   { unique: true },
 );
 ConnectivityRecordSchema.index({ sensor_id: 1, recorded_at: 1 });
-ConnectivityRecordSchema.index({ owner: 1, recorded_at: 1 });
+ConnectivityRecordSchema.index({ node_id: 1, recorded_at: 1 });
 ConnectivityRecordSchema.index({ payload_type: 1, recorded_at: 1 });
 ConnectivityRecordSchema.index({ recorded_at: -1, _id: -1 });

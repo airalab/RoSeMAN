@@ -1,11 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { toJson, type JsonObject } from '@bufbuild/protobuf';
 import {
   type Message,
   MessageSchema,
 } from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
-import { encodeAddress } from '@polkadot/util-crypto';
 import {
   ConnectivityPayloadType,
   ConnectivityRecordDecodeStatus,
@@ -15,6 +13,7 @@ import {
 } from '../common/constants/connectivity-storage.enum.js';
 import type { ConnectivityRecordInput } from '../database/repositories/connectivity-record.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
+import { validateMessageMetadata } from './protocol/message-metadata.validator.js';
 import type { UntrustedSignedEnvelope } from './protocol/signed-envelope.types.js';
 
 interface ScalarMeasurement {
@@ -48,16 +47,6 @@ const SUPPORTED_MEASUREMENT_TYPES = new Set([
 /** Строит lossless-связанную read model одного protocol envelope. */
 @Injectable()
 export class ConnectivityRecordMapper {
-  private readonly ownerSs58Prefix: number;
-
-  /**
-   * Создаёт mapper с согласованным SS58-префиксом владельца.
-   * @param config - конфигурация CPS processor
-   */
-  constructor(config: ConfigService) {
-    this.ownerSs58Prefix = config.get<number>('cps.ownerSs58Prefix', 32);
-  }
-
   /**
    * Создаёт запись структурно корректного envelope до проверки подписи.
    * @param anchor - источник occurrence в CPS
@@ -68,13 +57,10 @@ export class ConnectivityRecordMapper {
     anchor: CpsAnchorDocument,
     envelope: UntrustedSignedEnvelope,
   ): ConnectivityRecordInput {
-    const recordedAt = this.toRecordedAt(envelope.timestamp);
     return {
       ...this.createProvenance(anchor, envelope.envelopeIndex),
       sensor_id: Buffer.from(envelope.sensorId).toString('hex'),
       sensor_id_raw: Buffer.from(envelope.sensorId),
-      timestamp_ms: envelope.timestamp.toString(),
-      ...(recordedAt ? { recorded_at: recordedAt } : {}),
       nonce: Buffer.from(envelope.nonce),
       message_raw: Buffer.from(envelope.message),
       signature: Buffer.from(envelope.signature),
@@ -118,13 +104,27 @@ export class ConnectivityRecordMapper {
     record: ConnectivityRecordInput,
     message: Message,
   ): ConnectivityRecordInput {
-    const ownerRaw = message.metadata?.owner;
-    const owner = ownerRaw ? this.toOwner(ownerRaw) : undefined;
-    const ownerFields = {
-      ...(ownerRaw ? { owner_raw: Buffer.from(ownerRaw) } : {}),
-      ...(owner ? { owner } : {}),
+    const messageJson = this.toMessageJson(message);
+    const metadata = validateMessageMetadata(message, record.node_id ?? '');
+    const timestampFields = message.metadata
+      ? { timestamp_ms: message.metadata.timestamp.toString() }
+      : {};
+
+    if (!metadata.valid) {
+      return {
+        ...record,
+        ...timestampFields,
+        message_json: messageJson,
+        signature_status: ConnectivitySignatureStatus.Valid,
+        decode_status: ConnectivityRecordDecodeStatus.Error,
+        error_code: metadata.code,
+      };
+    }
+
+    const metadataFields = {
+      timestamp_ms: metadata.timestamp.toString(),
+      recorded_at: metadata.recordedAt,
     };
-    const messageJson = this.toMessageJson(message, owner);
 
     if (
       message.payload.case !== 'urban' &&
@@ -132,7 +132,7 @@ export class ConnectivityRecordMapper {
     ) {
       return {
         ...record,
-        ...ownerFields,
+        ...metadataFields,
         message_json: messageJson,
         signature_status: ConnectivitySignatureStatus.Valid,
         decode_status: ConnectivityRecordDecodeStatus.Unsupported,
@@ -144,7 +144,7 @@ export class ConnectivityRecordMapper {
 
     return {
       ...record,
-      ...ownerFields,
+      ...metadataFields,
       message_json: messageJson,
       signature_status: ConnectivitySignatureStatus.Valid,
       decode_status: ConnectivityRecordDecodeStatus.Decoded,
@@ -178,37 +178,9 @@ export class ConnectivityRecordMapper {
     };
   }
 
-  /** Преобразует uint64 миллисекунды в Date только в допустимом диапазоне BSON. */
-  private toRecordedAt(timestampMs: bigint): Date | undefined {
-    const maxDateMilliseconds = 8_640_000_000_000_000n;
-    if (timestampMs <= 0n || timestampMs > maxDateMilliseconds)
-      return undefined;
-    const date = new Date(Number(timestampMs));
-    return Number.isNaN(date.getTime()) ? undefined : date;
-  }
-
-  /** Возвращает SS58 owner только для корректного 32-байтового ключа. */
-  private toOwner(owner: Uint8Array): string | undefined {
-    if (owner.byteLength !== 32) return undefined;
-    try {
-      return encodeAddress(owner, this.ownerSs58Prefix);
-    } catch {
-      return undefined;
-    }
-  }
-
-  /** Создаёт готовый protobuf JSON и заменяет корректный owner на SS58. */
-  private toMessageJson(message: Message, owner?: string): JsonObject {
-    const messageJson = toJson(MessageSchema, message) as JsonObject;
-    if (owner && this.isJsonObject(messageJson.metadata)) {
-      messageJson.metadata.owner = owner;
-    }
-    return messageJson;
-  }
-
-  /** Проверяет, что protobuf JSON-значение является объектом. */
-  private isJsonObject(value: unknown): value is JsonObject {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  /** Создаёт protobuf JSON без изменения значений подписанного Message. */
+  private toMessageJson(message: Message): JsonObject {
+    return toJson(MessageSchema, message) as JsonObject;
   }
 
   /** Нормализует известный oneof payload, не отбрасывая неизвестный вариант. */

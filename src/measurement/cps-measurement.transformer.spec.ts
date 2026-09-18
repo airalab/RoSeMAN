@@ -1,5 +1,4 @@
 import { create } from '@bufbuild/protobuf';
-import { ConfigService } from '@nestjs/config';
 import {
   MessageSchema,
   MetaSchema,
@@ -34,7 +33,6 @@ async function createVerifiedEnvelope(): Promise<VerifiedSignedEnvelope> {
   const envelope = {
     envelopeIndex: 0,
     sensorId: pair.publicKey,
-    timestamp: 1_787_594_400_999n,
     nonce: new Uint8Array(16).fill(8),
     message: new Uint8Array([1]),
     signature: new Uint8Array(),
@@ -48,7 +46,7 @@ async function createVerifiedEnvelope(): Promise<VerifiedSignedEnvelope> {
 }
 
 /** Создаёт Urban-сообщение с опциональным GPS и температурой. */
-function createUrbanMessage(owner: Uint8Array, withGeo: boolean): Message {
+function createUrbanMessage(withGeo: boolean): Message {
   const publicSensors = [
     create(UrbanSensorSchema, {
       sensor: {
@@ -56,7 +54,7 @@ function createUrbanMessage(owner: Uint8Array, withGeo: boolean): Message {
         value: create(BME280Schema, {
           measurement: {
             case: 'temperature',
-            value: create(TemperatureSchema, { celsius: 21.5 }),
+            value: create(TemperatureSchema, { centiCelsius: 2150 }),
           },
         }),
       },
@@ -73,7 +71,10 @@ function createUrbanMessage(owner: Uint8Array, withGeo: boolean): Message {
     );
   }
   return create(MessageSchema, {
-    metadata: create(MetaSchema, { owner }),
+    metadata: create(MetaSchema, {
+      nodeId: 0n,
+      timestamp: 1_787_594_400_999n,
+    }),
     payload: {
       case: 'urban',
       value: create(UrbanSchema, { public: publicSensors, private: [] }),
@@ -82,18 +83,20 @@ function createUrbanMessage(owner: Uint8Array, withGeo: boolean): Message {
 }
 
 describe('CpsMeasurementTransformer', () => {
-  const transformer = new CpsMeasurementTransformer({
-    get: jest.fn().mockReturnValue(32),
-  } as unknown as ConfigService);
+  const transformer = new CpsMeasurementTransformer();
+  const owner = encodeAddress(new Uint8Array(32).fill(7), 32);
+  const anchor = {
+    source_key: 'cps:0:test',
+    node_id: '0',
+    owner,
+  };
 
   it('сохраняет доступный geo и публичные показатели Urban', async () => {
     const envelope = await createVerifiedEnvelope();
-    const owner = new Uint8Array(32).fill(7);
-
     const result = transformer.transform(
       envelope,
-      createUrbanMessage(owner, true),
-      'cps:0:test',
+      createUrbanMessage(true),
+      anchor,
     );
 
     expect(result.transformed).toBe(true);
@@ -103,7 +106,7 @@ describe('CpsMeasurementTransformer', () => {
       device_model: 'urban',
       geo: { lat: 53.1959, lng: 50.1002 },
       measurement: { temperature: 21.5 },
-      owner: encodeAddress(owner, 32),
+      owner,
       timestamp: 1_787_594_400,
       source_type: 'cps',
       source_id: 'cps:0:test',
@@ -114,8 +117,8 @@ describe('CpsMeasurementTransformer', () => {
     const envelope = await createVerifiedEnvelope();
     const result = transformer.transform(
       envelope,
-      createUrbanMessage(new Uint8Array(32).fill(7), false),
-      'cps:0:test',
+      createUrbanMessage(false),
+      anchor,
     );
 
     expect(result.transformed).toBe(true);

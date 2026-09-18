@@ -257,7 +257,9 @@ export class CpsBackfillService {
       try {
         const message = this.messageDecoder.decode(verification.envelope);
         record = this.recordMapper.applyDecodedMessage(record, message);
-        if (
+        if (record.decode_status === ConnectivityRecordDecodeStatus.Error) {
+          invalidCount += 1;
+        } else if (
           message.payload.case !== 'urban' &&
           message.payload.case !== 'insight'
         ) {

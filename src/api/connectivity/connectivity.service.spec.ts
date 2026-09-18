@@ -28,9 +28,9 @@ function createRecord(
     recorded_at: new Date(recordedAt),
     nonce: Buffer.from([3, 4]),
     message_json: {
-      metadata: { owner: encodeAddress(new Uint8Array(32).fill(2), 32) },
+      metadata: { nodeId: '42', timestamp: '1788429600123' },
       urban: {
-        public: [{ bme280: { temperature: { celsius: 22.5 } } }],
+        public: [{ bme280: { temperature: { centiCelsius: 2250 } } }],
         private: [
           {
             version: 1,
@@ -105,11 +105,10 @@ describe('ConnectivityService', () => {
     expect(result.items).toHaveLength(2);
     expect(result.items[0]).toEqual({
       sensorId: encodeAddress(first.sensor_id_raw, 32),
-      timestamp: '1788429600123',
       message: {
-        metadata: { owner: encodeAddress(new Uint8Array(32).fill(2), 32) },
+        metadata: { nodeId: '42', timestamp: '1788429600123' },
         urban: {
-          public: [{ bme280: { temperature: { celsius: 22.5 } } }],
+          public: [{ bme280: { temperature: { centiCelsius: 2250 } } }],
           private: [
             {
               version: 1,
@@ -155,7 +154,7 @@ describe('ConnectivityService', () => {
     const query = Object.assign(new ConnectivityLatestMessageQueryDto(), {
       start: START,
       end: END,
-      owner: 'owner',
+      node_id: '42',
       measurement_type: 'temperature',
     });
 
@@ -164,14 +163,13 @@ describe('ConnectivityService', () => {
     expect(findLatestMessages).toHaveBeenCalledWith({
       start: new Date(START),
       end: new Date(END),
-      owner: 'owner',
+      nodeId: '42',
       measurementType: 'temperature',
     });
     expect(result).toEqual({
       items: [
         {
           sensorId: encodeAddress(record.sensor_id_raw, 32),
-          timestamp: '1788429600123',
           message: record.message_json,
         },
       ],
@@ -266,7 +264,7 @@ describe('ConnectivityService', () => {
     ).rejects.toThrow('Invalid cursor');
     expect(findMessagePage).not.toHaveBeenCalled();
   });
-  it('сохраняет uint64 без округления и не меняет подписанные Buffer', async () => {
+  it('не меняет подписанные Buffer при сборке protobuf batch', async () => {
     const record = {
       ...createRecord('68b95ae07796696240566a01', '2026-09-03T10:00:00.123Z'),
       timestamp_ms: Types.Decimal128.fromString('18446744073709551615'),
@@ -278,7 +276,6 @@ describe('ConnectivityService', () => {
     );
     const envelope = fromBinary(SignedEnvelopeBatchSchema, result.bytes)
       .batch[0];
-    expect(envelope.timestamp).toBe(18446744073709551615n);
     expect(Buffer.from(envelope.message)).toEqual(record.message_raw);
     expect(Buffer.from(envelope.sensorId)).toEqual(record.sensor_id_raw);
     expect(Buffer.from(envelope.nonce)).toEqual(record.nonce);

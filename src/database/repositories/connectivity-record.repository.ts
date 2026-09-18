@@ -33,8 +33,6 @@ export interface ConnectivityRecordInput {
   readonly signature_status: ConnectivitySignatureStatus;
   readonly decode_status: ConnectivityRecordDecodeStatus;
   readonly error_code?: string;
-  readonly owner_raw?: Buffer;
-  readonly owner?: string;
   readonly payload_type?: ConnectivityPayloadType;
   readonly measurement_types: string[];
   readonly projection_error_code?: string;
@@ -66,7 +64,7 @@ export interface ConnectivityPublicFilterQuery {
   readonly start?: Date;
   readonly end?: Date;
   readonly sensorId?: string;
-  readonly owner?: string;
+  readonly nodeId?: string;
   readonly payloadType?: ConnectivityPayloadType;
   readonly measurementType?: string;
 }
@@ -110,8 +108,6 @@ const OPTIONAL_RECORD_FIELDS: ReadonlyArray<keyof ConnectivityRecordInput> = [
   'message_json',
   'signature',
   'error_code',
-  'owner_raw',
-  'owner',
   'payload_type',
   'projection_error_code',
 ];
@@ -140,7 +136,7 @@ function buildPublicMessageFilter(
         }
       : {}),
     ...(query.sensorId ? { sensor_id: query.sensorId } : {}),
-    ...(query.owner ? { owner: query.owner } : {}),
+    ...(query.nodeId ? { node_id: query.nodeId } : {}),
     ...(query.payloadType ? { payload_type: query.payloadType } : {}),
     ...(query.measurementType
       ? { measurement_types: query.measurementType }
@@ -190,9 +186,11 @@ export class ConnectivityRecordRepository {
         { record_key: record.record_key },
         {
           $set: record,
-          ...(Object.keys(fieldsToUnset).length > 0
-            ? { $unset: fieldsToUnset }
-            : {}),
+          $unset: {
+            owner_raw: '',
+            owner: '',
+            ...fieldsToUnset,
+          },
         },
         { upsert: true },
       )

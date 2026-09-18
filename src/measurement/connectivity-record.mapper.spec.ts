@@ -1,5 +1,4 @@
 import { create } from '@bufbuild/protobuf';
-import { ConfigService } from '@nestjs/config';
 import {
   MessageSchema,
   MetaSchema,
@@ -17,7 +16,6 @@ import {
   HumiditySchema,
   TemperatureSchema,
 } from '@buf/airalab_connectivity-protocol.bufbuild_es/sensor/v1/measurement_pb.js';
-import { encodeAddress } from '@polkadot/util-crypto';
 import {
   ConnectivityPayloadType,
   ConnectivityRecordDecodeStatus,
@@ -27,9 +25,7 @@ import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js
 import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 
 describe('ConnectivityRecordMapper', () => {
-  const mapper = new ConnectivityRecordMapper({
-    get: jest.fn().mockReturnValue(32),
-  } as unknown as ConfigService);
+  const mapper = new ConnectivityRecordMapper();
   const anchor = {
     source_key: 'cps:7:cid',
     node_id: '7',
@@ -39,13 +35,12 @@ describe('ConnectivityRecordMapper', () => {
   const envelope = {
     envelopeIndex: 2,
     sensorId: new Uint8Array(32).fill(1),
-    timestamp: 1_787_594_400_999n,
     nonce: new Uint8Array(16).fill(2),
     message: new Uint8Array([3, 4, 5]),
     signature: new Uint8Array(64).fill(6),
   };
 
-  it('сохраняет envelope bytes и timestamp без потери миллисекунд', () => {
+  it('сохраняет неизменённые поля envelope до декодирования Message', () => {
     const record = mapper.createEnvelopeRecord(anchor, envelope);
 
     expect(record).toMatchObject({
@@ -54,8 +49,6 @@ describe('ConnectivityRecordMapper', () => {
       envelope_index: 2,
       sensor_id: Buffer.from(envelope.sensorId).toString('hex'),
       sensor_id_raw: Buffer.from(envelope.sensorId),
-      timestamp_ms: '1787594400999',
-      recorded_at: new Date('2026-08-24T18:00:00.999Z'),
       nonce: Buffer.from(envelope.nonce),
       message_raw: Buffer.from(envelope.message),
       signature: Buffer.from(envelope.signature),
@@ -63,7 +56,6 @@ describe('ConnectivityRecordMapper', () => {
   });
 
   it('сохраняет protobuf JSON и компактные типы публичных измерений', () => {
-    const owner = new Uint8Array(32).fill(7);
     const privateSection = {
       version: 1,
       algorithm: 'xchacha20',
@@ -72,7 +64,10 @@ describe('ConnectivityRecordMapper', () => {
       ciphertext: new Uint8Array([13, 14, 15]),
     };
     const message = create(MessageSchema, {
-      metadata: create(MetaSchema, { owner }),
+      metadata: create(MetaSchema, {
+        nodeId: 7n,
+        timestamp: 1_787_594_400_999n,
+      }),
       payload: {
         case: 'urban',
         value: create(UrbanSchema, {
@@ -83,7 +78,7 @@ describe('ConnectivityRecordMapper', () => {
                 value: create(BME280Schema, {
                   measurement: {
                     case: 'temperature',
-                    value: create(TemperatureSchema, { celsius: 21.25 }),
+                    value: create(TemperatureSchema, { centiCelsius: 2125 }),
                   },
                 }),
               },
@@ -104,7 +99,7 @@ describe('ConnectivityRecordMapper', () => {
                 value: create(BME280Schema, {
                   measurement: {
                     case: 'humidity',
-                    value: create(HumiditySchema, { percent: 45.5 }),
+                    value: create(HumiditySchema, { centiPercent: 4550 }),
                   },
                 }),
               },
@@ -123,15 +118,15 @@ describe('ConnectivityRecordMapper', () => {
     expect(record.signature_status).toBe(ConnectivitySignatureStatus.Valid);
     expect(record.decode_status).toBe(ConnectivityRecordDecodeStatus.Decoded);
     expect(record.payload_type).toBe(ConnectivityPayloadType.Urban);
-    expect(record.owner_raw).toEqual(Buffer.from(owner));
-    expect(record.owner).toBe(encodeAddress(owner, 32));
+    expect(record.timestamp_ms).toBe('1787594400999');
+    expect(record.recorded_at).toEqual(new Date('2026-08-24T18:00:00.999Z'));
     expect(record.message_json).toEqual({
-      metadata: { owner: encodeAddress(owner, 32) },
+      metadata: { nodeId: '7', timestamp: '1787594400999' },
       urban: {
         public: [
-          { bme280: { temperature: { celsius: 21.25 } } },
+          { bme280: { temperature: { centiCelsius: 2125 } } },
           { gps: { lat: 53.1, lon: 50.2, heightM: 81.5 } },
-          { bme280: { humidity: { percent: 45.5 } } },
+          { bme280: { humidity: { centiPercent: 4550 } } },
         ],
         private: [
           {
@@ -153,7 +148,12 @@ describe('ConnectivityRecordMapper', () => {
   });
 
   it('оставляет неизвестный payload как unsupported record', () => {
-    const message = create(MessageSchema, {});
+    const message = create(MessageSchema, {
+      metadata: create(MetaSchema, {
+        nodeId: 7n,
+        timestamp: 1_787_594_400_999n,
+      }),
+    });
 
     const record = mapper.applyDecodedMessage(
       mapper.createEnvelopeRecord(anchor, envelope),
@@ -163,7 +163,9 @@ describe('ConnectivityRecordMapper', () => {
     expect(record).toMatchObject({
       payload_type: ConnectivityPayloadType.Unknown,
       decode_status: ConnectivityRecordDecodeStatus.Unsupported,
-      message_json: {},
+      message_json: {
+        metadata: { nodeId: '7', timestamp: '1787594400999' },
+      },
       measurement_types: [],
     });
   });

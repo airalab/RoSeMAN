@@ -29,11 +29,13 @@ function parseWireFormat(raw: string | undefined): ProtocolBatchWireFormat {
   return value as ProtocolBatchWireFormat;
 }
 
-/** Разбирает SS58-префикс адреса владельца. */
+/** Разбирает SS58-префикс адреса сенсора для публичного API. */
 function parseSs58Prefix(raw: string | undefined): number {
   const value = raw === undefined ? 32 : Number(raw);
   if (!Number.isInteger(value) || value < 0 || value > 16_383) {
-    throw new Error('CPS_OWNER_SS58_PREFIX must be an integer from 0 to 16383');
+    throw new Error(
+      'CPS_SENSOR_SS58_PREFIX must be an integer from 0 to 16383',
+    );
   }
   return value;
 }
@@ -105,7 +107,7 @@ export function createCpsConfig() {
       10_000,
       'CPS_MAX_ENVELOPE_COUNT',
     ),
-    ownerSs58Prefix: parseSs58Prefix(process.env.CPS_OWNER_SS58_PREFIX),
+    sensorSs58Prefix: parseSs58Prefix(process.env.CPS_SENSOR_SS58_PREFIX),
   };
 }
 

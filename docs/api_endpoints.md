@@ -51,7 +51,7 @@ All V3 message routes return only structurally valid, correctly signed and succe
 | `start`            | List: no; latest: yes | Integer, `0..8640000000000000`                    | Inclusive `recorded_at` lower bound in Unix milliseconds     |
 | `end`              | List: no; latest: yes | Integer, `0..8640000000000000`                    | Exclusive `recorded_at` upper bound in Unix milliseconds     |
 | `sensor_id`        | No                    | 64 lowercase hexadecimal characters               | Raw Ed25519 public key used by the indexed record            |
-| `owner`            | No                    | 1–128 Base58 characters                           | Materialized owner address                                   |
+| `node_id`          | No                    | Canonical decimal uint64                          | Robonomics CPS NodeId from signed message metadata            |
 | `payload_type`     | No                    | `urban` or `insight`                              | Decoded message payload branch                               |
 | `measurement_type` | No                    | Up to 64 lowercase letters, digits or underscores | Public measurement type, for example `temperature` or `pm10` |
 
@@ -79,7 +79,7 @@ Access-Control-Expose-Headers: X-Next-Cursor
 
 An absent `X-Next-Cursor` header marks the last page. An empty result is a valid zero-byte body.
 
-**Notes.** Repeat all filters and `limit` when following a cursor, and do not decode or modify the token. The batch contains original `message`, `nonce` and `signature` bytes. Verify the signature before decoding the nested message. A download example and frontend decoder are in [api.md](./api.md#protobuf-decoding).
+**Notes.** Repeat all filters and `limit` when following a cursor, and do not decode or modify the token. The batch contains original `sensor_id`, `message`, `nonce` and `signature` bytes. Verify the signature over `sensor_id || nonce || message` before decoding the nested message. A download example and frontend decoder are in [api.md](./api.md#protobuf-decoding).
 
 ### `GET /api/v3/messages/latest`
 
@@ -105,9 +105,11 @@ An absent `X-Next-Cursor` header marks the last page. An empty result is a valid
     "items": [
       {
         "sensorId": "4F...",
-        "timestamp": "1788429600123",
         "message": {
-          "metadata": { "owner": "4H..." },
+          "metadata": {
+            "nodeId": "42",
+            "timestamp": "1788429600123"
+          },
           "urban": { "public": [] }
         }
       }
@@ -117,7 +119,7 @@ An absent `X-Next-Cursor` header marks the last page. An empty result is a valid
 }
 ```
 
-`next_cursor` is `null` on the last page. `timestamp` is deliberately a decimal string. The JSON item omits the signed envelope's `nonce` and `signature`.
+`next_cursor` is `null` on the last page. The protobuf JSON uint64 fields `message.metadata.nodeId` and `message.metadata.timestamp` are decimal strings. The JSON item omits the signed envelope's `nonce` and `signature`.
 
 **Notes.** Repeat all filters and `limit` when following a cursor. Do not decode or modify the token. See [V3 design details](./api.md#v3-connectivity-protocol-api) for encoding and private-section behavior.
 
@@ -135,8 +137,12 @@ An absent `X-Next-Cursor` header marks the last page. An empty result is a valid
     "items": [
       {
         "sensorId": "4F...",
-        "timestamp": "1788429600123",
-        "message": {}
+        "message": {
+          "metadata": {
+            "nodeId": "42",
+            "timestamp": "1788429600123"
+          }
+        }
       }
     ]
   }

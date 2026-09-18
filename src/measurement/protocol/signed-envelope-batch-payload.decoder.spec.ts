@@ -21,7 +21,6 @@ import {
 function createBatchBytes(): Uint8Array {
   const envelope = create(SignedEnvelopeSchema, {
     sensorId: new Uint8Array(32).fill(1),
-    timestamp: 1n,
     nonce: new Uint8Array(16).fill(2),
     message: new Uint8Array([8, 1]),
     signature: new Uint8Array(64).fill(3),

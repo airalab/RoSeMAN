@@ -133,7 +133,7 @@ The routes without a format suffix return protobuf. Their `/json` variants are i
 
 ### Protobuf responses
 
-The binary body is `crypto.v1.SignedEnvelopeBatch` from `crypto/v1/envelope.proto`. Each `batch` item contains the original envelope `message` bytes, `nonce` and `signature`. Verify the signature before decoding the nested message.
+The binary body is `crypto.v1.SignedEnvelopeBatch` from `crypto/v1/envelope.proto`. Each `batch` item contains the original `sensor_id`, `nonce`, `message` and `signature`. Verify Ed25519 over the exact `sensor_id || nonce || message` bytes before decoding the nested message; the measurement timestamp is protected inside the signed `message` bytes.
 
 ### Cursor pagination
 
@@ -179,10 +179,10 @@ The `/json` endpoints return items in this shape:
 ```json
 {
   "sensorId": "4F...",
-  "timestamp": "1788429600123",
   "message": {
     "metadata": {
-      "owner": "4H..."
+      "nodeId": "42",
+      "timestamp": "1788429600123"
     },
     "urban": {
       "public": []
@@ -191,9 +191,9 @@ The `/json` endpoints return items in this shape:
 }
 ```
 
-The JSON view omits the envelope-level `nonce` and `signature`. The nested binary `message` is materialized as protobuf JSON for `core.v1.Message`. The envelope `timestamp` remains a decimal string to avoid rounding a protobuf `uint64` in JavaScript.
+The JSON view omits the envelope-level `nonce` and `signature`. The nested binary `message` is materialized as protobuf JSON for `core.v1.Message`; its `metadata.nodeId` and `metadata.timestamp` uint64 values are decimal strings, as required by protobuf JSON.
 
-`sensorId` and `message.metadata.owner` are SS58-encoded with `CPS_OWNER_SS58_PREFIX`. Byte fields in encrypted private sections use standard base64. Private sections are returned in their encrypted protobuf JSON form and are never decrypted by the API.
+`sensorId` is SS58-encoded with `CPS_SENSOR_SS58_PREFIX`. Byte fields in encrypted private sections use standard base64. Private sections are returned in their encrypted protobuf JSON form and are never decrypted by the API.
 
 Records indexed before `message_json` was introduced must be canonically backfilled with `--force` before they can appear in the public V3 API.
 

@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import type { Message } from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
-import { encodeAddress } from '@polkadot/util-crypto';
 import { MeasurementSourceType } from '../common/constants/measurement-source-type.enum.js';
 import { SensorModel } from '../common/constants/sensor-model.enum.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
+import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { VerifiedSignedEnvelope } from './protocol/envelope-signature-verifier.js';
+import {
+  MessageMetadataValidationErrorCode,
+  validateMessageMetadata,
+} from './protocol/message-metadata.validator.js';
 
 interface SensorValue {
   readonly measurement?: {
@@ -26,7 +29,7 @@ interface PublicSensor {
 export enum CpsMeasurementTransformErrorCode {
   InvalidGeo = 'INVALID_GEO',
   MissingOwner = 'MISSING_OWNER',
-  InvalidOwner = 'INVALID_OWNER',
+  NodeIdMismatch = 'NODE_ID_MISMATCH',
   UnsupportedPayload = 'UNSUPPORTED_PAYLOAD',
   NoMeasurements = 'NO_MEASUREMENTS',
   InvalidTimestamp = 'INVALID_TIMESTAMP',
@@ -40,39 +43,33 @@ export type CpsMeasurementTransformResult =
       readonly code: CpsMeasurementTransformErrorCode;
     };
 
-/** Преобразует проверенное сообщение alpha-протокола в документ MongoDB. */
+/** Преобразует проверенное сообщение Connectivity Protocol в документ MongoDB. */
 @Injectable()
 export class CpsMeasurementTransformer {
-  private readonly ownerSs58Prefix: number;
-
-  /** Создаёт преобразователь с настроенным SS58-префиксом владельца. */
-  constructor(config: ConfigService) {
-    this.ownerSs58Prefix = config.get<number>('cps.ownerSs58Prefix', 32);
-  }
-
   /**
    * Собирает одно измерение из всех публичных секций конверта.
    * @param envelope - конверт с проверенной Ed25519-подписью
    * @param message - декодированное сообщение устройства
-   * @param sourceId - идемпотентный ключ CPS anchor
+   * @param anchor - CPS-якорь для проверки NodeId и разрешения владельца
    * @returns документ измерения либо стабильная причина отклонения
    */
   transform(
     envelope: VerifiedSignedEnvelope,
     message: Message,
-    sourceId: string,
+    anchor: Pick<CpsAnchorDocument, 'source_key' | 'node_id' | 'owner'>,
   ): CpsMeasurementTransformResult {
-    const timestamp = this.toTimestampSeconds(envelope.timestamp);
-    if (timestamp === null)
-      return this.failure(CpsMeasurementTransformErrorCode.InvalidTimestamp);
-
-    const owner = this.toOwner(message.metadata?.owner);
-    if (owner === null) {
+    const metadata = validateMessageMetadata(message, anchor.node_id);
+    if (!metadata.valid) {
       return this.failure(
-        message.metadata?.owner.byteLength
-          ? CpsMeasurementTransformErrorCode.InvalidOwner
-          : CpsMeasurementTransformErrorCode.MissingOwner,
+        metadata.code === MessageMetadataValidationErrorCode.NodeIdMismatch
+          ? CpsMeasurementTransformErrorCode.NodeIdMismatch
+          : CpsMeasurementTransformErrorCode.InvalidTimestamp,
       );
+    }
+    const timestamp = Number(metadata.timestamp / 1000n);
+
+    if (!anchor.owner) {
+      return this.failure(CpsMeasurementTransformErrorCode.MissingOwner);
     }
 
     if (
@@ -103,30 +100,12 @@ export class CpsMeasurementTransformer {
         measurement: collected.measurement,
         ...(collected.geo ? { geo: collected.geo } : {}),
         device_model: message.payload.case,
-        owner,
+        owner: anchor.owner,
         timestamp,
         source_type: MeasurementSourceType.CPS,
-        source_id: sourceId,
+        source_id: anchor.source_key,
       },
     };
-  }
-
-  /** Приводит миллисекунды uint64 к безопасным Unix-секундам. */
-  private toTimestampSeconds(timestampMs: bigint): number | null {
-    const seconds = timestampMs / 1000n;
-    return seconds > 0n && seconds <= BigInt(Number.MAX_SAFE_INTEGER)
-      ? Number(seconds)
-      : null;
-  }
-
-  /** Кодирует 32-байтовый ключ владельца в адрес SS58. */
-  private toOwner(owner: Uint8Array | undefined): string | null {
-    if (!owner || owner.byteLength !== 32) return null;
-    try {
-      return encodeAddress(owner, this.ownerSs58Prefix);
-    } catch {
-      return null;
-    }
   }
 
   /** Собирает GPS и скалярные показатели из публичных секций устройства. */
@@ -173,20 +152,23 @@ export class CpsMeasurementTransformer {
     rawValue: unknown,
   ): { key: string; value: number } | null {
     const value = rawValue as Record<string, unknown>;
-    const mappings: Record<string, [string, string]> = {
-      temperature: ['temperature', 'celsius'],
-      humidity: ['humidity', 'percent'],
-      pressure: ['pressure', 'pascal'],
-      co2: ['co2', 'ppm'],
-      pm25: ['pm25', 'ugM3'],
-      pm10: ['pm10', 'ugM3'],
-      noiseMax: ['noise_max', 'db'],
-      noiseAvg: ['noise_avg', 'db'],
+    const mappings: Record<string, [string, string, number]> = {
+      temperature: ['temperature', 'centiCelsius', 100],
+      humidity: ['humidity', 'centiPercent', 100],
+      pressure: ['pressure', 'deciPascal', 10],
+      co2: ['co2', 'ppm', 1],
+      pm25: ['pm25', 'deciUgM3', 10],
+      pm10: ['pm10', 'deciUgM3', 10],
+      noiseMax: ['noise_max', 'db', 1],
+      noiseAvg: ['noise_avg', 'db', 1],
     };
     const mapping = mappings[measurementCase];
     if (!mapping) return null;
     if (sensorCase === 'gps') return null;
-    return { key: mapping[0], value: value[mapping[1]] as number };
+    return {
+      key: mapping[0],
+      value: (value[mapping[1]] as number) / mapping[2],
+    };
   }
 
   /** Проверяет конечность и диапазон координат WGS84. */

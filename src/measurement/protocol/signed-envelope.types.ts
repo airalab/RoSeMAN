@@ -3,7 +3,6 @@
  */
 export enum EnvelopeValidationErrorCode {
   InvalidSensorIdLength = 'INVALID_SENSOR_ID_LENGTH',
-  InvalidTimestamp = 'INVALID_TIMESTAMP',
   InvalidNonceLength = 'INVALID_NONCE_LENGTH',
   EmptyMessage = 'EMPTY_MESSAGE',
   InvalidSignatureLength = 'INVALID_SIGNATURE_LENGTH',
@@ -24,7 +23,6 @@ export interface EnvelopeValidationError {
 export interface UntrustedSignedEnvelope {
   readonly envelopeIndex: number;
   readonly sensorId: Uint8Array;
-  readonly timestamp: bigint;
   readonly nonce: Uint8Array;
   readonly message: Uint8Array;
   readonly signature: Uint8Array;
