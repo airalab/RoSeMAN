@@ -2,6 +2,7 @@ import type { ApiPromise } from '@polkadot/api';
 import type { Event } from '@polkadot/types/interfaces';
 import { ConfigService } from '@nestjs/config';
 import { CID } from 'multiformats/cid';
+import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
 import { CpsAnchorRepository } from '../../database/repositories/cps-anchor.repository.js';
 import { RobonomicsService } from '../robonomics.service.js';
 import { CpsPayloadSetHandler } from './cps-payload-set.handler.js';
@@ -74,6 +75,7 @@ describe('CpsPayloadSetHandler', () => {
     expect(upsertAnchor).toHaveBeenCalledWith({
       nodeId: 42n,
       block: 123,
+      payloadSource: CpsPayloadSource.Ipfs,
       cid: TEST_CID,
       owner: '5Owner',
     });
@@ -123,22 +125,27 @@ describe('CpsPayloadSetHandler', () => {
     expect(upsertAnchor).not.toHaveBeenCalled();
   });
 
-  it('fail-closed отклоняет UTF-8 CID из устаревшего README', async () => {
+  it('ставит не-CID байты в очередь как прямой chain payload', async () => {
+    const chainPayload = new Uint8Array([0xfd, 0x37, 0x7a, 0x58, 0x5a]);
     at.mockResolvedValue({
       isNone: false,
       unwrap: () => ({
         get: () => ({
           isNone: false,
           unwrap: () => ({
-            toU8a: () => new TextEncoder().encode(TEST_CID),
+            toU8a: () => chainPayload,
           }),
         }),
       }),
     });
 
-    await expect(handler.handle(event, 123, true)).rejects.toThrow(
-      'CPS payload does not contain a binary IPFS CID',
-    );
-    expect(upsertAnchor).not.toHaveBeenCalled();
+    await expect(handler.handle(event, 123, true)).resolves.toBeUndefined();
+    expect(upsertAnchor).toHaveBeenCalledWith({
+      nodeId: 42n,
+      block: 123,
+      payloadSource: CpsPayloadSource.Chain,
+      chainPayload,
+      owner: '5Owner',
+    });
   });
 });

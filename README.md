@@ -6,7 +6,7 @@
 
 - **Robonomics blockchain indexer** (Polkadot) — reads finalized blocks and processes `datalog.NewRecord` events and RWS extrinsics.
 - **IPFS loader** — asynchronous processing of `datalog` records with CIDs: fetches JSON via a list of gateways with fallback, parses it and stores sensor measurements.
-- **CPS ingestion** — snapshots configured numeric NodeIds, handles realtime `cps.PayloadSet`, reads binary CIDs, decodes raw/XZ/zlib protobuf batches and verifies Ed25519 signatures before storing public Urban/Insight measurements.
+- **CPS ingestion** — snapshots configured numeric NodeIds, handles realtime `cps.PayloadSet`, resolves legacy binary CIDs through IPFS or reads chain-ready XZ batches directly from CPS storage, then verifies Ed25519 signatures before storing public Urban/Insight measurements.
 - **Reverse geocoding** — derives country/region/city from sensor coordinates.
 - **REST API** — sensor data (V1/V2), public Connectivity Protocol messages (V3), story list and indexer status. See [docs/api_endpoints.md](./docs/api_endpoints.md).
 - **Prometheus metrics** at `/metrics`.
@@ -95,17 +95,17 @@ No separate `npm run build` or external Docker image is required. REST API will 
 
 ## npm scripts
 
-| Command               | Description                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| `build`               | Build via `nest build`                                                                              |
-| `start` / `start:dev` | Run (with watch in dev)                                                                             |
-| `start:prod`          | Run the built `dist/main`                                                                           |
-| `sync-indexes`        | Sync MongoDB indexes with the schemas (see [docs/database.md](./docs/database.md#index-management)) |
-| `backfill-connectivity` | Backfill canonical CPS payloads/records for completed anchors |
-| `format`              | Prettier over `src/` and `test/`                                                                    |
-| `lint`                | ESLint with autofix                                                                                 |
-| `test`                | Jest unit tests, sequentially (`--runInBand`)                                                       |
-| `test:e2e`            | Jest with the config from `test/`                                                                   |
+| Command                 | Description                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `build`                 | Build via `nest build`                                                                              |
+| `start` / `start:dev`   | Run (with watch in dev)                                                                             |
+| `start:prod`            | Run the built `dist/main`                                                                           |
+| `sync-indexes`          | Sync MongoDB indexes with the schemas (see [docs/database.md](./docs/database.md#index-management)) |
+| `backfill-connectivity` | Backfill canonical CPS payloads/records for completed anchors                                       |
+| `format`                | Prettier over `src/` and `test/`                                                                    |
+| `lint`                  | ESLint with autofix                                                                                 |
+| `test`                  | Jest unit tests, sequentially (`--runInBand`)                                                       |
+| `test:e2e`              | Jest with the config from `test/`                                                                   |
 
 ## Documentation
 

@@ -63,9 +63,15 @@ finalized cps.PayloadSet ─▶ CpsPayloadSetHandler ├─▶ cps_anchors
                                                 │        ▼
                                                 └─▶ CpsAnchorProcessorService
                                                          │
-                                          IPFS bytes ────┤
+                                      ┌──────────────────┴──────────────────┐
+                                      ▼                                     ▼
+                              CID → IPFS bytes                     direct chain bytes
+                                      │                                     │
+                                      ▼                                     ▼
+                          configured raw/XZ/zlib                         fixed XZ
+                                      └──────────────────┬──────────────────┘
                                                          ▼
-                                           raw/XZ/zlib bounded decode
+                                                bounded decode
                                                          ▼
                                            protobuf + Ed25519 verify
                                                          ▼
@@ -141,8 +147,8 @@ File: `src/robonomics/handlers/cps-payload-set.handler.ts`. Reacts to successful
 - Confirms the event through runtime metadata.
 - Treats NodeId as a numeric u64 value, not a public key.
 - If `CPS_NODE_IDS` is non-empty, accepts only listed NodeIds; an empty or missing list allows any realtime NodeId.
-- Reads `api.query.cps.nodes.at(blockHash, nodeId)` at the event block, decodes the binary `CID.bytes` payload and upserts an anchor.
-- Does not download IPFS data in the block-processing path, so checkpoint persistence is not delayed by network I/O.
+- Reads `api.query.cps.nodes.at(blockHash, nodeId)` at the event block and classifies the exact payload bytes as a valid binary `CID.bytes` reference or a direct chain payload.
+- Stores direct bytes in the anchor queue; CID payloads retain the existing deferred IPFS path. The block-processing path performs no network download, so checkpoint persistence is not delayed by gateway I/O.
 
 ### RwsNewDevicesHandler
 
@@ -182,9 +188,9 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 `src/measurement/cps-anchor-processor.service.ts` starts immediately and then polls every `CPS_POLL_INTERVAL` while both `MEASUREMENT_ENABLED` and `CPS_ENABLED` are active.
 
 1. Atomically claims up to `CPS_MAX_ANCHORS_PER_POLL` pending anchors using a recoverable lease.
-2. Downloads exact bytes through `IpfsFetcherService.fetchBytes()`.
-3. With `CPS_RAW_PAYLOAD_STORAGE_ENABLED=true`, upserts exact downloaded bytes and their SHA-256 into `connectivity_payloads` before any decompression or decode.
-4. Decodes the explicitly configured `raw`, `xz` or `zlib` wire format with compressed/decompressed/envelope-count limits.
+2. Resolves exact transport bytes: binary CID anchors use `IpfsFetcherService.fetchBytes()`, while direct anchors use the bytes saved from CPS storage without an IPFS request.
+3. With `CPS_RAW_PAYLOAD_STORAGE_ENABLED=true`, upserts exact transport bytes and their SHA-256 into `connectivity_payloads` before any decompression or decode.
+4. Decodes direct chain payloads as `XZ(SignedEnvelopeBatch)`; legacy IPFS anchors keep the explicitly configured `raw`, `xz` or `zlib` format. Both paths use compressed/decompressed/envelope-count limits.
 5. Validates each `SignedEnvelope`, reconstructs the exact `sensor_id || nonce || message` bytes and verifies Ed25519 before decoding `core.v1.Message`.
 6. Validates that `Message.metadata.node_id` matches the CPS anchor NodeId and reads the millisecond timestamp from `Message.metadata.timestamp`.
 7. With `CPS_CANONICAL_STORAGE_ENABLED=true`, stores each occurrence in `connectivity_records`, including envelope bytes, the message timestamp, materialized protobuf JSON, compact measurement types and validation statuses.
@@ -192,7 +198,9 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 9. Upserts `measurements` and `cities`, finalizes canonical/raw statuses, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
 10. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
 
-CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and deterministic `source_id="cps:<nodeId>:<cid>"`. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128; encrypted private sections remain in materialized protobuf JSON and exact raw bytes without a second BSON projection. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
+The direct CPS payload is exactly `XZ(serialized SignedEnvelopeBatch)`: no magic bytes, version byte or custom framing is expected. RoSeMAN enforces the CPS chain limit of 8192 bytes when creating and resolving direct anchors. Payloads referenced by CID remain compatible with the existing configurable IPFS wire format.
+
+CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and a deterministic source ID: `cps:<nodeId>:<cid>` for IPFS or `cps:<nodeId>:chain:<sha256>` for direct bytes. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128; encrypted private sections remain in materialized protobuf JSON and exact raw bytes without a second BSON projection. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
 
 CPS operational logs contain only provenance identifiers, envelope indexes, stable status/error codes and aggregate counts. Unexpected errors are reduced to a validated class name and optional machine code: their message, stack, cause and arbitrary fields are never logged. Raw payload/message bytes, signatures, nonce, sensor/owner public keys and encrypted private ciphertext are never rendered into logs.
 
@@ -200,7 +208,7 @@ CPS operational logs contain only provenance identifiers, envelope indexes, stab
 
 `npm run backfill-connectivity -- [options]` processes only anchors whose main ingestion status is `PROCESSED` or `PROCESSED_WITH_ERRORS`. It writes `connectivity_payloads` and `connectivity_records` without rewriting legacy `measurements` or `cities`, and stores progress in separate `backfill_*` fields.
 
-Options: `--dry-run`, `--start-block`, `--end-block`, `--cid`, `--limit` (default `100`), and `--force` to include already completed backfill entries. The command handles one bounded batch per invocation and prints a JSON report with anchor/record/error/unsupported/private counters plus failed CID entries. A repeated payload key must have the same byte size and SHA-256.
+Options: `--dry-run`, `--start-block`, `--end-block`, `--cid`, `--limit` (default `100`), and `--force` to include already completed backfill entries. The `--cid` filter selects only legacy IPFS anchors. The command handles one bounded batch per invocation and prints a JSON report with anchor/record/error/unsupported/private counters plus failed anchor entries. A repeated payload key must have the same byte size and SHA-256.
 
 ## MeasurementProcessorService
 
@@ -369,15 +377,15 @@ STORY   = 5   // story (inline JSON, RwsStoryHandler)
 
 ### Collection `datalogs` (Datalog)
 
-| Field                     | Type   | Description                                                     |
-| ------------------------- | ------ | --------------------------------------------------------------- |
-| `block`                   | Number | Block number in the chain _(indexed)_                           |
-| `sender`                  | String | Account address _(indexed)_                                     |
-| `resultHash`              | String | IPFS CID or arbitrary string                                    |
-| `status`                  | Number | `0` NEW, `1` IPFS_PENDING, `2` PROCESSED, `3` ERROR _(indexed)_ |
-| `timechain`               | Number | Timestamp from the NewRecord event                              |
-| `errorMessage`            | String | Error text (when `status: ERROR`)                               |
-| `createdAt` / `updatedAt` | Date   | timestamps                                                      |
+| Field                     | Type   | Description                                                      |
+| ------------------------- | ------ | ---------------------------------------------------------------- |
+| `block`                   | Number | Block number in the chain _(indexed)_                            |
+| `sender`                  | String | Account address _(indexed)_                                      |
+| `resultHash`              | String | IPFS CID or arbitrary string                                     |
+| `status`                  | Number | `0` NEW, `1` IPFS*PENDING, `2` PROCESSED, `3` ERROR *(indexed)\_ |
+| `timechain`               | Number | Timestamp from the NewRecord event                               |
+| `errorMessage`            | String | Error text (when `status: ERROR`)                                |
+| `createdAt` / `updatedAt` | Date   | timestamps                                                       |
 
 Indexes: unique `{block, sender, resultHash}`, plus single-field indexes on `block`, `sender`, `status`.
 
@@ -385,32 +393,34 @@ Indexes: unique `{block, sender, resultHash}`, plus single-field indexes on `blo
 
 This additive collection is the active idempotent queue for snapshot and realtime CPS ingestion. It does not replace or modify the legacy `datalogs` path.
 
-| Field                                             | Type   | Description                                      |
-| ------------------------------------------------- | ------ | ------------------------------------------------ |
-| `source_key`                                      | String | Unique `cps:<node_id>:<cid>` key                 |
-| `node_id`                                         | String | Numeric CPS u64 NodeId as canonical decimal text |
-| `block`                                           | Number | Finalized block where the anchor was observed    |
-| `cid`                                             | String | IPFS CID of the protocol batch                   |
-| `owner`                                           | String | CPS node owner, when available                   |
-| `status`                                          | Number | Pending/processing/result/retry state            |
-| `attempt_count`                                   | Number | Number of atomic processing claims               |
-| `valid_envelope_count` / `invalid_envelope_count` | Number | Legacy-compatible accepted/rejected counters     |
-| `envelope_count` / `stored_record_count`          | Number | Total occurrences and stored canonical records   |
-| `valid_signature_count` / `invalid_signature_count` | Number | Signature verification results                 |
-| `decoded_count` / `unsupported_count`             | Number | Supported decoded and unsupported messages       |
-| `legacy_projection_count` / `private_section_count` | Number | Legacy projections and encrypted private parts |
-| `available_at` / `lease_expires_at`               | Date   | Retry and crash-recovery scheduling              |
-| `error_code` / `error_message`                    | String | Sanitized processing diagnostics                 |
-| `backfill_status` / `backfill_attempt_count`      | String / Number | Canonical backfill state, independent of ingestion status |
-| `backfill_started_at` / `backfilled_at`           | Date | Backfill attempt timestamps                       |
-| `backfill_error_code` / `backfill_error_message`  | String | Sanitized backfill-only diagnostics              |
-| `backfill_*_count`                                | Number | Stored records, invalid/unsupported and private-section counters |
+| Field                                               | Type            | Description                                                      |
+| --------------------------------------------------- | --------------- | ---------------------------------------------------------------- |
+| `source_key`                                        | String          | Unique CID key or `cps:<node_id>:chain:<sha256>`                 |
+| `node_id`                                           | String          | Numeric CPS u64 NodeId as canonical decimal text                 |
+| `block`                                             | Number          | Finalized block where the anchor was observed                    |
+| `payload_source`                                    | String          | `ipfs` or `chain` transport source                               |
+| `cid`                                               | String          | IPFS CID for a legacy anchor, otherwise absent                   |
+| `chain_payload`                                     | Buffer          | Direct XZ payload, otherwise absent                              |
+| `owner`                                             | String          | CPS node owner, when available                                   |
+| `status`                                            | Number          | Pending/processing/result/retry state                            |
+| `attempt_count`                                     | Number          | Number of atomic processing claims                               |
+| `valid_envelope_count` / `invalid_envelope_count`   | Number          | Legacy-compatible accepted/rejected counters                     |
+| `envelope_count` / `stored_record_count`            | Number          | Total occurrences and stored canonical records                   |
+| `valid_signature_count` / `invalid_signature_count` | Number          | Signature verification results                                   |
+| `decoded_count` / `unsupported_count`               | Number          | Supported decoded and unsupported messages                       |
+| `legacy_projection_count` / `private_section_count` | Number          | Legacy projections and encrypted private parts                   |
+| `available_at` / `lease_expires_at`                 | Date            | Retry and crash-recovery scheduling                              |
+| `error_code` / `error_message`                      | String          | Sanitized processing diagnostics                                 |
+| `backfill_status` / `backfill_attempt_count`        | String / Number | Canonical backfill state, independent of ingestion status        |
+| `backfill_started_at` / `backfilled_at`             | Date            | Backfill attempt timestamps                                      |
+| `backfill_error_code` / `backfill_error_message`    | String          | Sanitized backfill-only diagnostics                              |
+| `backfill_*_count`                                  | Number          | Stored records, invalid/unsupported and private-section counters |
 
 Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, node history `{node_id, block: -1}`, and backfill scan `{backfill_status, block}`. A partially valid batch ends with `error_code="ENVELOPE_ERRORS"`; fatal batch and retry failures retain their stable error codes. Backfill repository methods never overwrite the main `status`, lease, or ingestion errors.
 
 ### Collection `connectivity_payloads` (ConnectivityPayload)
 
-Lossless archive of the exact transport payload. `raw_payload` is stored before decompression and decode together with `raw_size`, `raw_sha256`, wire format, schema revision, CPS provenance and a decode status. No TTL is declared.
+Lossless archive of the exact transport payload. `raw_payload` is stored before decompression and decode together with `raw_size`, `raw_sha256`, `payload_source` (`ipfs` or `chain`), wire format, schema revision, CPS provenance and a decode status. No TTL is declared.
 
 Indexes: unique `{payload_key}`, CID lookup `{cid}`, and decode queue `{decode_status, fetched_at}`. `source_id` is not stored because the CPS implementation previously duplicated `payload_key` exactly.
 
@@ -477,10 +487,10 @@ Indexes: unique compound `{account, owner}`.
 
 ### Collection `index_state` (IndexState)
 
-| Field   | Type   | Description                                              |
-| ------- | ------ | -------------------------------------------------------- |
-| `key`   | String | `polkadot_robonomics` _(unique)_                         |
-| `value` | Number | Number of the last processed block                       |
+| Field   | Type   | Description                        |
+| ------- | ------ | ---------------------------------- |
+| `key`   | String | `polkadot_robonomics` _(unique)_   |
+| `value` | Number | Number of the last processed block |
 
 The key is set by `ROBONOMICS_STATE_KEY` — this allows a single MongoDB instance to serve indexers of different networks at the same time.
 
@@ -540,9 +550,9 @@ The four module flags are disabled only by the exact value `false` (see `app.mod
 | --------------------------------- | ---------- | --------------------------------------------------------------------------------- |
 | `CPS_ENABLED`                     | `false`    | Enables all CPS-specific work                                                     |
 | `CPS_CANONICAL_STORAGE_ENABLED`   | `false`    | Writes occurrence records to `connectivity_records`                               |
-| `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | `false`    | Archives exact IPFS bytes in `connectivity_payloads`                              |
+| `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | `false`    | Archives exact IPFS or chain transport bytes in `connectivity_payloads`           |
 | `CPS_NODE_IDS`                    | _(empty)_  | Numeric u64 NodeIds for snapshot; a non-empty list is also the realtime allowlist |
-| `CPS_BATCH_WIRE_FORMAT`           | `xz`       | Explicit `raw`, `xz` or `zlib` batch format                                       |
+| `CPS_BATCH_WIRE_FORMAT`           | `xz`       | Legacy IPFS format (`raw`, `xz`, `zlib`); direct chain payloads are always XZ     |
 | `CPS_POLL_INTERVAL`               | `10000`    | Processor poll interval (ms)                                                      |
 | `CPS_LEASE_DURATION`              | `60000`    | Processing lease duration (ms)                                                    |
 | `CPS_MAX_ANCHORS_PER_POLL`        | `10`       | Maximum claimed anchors per poll                                                  |

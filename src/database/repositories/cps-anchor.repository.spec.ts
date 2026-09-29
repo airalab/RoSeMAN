@@ -1,6 +1,7 @@
 import { type Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
+import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
 import { MAX_CPS_NODE_ID } from '../../common/utils/cps-node-id.util.js';
 import { type CpsAnchorDocument } from '../schemas/cps-anchor.schema.js';
 import { CpsAnchorRepository } from './cps-anchor.repository.js';
@@ -43,6 +44,7 @@ describe('CpsAnchorRepository', () => {
     await repository.upsertAnchor({
       nodeId: MAX_CPS_NODE_ID,
       block: 123,
+      payloadSource: CpsPayloadSource.Ipfs,
       cid,
       owner: 'owner',
     });
@@ -59,6 +61,7 @@ describe('CpsAnchorRepository', () => {
       source_key: sourceKey,
       node_id: MAX_CPS_NODE_ID.toString(),
       block: 123,
+      payload_source: CpsPayloadSource.Ipfs,
       cid,
       owner: 'owner',
       status: CpsAnchorStatus.PENDING,
@@ -123,10 +126,42 @@ describe('CpsAnchorRepository', () => {
       repository.upsertAnchor({
         nodeId: 1n,
         block: Number.MAX_SAFE_INTEGER + 1,
+        payloadSource: CpsPayloadSource.Ipfs,
         cid: `b${'a'.repeat(58)}`,
       }),
     ).rejects.toThrow('CPS anchor block must be a safe unsigned integer');
     expect(model.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('сохраняет прямой chain payload без CID', async () => {
+    const model = createModelMock();
+    const exec = jest.fn().mockResolvedValue(undefined);
+    model.updateOne.mockReturnValue({ exec });
+    const repository = new CpsAnchorRepository(asModel(model));
+    const chainPayload = new Uint8Array([0xfd, 0x37, 0x7a, 0x58, 0x5a]);
+
+    await repository.upsertAnchor({
+      nodeId: 7n,
+      block: 124,
+      payloadSource: CpsPayloadSource.Chain,
+      chainPayload,
+      owner: 'owner',
+    });
+
+    const [filter, update] = model.updateOne.mock.calls[0] as unknown as [
+      { source_key: string },
+      { $setOnInsert: Record<string, unknown> },
+    ];
+    expect(filter.source_key).toMatch(/^cps:7:chain:[0-9a-f]{64}$/);
+    expect(update.$setOnInsert).toMatchObject({
+      source_key: filter.source_key,
+      node_id: '7',
+      block: 124,
+      payload_source: CpsPayloadSource.Chain,
+      chain_payload: Buffer.from(chainPayload),
+      owner: 'owner',
+    });
+    expect(update.$setOnInsert).not.toHaveProperty('cid');
   });
 
   it('атомарно сохраняет раздельные processing counters', async () => {

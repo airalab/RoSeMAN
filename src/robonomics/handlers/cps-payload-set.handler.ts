@@ -2,8 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Codec } from '@polkadot/types/types';
 import type { Event } from '@polkadot/types/interfaces';
+import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
 import { CpsAnchorRepository } from '../../database/repositories/cps-anchor.repository.js';
-import { decodeCpsPayloadCid } from '../cps-payload.decoder.js';
+import { decodeCpsPayloadReference } from '../cps-payload.decoder.js';
 import { readCpsNodeAt } from '../cps-node.reader.js';
 import type { ChainEventHandler } from '../interfaces/chain-event-handler.interface.js';
 import { RobonomicsService } from '../robonomics.service.js';
@@ -45,7 +46,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
   }
 
   /**
-   * Читает CPS node в состоянии блока события и сохраняет бинарный CID.
+   * Читает CPS node в состоянии блока события и ставит payload в очередь.
    * @param event - событие `cps.PayloadSet(NodeId, AccountId)`
    * @param blockNum - номер финализированного блока
    * @param isSuccess - успешность породившего событие экстринсика
@@ -86,16 +87,30 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
       return;
     }
 
-    const cid = decodeCpsPayloadCid(node.payload);
+    const reference = decodeCpsPayloadReference(node.payload);
+    if (reference.source === CpsPayloadSource.Ipfs) {
+      await this.cpsAnchorRepo.upsertAnchor({
+        nodeId: numericNodeId,
+        block: blockNum,
+        payloadSource: CpsPayloadSource.Ipfs,
+        cid: reference.cid,
+        owner,
+      });
+      this.logger.debug(
+        `Block ${blockNum}: queued CPS node ${numericNodeId} IPFS payload ${reference.cid}`,
+      );
+      return;
+    }
+
     await this.cpsAnchorRepo.upsertAnchor({
       nodeId: numericNodeId,
       block: blockNum,
-      cid,
+      payloadSource: CpsPayloadSource.Chain,
+      chainPayload: reference.payload,
       owner,
     });
-
     this.logger.debug(
-      `Block ${blockNum}: queued CPS node ${numericNodeId} payload ${cid}`,
+      `Block ${blockNum}: queued CPS node ${numericNodeId} chain payload (${reference.payload.byteLength} bytes)`,
     );
   }
 

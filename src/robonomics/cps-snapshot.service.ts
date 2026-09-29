@@ -1,8 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CpsPayloadSource } from '../common/constants/connectivity-storage.enum.js';
 import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
-import { decodeCpsPayloadCid } from './cps-payload.decoder.js';
+import { decodeCpsPayloadReference } from './cps-payload.decoder.js';
 import { readCpsNodeAt } from './cps-node.reader.js';
 import { RobonomicsService } from './robonomics.service.js';
 
@@ -49,16 +50,27 @@ export class CpsSnapshotService implements OnModuleInit {
         );
         continue;
       }
-      const cid = decodeCpsPayloadCid(node.payload);
-      await this.cpsAnchorRepo.upsertAnchor({
-        nodeId,
-        block,
-        cid,
-        owner: node.owner,
-      });
+      const reference = decodeCpsPayloadReference(node.payload);
+      if (reference.source === CpsPayloadSource.Ipfs) {
+        await this.cpsAnchorRepo.upsertAnchor({
+          nodeId,
+          block,
+          payloadSource: CpsPayloadSource.Ipfs,
+          cid: reference.cid,
+          owner: node.owner,
+        });
+      } else {
+        await this.cpsAnchorRepo.upsertAnchor({
+          nodeId,
+          block,
+          payloadSource: CpsPayloadSource.Chain,
+          chainPayload: reference.payload,
+          owner: node.owner,
+        });
+      }
       queued += 1;
       this.logger.debug(
-        `Snapshot block ${block}: queued CPS node ${nodeId} payload ${cid}`,
+        `Snapshot block ${block}: queued CPS node ${nodeId} ${reference.source} payload`,
       );
     }
     return queued;

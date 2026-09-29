@@ -3,6 +3,12 @@ export enum ConnectivitySourceType {
   Cps = 'cps',
 }
 
+/** Место хранения transport payload, указанного в CPS node. */
+export enum CpsPayloadSource {
+  Ipfs = 'ipfs',
+  Chain = 'chain',
+}
+
 /** Явно заданный wire format transport payload. */
 export enum ProtocolBatchWireFormat {
   Raw = 'raw',

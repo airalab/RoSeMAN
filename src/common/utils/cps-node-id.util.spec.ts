@@ -1,5 +1,7 @@
+import { MAX_CPS_CHAIN_PAYLOAD_BYTES } from '../constants/cps-payload.constants.js';
 import {
   createCpsAnchorSourceKey,
+  createCpsChainPayloadSourceKey,
   MAX_CPS_NODE_ID,
   normalizeCpsNodeId,
 } from './cps-node-id.util.js';
@@ -34,5 +36,38 @@ describe('createCpsAnchorSourceKey', () => {
     expect(() => createCpsAnchorSourceKey(42n, 'not-a-cid')).toThrow(
       'CPS anchor CID is invalid',
     );
+  });
+});
+
+describe('createCpsChainPayloadSourceKey', () => {
+  it('строит детерминированный ключ без включения payload', () => {
+    const payload = new Uint8Array([1, 2, 3]);
+
+    const sourceKey = createCpsChainPayloadSourceKey(42n, payload);
+
+    expect(sourceKey).toMatch(/^cps:42:chain:[0-9a-f]{64}$/);
+    expect(sourceKey).toBe(createCpsChainPayloadSourceKey('42', payload));
+    expect(sourceKey).not.toContain('1,2,3');
+  });
+
+  it('отклоняет пустой и превышающий chain limit payload', () => {
+    expect(() => createCpsChainPayloadSourceKey(1n, new Uint8Array())).toThrow(
+      'must not be empty',
+    );
+    expect(() =>
+      createCpsChainPayloadSourceKey(
+        1n,
+        new Uint8Array(MAX_CPS_CHAIN_PAYLOAD_BYTES + 1),
+      ),
+    ).toThrow(`exceeds ${MAX_CPS_CHAIN_PAYLOAD_BYTES} bytes`);
+  });
+
+  it('принимает chain payload ровно в 8192 байта', () => {
+    expect(() =>
+      createCpsChainPayloadSourceKey(
+        1n,
+        new Uint8Array(MAX_CPS_CHAIN_PAYLOAD_BYTES),
+      ),
+    ).not.toThrow();
   });
 });

@@ -22,7 +22,9 @@ import {
   ed25519PairFromSeed,
   ed25519Sign,
 } from '@polkadot/util-crypto';
+import { createCompressor } from 'lzma-native';
 import { CpsAnchorStatus } from '../common/constants/cps-anchor-status.enum.js';
+import { CpsPayloadSource } from '../common/constants/connectivity-storage.enum.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
 import { ConnectivityPayloadRepository } from '../database/repositories/connectivity-payload.repository.js';
 import {
@@ -121,6 +123,37 @@ async function createSignedBatch(
   );
 }
 
+/**
+ * Сжимает protobuf batch в chain-ready XZ-контейнер.
+ * @param bytes - исходные protobuf-байты
+ * @returns завершённый XZ payload
+ */
+function compressXz(bytes: Uint8Array): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const compressor = createCompressor();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+
+    compressor.on('data', (chunk: Buffer) => {
+      chunks.push(new Uint8Array(chunk));
+      totalBytes += chunk.byteLength;
+    });
+    compressor.once('error', reject);
+    compressor.once('end', () => {
+      const result = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      resolve(result);
+    });
+    compressor.end(
+      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    );
+  });
+}
+
 describe('CpsAnchorProcessorService', () => {
   it('проверяет raw batch и завершает anchor только после MongoDB-upsert', async () => {
     const values: Record<string, unknown> = {
@@ -196,6 +229,82 @@ describe('CpsAnchorProcessorService', () => {
     );
     expect(upsertMany.mock.invocationCallOrder[0]).toBeLessThan(
       updateStatus.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('декодирует прямой XZ payload из чейна без IPFS-запроса', async () => {
+    const values: Record<string, unknown> = {
+      'cps.enabled': true,
+      'cps.rawPayloadStorageEnabled': true,
+      'cps.pollInterval': 10_000,
+      'cps.leaseDuration': 60_000,
+      'cps.maxAnchorsPerPoll': 10,
+      'cps.maxAttempts': 5,
+      'cps.retryBaseDelay': 1_000,
+      'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
+    };
+    const config = {
+      get: jest.fn(
+        (key: string, fallback?: unknown) => values[key] ?? fallback,
+      ),
+    } as unknown as ConfigService;
+    const chainPayload = await compressXz(await createSignedBatch(false));
+    const anchor = {
+      source_key: 'cps:0:chain:hash',
+      node_id: '0',
+      block: 11,
+      payload_source: CpsPayloadSource.Chain,
+      chain_payload: Buffer.from(chainPayload),
+      owner: '5Owner',
+      attempt_count: 1,
+    } as CpsAnchorDocument;
+    const claimNext = jest
+      .fn()
+      .mockResolvedValueOnce(anchor)
+      .mockResolvedValueOnce(null);
+    const updateStatus = jest.fn().mockResolvedValue(undefined);
+    const upsertMany = jest.fn().mockResolvedValue(undefined);
+    const fetchBytes = jest.fn();
+    const upsertFetched = jest.fn().mockResolvedValue(undefined);
+    const updateDecodeStatus = jest.fn().mockResolvedValue(undefined);
+    const processor = new CpsAnchorProcessorService(
+      config,
+      { fetchBytes } as unknown as IpfsFetcherService,
+      { claimNext, updateStatus } as unknown as CpsAnchorRepository,
+      {
+        upsertFetched,
+        updateDecodeStatus,
+      } as unknown as ConnectivityPayloadRepository,
+      {} as ConnectivityRecordRepository,
+      { upsertMany } as unknown as MeasurementRepository,
+      { bulkUpsert: jest.fn() } as unknown as SensorRepository,
+      new CpsMeasurementTransformer(),
+      new ConnectivityRecordMapper(),
+      createCpsMetricsMock().service,
+    );
+
+    await expect(processor.runOnce()).resolves.toBe(1);
+
+    expect(fetchBytes).not.toHaveBeenCalled();
+    expect(upsertFetched).toHaveBeenCalledWith({
+      payloadKey: anchor.source_key,
+      nodeId: anchor.node_id,
+      block: anchor.block,
+      cid: undefined,
+      payloadSource: CpsPayloadSource.Chain,
+      wireFormat: ProtocolBatchWireFormat.Xz,
+      rawPayload: chainPayload,
+    });
+    expect(upsertMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        source_id: anchor.source_key,
+        measurement: { temperature: 22.3 },
+      }),
+    ]);
+    expect(updateStatus).toHaveBeenCalledWith(
+      anchor.source_key,
+      CpsAnchorStatus.PROCESSED,
+      expect.objectContaining({ validEnvelopeCount: 1 }),
     );
   });
 

@@ -17,6 +17,7 @@ import {
   ConnectivityRecordRepository,
 } from '../database/repositories/connectivity-record.repository.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
+import { resolveCpsAnchorPayload } from './cps-anchor-payload.resolver.js';
 import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 import { Ed25519EnvelopeSignatureVerifier } from './protocol/envelope-signature-verifier.js';
@@ -41,7 +42,7 @@ export interface CpsBackfillOptions {
 
 export interface CpsBackfillFailure {
   readonly sourceKey: string;
-  readonly cid: string;
+  readonly cid?: string;
   readonly code: string;
 }
 
@@ -178,7 +179,7 @@ export class CpsBackfillService {
       report.failed += 1;
       report.failures.push({
         sourceKey: anchor.source_key,
-        cid: anchor.cid,
+        ...(anchor.cid ? { cid: anchor.cid } : {}),
         code,
       });
     }
@@ -188,19 +189,25 @@ export class CpsBackfillService {
   private async storeCanonical(
     anchor: CpsAnchorDocument,
   ): Promise<StoredAnchorResult> {
-    const bytes = await this.ipfsFetcher.fetchBytes(anchor.cid);
+    const resolvedPayload = await resolveCpsAnchorPayload(
+      anchor,
+      this.ipfsFetcher,
+      this.wireFormat,
+    );
+    const { bytes } = resolvedPayload;
     await this.payloadRepo.upsertFetched({
       payloadKey: anchor.source_key,
       nodeId: anchor.node_id,
       block: anchor.block,
       cid: anchor.cid,
-      wireFormat: this.wireFormat,
+      payloadSource: resolvedPayload.source,
+      wireFormat: resolvedPayload.wireFormat,
       rawPayload: bytes,
     });
 
     let batch;
     try {
-      batch = await this.batchDecoder.decode(bytes, this.wireFormat);
+      batch = await this.batchDecoder.decode(bytes, resolvedPayload.wireFormat);
     } catch (error) {
       if (error instanceof ProtocolBatchDecodeError) {
         await this.payloadRepo.updateDecodeStatus(

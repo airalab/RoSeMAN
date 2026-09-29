@@ -3,6 +3,7 @@
 RoSeMAN is **a NestJS application that simultaneously serves as REST API server, blockchain indexer, IPFS data processor, and geocoder**. What exactly is started up at process boot is determined by environment flags. The same artifact can be launched in different configurations and the roles can be scaled independently.
 
 See also:
+
 - [Deployment](./deployment.md) — practical run scenarios;
 - [Indexer](./indexer.md) — internal service details;
 - [REST API](./api.md) — HTTP layer design.
@@ -11,12 +12,12 @@ See also:
 
 `AppModule` (`src/app.module.ts`) builds its imports list **dynamically** via the `buildImports()` function — modules are added based on env flags:
 
-| Flag                   | Default | What it enables                                                           |
-|------------------------|---------|---------------------------------------------------------------------------|
-| `API_ENABLED`          | `true`  | `StatusModule`, `SensorModule`, `StoryModule`, `MetricsModule`, `PrometheusModule` |
-| `INDEXER_ENABLED`      | `true`  | `RobonomicsModule` (BlockIndexer + 5 handlers + CPS snapshot)             |
-| `MEASUREMENT_ENABLED`  | `true`  | `MeasurementModule` (IPFS fetcher + legacy and CPS processors)            |
-| `GEOCODING_ENABLED`    | `true`  | `GeocodingModule` (Nominatim reverse)                                     |
+| Flag                  | Default | What it enables                                                                    |
+| --------------------- | ------- | ---------------------------------------------------------------------------------- |
+| `API_ENABLED`         | `true`  | `StatusModule`, `SensorModule`, `StoryModule`, `MetricsModule`, `PrometheusModule` |
+| `INDEXER_ENABLED`     | `true`  | `RobonomicsModule` (BlockIndexer + 5 handlers + CPS snapshot)                      |
+| `MEASUREMENT_ENABLED` | `true`  | `MeasurementModule` (IPFS fetcher + legacy and CPS processors)                     |
+| `GEOCODING_ENABLED`   | `true`  | `GeocodingModule` (Nominatim reverse)                                              |
 
 A module flag is treated as disabled **only** when explicitly set to `'false'` — any other value (or its absence) is treated as `true`. CPS logic has an additional fail-closed flag: `CPS_ENABLED` must be exactly `true`. The snapshot/realtime handler also require `INDEXER_ENABLED`, and the CPS processor requires `MEASUREMENT_ENABLED`.
 
@@ -35,13 +36,13 @@ Scenarios are achieved by combining flags. The application itself, in `main.ts`,
 
 Typical configurations:
 
-| Configuration                       | `API` | `INDEXER` | `MEASUREMENT` | `GEOCODING` | Purpose                                          |
-|-------------------------------------|-------|-----------|---------------|-------------|--------------------------------------------------|
-| All-in-one (dev)                    | ✅    | ✅        | ✅            | ✅          | Local development                                |
-| REST API + IPFS + geocoder          | ✅    | ❌        | ✅            | ✅          | Read-side instance without chain reads           |
-| Polkadot CPS/RWS worker             | ❌    | ✅        | ✅            | ❌          | Headless, CPS processing and selected RWS handlers |
-| IPFS processor                      | ❌    | ❌        | ✅            | ❌          | Headless, legacy processor; CPS too when `CPS_ENABLED=true` |
-| CPS indexer + processor              | ❌    | ✅        | ✅            | ❌          | `CPS_ENABLED=true`, `ENABLED_HANDLERS=cps-payload-set` |
+| Configuration              | `API` | `INDEXER` | `MEASUREMENT` | `GEOCODING` | Purpose                                                     |
+| -------------------------- | ----- | --------- | ------------- | ----------- | ----------------------------------------------------------- |
+| All-in-one (dev)           | ✅    | ✅        | ✅            | ✅          | Local development                                           |
+| REST API + IPFS + geocoder | ✅    | ❌        | ✅            | ✅          | Read-side instance without chain reads                      |
+| Polkadot CPS/RWS worker    | ❌    | ✅        | ✅            | ❌          | Headless, CPS processing and selected RWS handlers          |
+| IPFS processor             | ❌    | ❌        | ✅            | ❌          | Headless, legacy processor; CPS too when `CPS_ENABLED=true` |
+| CPS indexer + processor    | ❌    | ✅        | ✅            | ❌          | `CPS_ENABLED=true`, `ENABLED_HANDLERS=cps-payload-set`      |
 
 Ready-made `.env` examples for typical roles live at the repository root: `.env.example` and `.env.polkadot.example`.
 
@@ -58,13 +59,12 @@ Robonomics (Polkadot) ─────────────▶ BlockIndexerSer
               │                      │
               ▼                      ▼
  MeasurementProcessor       CpsAnchorProcessor
-              └──────────┬───────────┘
-                         ▼
-              IpfsFetcher ──▶ IPFS gateways
-                         │
-                  ┌──────┴──────┐
-                  ▼             ▼
-             measurements    sensors ──▶ GeocodingService ──▶ Nominatim
+              │                  ┌───┴──────────────┐
+              ▼                  ▼                  ▼
+         IpfsFetcher      chain payload       CID via IpfsFetcher
+              └──────────────┬──────────────────────┘
+                             ▼
+                        measurements ──▶ sensors ──▶ GeocodingService ──▶ Nominatim
 
 CpsSnapshotService ── configured CPS_NODE_IDS ──▶ cps_anchors
 REST API (controllers) ──▶ Repositories ──▶ MongoDB

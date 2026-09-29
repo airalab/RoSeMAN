@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
+import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
 
 export type CpsAnchorDocument = HydratedDocument<CpsAnchor>;
 
@@ -19,8 +20,14 @@ export class CpsAnchor {
   @Prop({ required: true, type: Number })
   block!: number;
 
-  @Prop({ required: true, type: String })
-  cid!: string;
+  @Prop({ type: String })
+  cid?: string;
+
+  @Prop({ required: true, type: String, enum: CpsPayloadSource })
+  payload_source!: CpsPayloadSource;
+
+  @Prop({ type: Buffer })
+  chain_payload?: Buffer;
 
   @Prop({ type: String })
   owner?: string;

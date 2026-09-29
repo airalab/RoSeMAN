@@ -24,6 +24,7 @@ import { SensorRepository } from '../database/repositories/sensor.repository.js'
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
 import { CpsMetricsService } from '../metrics/cps-metrics.service.js';
+import { resolveCpsAnchorPayload } from './cps-anchor-payload.resolver.js';
 import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
 import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
@@ -140,21 +141,30 @@ export class CpsAnchorProcessorService
   /** Загружает и полностью обрабатывает один захваченный anchor. */
   private async processAnchor(anchor: CpsAnchorDocument): Promise<void> {
     try {
-      const bytes = await this.ipfsFetcher.fetchBytes(anchor.cid);
+      const resolvedPayload = await resolveCpsAnchorPayload(
+        anchor,
+        this.ipfsFetcher,
+        this.wireFormat,
+      );
+      const { bytes } = resolvedPayload;
       if (this.rawPayloadStorageEnabled) {
         await this.connectivityPayloadRepo.upsertFetched({
           payloadKey: anchor.source_key,
           nodeId: anchor.node_id,
           block: anchor.block,
           cid: anchor.cid,
-          wireFormat: this.wireFormat,
+          payloadSource: resolvedPayload.source,
+          wireFormat: resolvedPayload.wireFormat,
           rawPayload: bytes,
         });
       }
 
       let batch;
       try {
-        batch = await this.batchDecoder.decode(bytes, this.wireFormat);
+        batch = await this.batchDecoder.decode(
+          bytes,
+          resolvedPayload.wireFormat,
+        );
       } catch (error) {
         if (
           error instanceof ProtocolBatchDecodeError &&

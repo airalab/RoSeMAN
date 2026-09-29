@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import {
   ConnectivityPayloadDecodeStatus,
+  CpsPayloadSource,
   ProtocolBatchWireFormat,
 } from '../../common/constants/connectivity-storage.enum.js';
 
@@ -24,6 +25,9 @@ export class ConnectivityPayload {
 
   @Prop({ type: String })
   cid?: string;
+
+  @Prop({ type: String, enum: CpsPayloadSource })
+  payload_source?: CpsPayloadSource;
 
   @Prop({ required: true, type: String, enum: ProtocolBatchWireFormat })
   wire_format!: ProtocolBatchWireFormat;

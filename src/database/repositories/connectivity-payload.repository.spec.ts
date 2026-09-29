@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { Model } from 'mongoose';
 import { CONNECTIVITY_SCHEMA_REVISION } from '../../common/constants/connectivity-protocol.constants.js';
-import { ConnectivityPayloadDecodeStatus } from '../../common/constants/connectivity-storage.enum.js';
+import {
+  ConnectivityPayloadDecodeStatus,
+  CpsPayloadSource,
+} from '../../common/constants/connectivity-storage.enum.js';
 import { ProtocolBatchWireFormat } from '../../measurement/protocol/signed-envelope-batch-payload.decoder.js';
 import type { ConnectivityPayloadDocument } from '../schemas/connectivity-payload.schema.js';
 import {
@@ -35,6 +38,7 @@ describe('ConnectivityPayloadRepository', () => {
       nodeId: '1',
       block: 42,
       cid: 'cid',
+      payloadSource: CpsPayloadSource.Ipfs,
       wireFormat: ProtocolBatchWireFormat.Xz,
       rawPayload: bytes,
       fetchedAt,
@@ -56,6 +60,7 @@ describe('ConnectivityPayloadRepository', () => {
       raw_size: 4,
       raw_sha256: createHash('sha256').update(bytes).digest('hex'),
       schema_revision: CONNECTIVITY_SCHEMA_REVISION,
+      payload_source: CpsPayloadSource.Ipfs,
       decode_status: ConnectivityPayloadDecodeStatus.Pending,
       fetched_at: fetchedAt,
     });

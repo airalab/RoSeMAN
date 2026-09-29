@@ -9,6 +9,7 @@ import {
 import {
   ConnectivityPayloadDecodeStatus,
   ConnectivitySourceType,
+  type CpsPayloadSource,
   type ProtocolBatchWireFormat,
 } from '../../common/constants/connectivity-storage.enum.js';
 import {
@@ -22,6 +23,7 @@ export interface ConnectivityPayloadInput {
   readonly nodeId?: string;
   readonly block?: number;
   readonly cid?: string;
+  readonly payloadSource?: CpsPayloadSource;
   readonly wireFormat: ProtocolBatchWireFormat;
   readonly rawPayload: Uint8Array;
   readonly fetchedAt?: Date;
@@ -70,6 +72,7 @@ export class ConnectivityPayloadRepository {
       node_id: input.nodeId,
       block: input.block,
       cid: input.cid,
+      payload_source: input.payloadSource,
       wire_format: input.wireFormat,
       raw_payload: rawPayload,
       raw_size: rawPayload.byteLength,

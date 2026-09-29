@@ -3,8 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
+import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
 import {
   createCpsAnchorSourceKey,
+  createCpsChainPayloadSourceKey,
   normalizeCpsNodeId,
 } from '../../common/utils/cps-node-id.util.js';
 import {
@@ -12,12 +14,23 @@ import {
   type CpsAnchorDocument,
 } from '../schemas/cps-anchor.schema.js';
 
-export interface CpsAnchorInput {
+interface CpsAnchorBaseInput {
   readonly nodeId: bigint | string;
   readonly block: number;
-  readonly cid: string;
   readonly owner?: string;
 }
+
+export type CpsAnchorInput = CpsAnchorBaseInput &
+  (
+    | {
+        readonly payloadSource: CpsPayloadSource.Ipfs;
+        readonly cid: string;
+      }
+    | {
+        readonly payloadSource: CpsPayloadSource.Chain;
+        readonly chainPayload: Uint8Array;
+      }
+  );
 
 export interface CpsBackfillQuery {
   readonly startBlock?: number;
@@ -53,7 +66,7 @@ export class CpsAnchorRepository {
   ) {}
 
   /**
-   * Добавляет CPS anchor только при первом появлении пары NodeId и CID.
+   * Добавляет CPS anchor только при первом появлении пары NodeId и содержимого.
    * @param data - подтверждённые данные финализированного CPS-события
    */
   async upsertAnchor(data: CpsAnchorInput): Promise<void> {
@@ -62,12 +75,18 @@ export class CpsAnchorRepository {
     }
 
     const nodeId = normalizeCpsNodeId(data.nodeId);
-    const sourceKey = createCpsAnchorSourceKey(nodeId, data.cid);
+    const sourceKey =
+      data.payloadSource === CpsPayloadSource.Ipfs
+        ? createCpsAnchorSourceKey(nodeId, data.cid)
+        : createCpsChainPayloadSourceKey(nodeId, data.chainPayload);
     const anchor = {
       source_key: sourceKey,
       node_id: nodeId,
       block: data.block,
-      cid: data.cid,
+      payload_source: data.payloadSource,
+      ...(data.payloadSource === CpsPayloadSource.Ipfs
+        ? { cid: data.cid }
+        : { chain_payload: Buffer.from(data.chainPayload) }),
       owner: data.owner,
       status: CpsAnchorStatus.PENDING,
       attempt_count: 0,

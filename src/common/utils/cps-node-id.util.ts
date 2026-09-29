@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { MAX_CPS_CHAIN_PAYLOAD_BYTES } from '../constants/cps-payload.constants.js';
 import { isIpfsCid } from './ipfs.util.js';
 
 export const MAX_CPS_NODE_ID = (1n << 64n) - 1n;
@@ -39,4 +41,30 @@ export function createCpsAnchorSourceKey(
   }
 
   return `cps:${normalizedNodeId}:${cid}`;
+}
+
+/**
+ * Создаёт стабильный ключ источника для payload, сохранённого прямо в чейне.
+ * Хеш сохраняет content-addressed семантику прежнего CID-ключа и не раскрывает
+ * бинарное содержимое payload в индексах и логах.
+ * @param nodeId - числовой CPS NodeId
+ * @param payload - точные байты chain payload
+ * @returns ключ вида cps:<nodeId>:chain:<sha256>
+ */
+export function createCpsChainPayloadSourceKey(
+  nodeId: bigint | string,
+  payload: Uint8Array,
+): string {
+  if (payload.byteLength === 0) {
+    throw new RangeError('CPS chain payload must not be empty');
+  }
+  if (payload.byteLength > MAX_CPS_CHAIN_PAYLOAD_BYTES) {
+    throw new RangeError(
+      `CPS chain payload exceeds ${MAX_CPS_CHAIN_PAYLOAD_BYTES} bytes`,
+    );
+  }
+
+  const normalizedNodeId = normalizeCpsNodeId(nodeId);
+  const digest = createHash('sha256').update(payload).digest('hex');
+  return `cps:${normalizedNodeId}:chain:${digest}`;
 }
