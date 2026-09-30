@@ -13,7 +13,10 @@ export enum CpsPayloadSource {
 export enum ProtocolBatchWireFormat {
   Raw = 'raw',
   Xz = 'xz',
+  Zstd = 'zstd',
+  Lz4 = 'lz4',
   Zlib = 'zlib',
+  Unsupported = 'unsupported',
 }
 
 /** Состояние декодирования исходного transport payload. */

@@ -4,6 +4,7 @@ import type { Codec } from '@polkadot/types/types';
 import type { Event } from '@polkadot/types/interfaces';
 import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
 import { CpsAnchorRepository } from '../../database/repositories/cps-anchor.repository.js';
+import { parseCpsCompressionMeta } from '../cps-compression-meta.js';
 import { decodeCpsPayloadReference } from '../cps-payload.decoder.js';
 import { readCpsNodeAt } from '../cps-node.reader.js';
 import type { ChainEventHandler } from '../interfaces/chain-event-handler.interface.js';
@@ -87,6 +88,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
     }
 
     const reference = decodeCpsPayloadReference(node.payload);
+    const wireFormat = parseCpsCompressionMeta(node.meta);
     if (reference.source === CpsPayloadSource.Ipfs) {
       await this.cpsAnchorRepo.upsertAnchor({
         nodeId: numericNodeId,
@@ -94,6 +96,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
         payloadSource: CpsPayloadSource.Ipfs,
         cid: reference.cid,
         owner: node.owner,
+        wireFormat,
       });
       this.logger.debug(
         `Block ${blockNum}: queued CPS node ${numericNodeId} IPFS payload ${reference.cid}`,
@@ -107,6 +110,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
       payloadSource: CpsPayloadSource.Chain,
       chainPayload: reference.payload,
       owner: node.owner,
+      wireFormat,
     });
     this.logger.debug(
       `Block ${blockNum}: queued CPS node ${numericNodeId} chain payload (${reference.payload.byteLength} bytes)`,

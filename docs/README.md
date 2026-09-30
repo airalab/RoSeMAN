@@ -53,6 +53,6 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 - **MongoDB** via **Mongoose 7** (Repository pattern)
 - **@polkadot/api** + `robonomics-api-augment`
 - **@willsoto/nestjs-prometheus** / `prom-client`
-- **Buf Protobuf**, **@polkadot/util-crypto** and **lzma-native** — CPS decode, Ed25519 verification and XZ/LZMA2
+- **Buf Protobuf**, **@polkadot/util-crypto**, native Zstandard, **lzma-native** and **lz4-napi** — CPS decode, Ed25519 verification and decompression
 - **iconv-lite** — payload decoding for arbitrary encodings
 - ESLint + Prettier

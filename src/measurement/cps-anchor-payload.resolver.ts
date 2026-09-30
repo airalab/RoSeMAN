@@ -40,7 +40,7 @@ export async function resolveCpsAnchorPayload(
     return {
       bytes: Uint8Array.from(bytes),
       source: CpsPayloadSource.Chain,
-      wireFormat: ProtocolBatchWireFormat.Xz,
+      wireFormat: anchor.wire_format ?? ProtocolBatchWireFormat.Xz,
     };
   }
 
@@ -50,6 +50,6 @@ export async function resolveCpsAnchorPayload(
   return {
     bytes: await ipfsFetcher.fetchBytes(anchor.cid),
     source: CpsPayloadSource.Ipfs,
-    wireFormat: ipfsWireFormat,
+    wireFormat: anchor.wire_format ?? ipfsWireFormat,
   };
 }

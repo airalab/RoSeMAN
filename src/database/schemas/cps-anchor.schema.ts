@@ -2,7 +2,10 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
-import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
+import {
+  CpsPayloadSource,
+  ProtocolBatchWireFormat,
+} from '../../common/constants/connectivity-storage.enum.js';
 
 export type CpsAnchorDocument = HydratedDocument<CpsAnchor>;
 
@@ -28,6 +31,9 @@ export class CpsAnchor {
 
   @Prop({ type: Buffer })
   chain_payload?: Buffer;
+
+  @Prop({ type: String, enum: ProtocolBatchWireFormat })
+  wire_format?: ProtocolBatchWireFormat;
 
   @Prop({ type: String })
   owner?: string;

@@ -36,6 +36,7 @@ interface CpsStorageEntry<T extends Codec> {
 
 interface CpsStorageQuery {
   readonly nodes?: CpsStorageEntry<CpsNodeOption>;
+  readonly meta?: CpsStorageEntry<CpsPayloadOption>;
   readonly payload?: CpsStorageEntry<CpsPayloadOption>;
   readonly scopes?: CpsStorageEntry<CpsScopeInfoOption>;
 }
@@ -48,6 +49,7 @@ interface CpsApiAt {
 
 export interface CpsNodeState {
   readonly owner?: string;
+  readonly meta: Uint8Array | null;
   readonly payload: Uint8Array | null;
 }
 
@@ -83,9 +85,10 @@ async function readSplitCpsNode(
   nodeId: unknown,
 ): Promise<CpsNodeState | null> {
   const payload = cpsQuery.payload;
+  const meta = cpsQuery.meta;
   const nodes = cpsQuery.nodes;
   const scopes = cpsQuery.scopes;
-  if (!payload || !nodes || !scopes) {
+  if (!payload || !meta || !nodes || !scopes) {
     throw new Error('Incomplete CPS 1.0 storage layout');
   }
 
@@ -99,8 +102,23 @@ async function readSplitCpsNode(
 
   return {
     owner,
+    meta: await readSplitCpsMeta(meta, nodeId),
     payload: payloadOption.unwrap().toU8a(true),
   };
+}
+
+/**
+ * Читает необязательное meta из отдельного storage pallet 1.0.
+ * @param meta - storage entry `cps.meta`
+ * @param nodeId - идентификатор CPS node
+ * @returns точные meta-байты либо null
+ */
+async function readSplitCpsMeta(
+  meta: CpsStorageEntry<CpsPayloadOption>,
+  nodeId: unknown,
+): Promise<Uint8Array | null> {
+  const metaOption = await meta(nodeId);
+  return metaOption.isNone ? null : metaOption.unwrap().toU8a(true);
 }
 
 /**

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { CpsPayloadSource } from '../common/constants/connectivity-storage.enum.js';
 import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
+import { parseCpsCompressionMeta } from './cps-compression-meta.js';
 import { decodeCpsPayloadReference } from './cps-payload.decoder.js';
 import { readCpsNodeAt } from './cps-node.reader.js';
 import { RobonomicsService } from './robonomics.service.js';
@@ -51,6 +52,7 @@ export class CpsSnapshotService implements OnModuleInit {
         continue;
       }
       const reference = decodeCpsPayloadReference(node.payload);
+      const wireFormat = parseCpsCompressionMeta(node.meta);
       if (reference.source === CpsPayloadSource.Ipfs) {
         await this.cpsAnchorRepo.upsertAnchor({
           nodeId,
@@ -58,6 +60,7 @@ export class CpsSnapshotService implements OnModuleInit {
           payloadSource: CpsPayloadSource.Ipfs,
           cid: reference.cid,
           owner: node.owner,
+          wireFormat,
         });
       } else {
         await this.cpsAnchorRepo.upsertAnchor({
@@ -66,6 +69,7 @@ export class CpsSnapshotService implements OnModuleInit {
           payloadSource: CpsPayloadSource.Chain,
           chainPayload: reference.payload,
           owner: node.owner,
+          wireFormat,
         });
       }
       queued += 1;

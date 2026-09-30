@@ -1,4 +1,5 @@
-import { inflate } from 'node:zlib';
+import { inflate, zstdDecompress } from 'node:zlib';
+import { decompressFrame } from 'lz4-napi';
 import { createDecompressor } from 'lzma-native';
 import { ProtocolBatchWireFormat } from '../../common/constants/connectivity-storage.enum.js';
 import { SignedEnvelopeBatchDecoder } from './signed-envelope-batch.decoder.js';
@@ -13,7 +14,7 @@ export const DEFAULT_MAX_COMPRESSED_PROTOCOL_BATCH_BYTES = 10 * 1024 * 1024;
 export { ProtocolBatchWireFormat } from '../../common/constants/connectivity-storage.enum.js';
 
 /**
- * Ограничения декодирования raw или zlib payload.
+ * Ограничения декодирования сжатого или raw payload.
  */
 export interface SignedEnvelopeBatchPayloadDecoderOptions {
   readonly maxCompressedBytes?: number;
@@ -61,7 +62,7 @@ export class SignedEnvelopeBatchPayloadDecoder {
   }
 
   /**
-   * Декодирует raw protobuf либо предварительно распаковывает zlib.
+   * Декодирует raw protobuf либо предварительно распаковывает заданный формат.
    * Формат задаётся вызывающей стороной, чтобы не принимать данные по эвристике.
    * @param bytes - неизменённый IPFS payload
    * @param format - подтверждённый wire format payload
@@ -77,6 +78,8 @@ export class SignedEnvelopeBatchPayloadDecoder {
 
     if (
       format !== ProtocolBatchWireFormat.Xz &&
+      format !== ProtocolBatchWireFormat.Zstd &&
+      format !== ProtocolBatchWireFormat.Lz4 &&
       format !== ProtocolBatchWireFormat.Zlib
     ) {
       throw new ProtocolBatchDecodeError(
@@ -86,10 +89,21 @@ export class SignedEnvelopeBatchPayloadDecoder {
     }
 
     this.assertCompressedSize(bytes);
-    const decompressedBytes =
-      format === ProtocolBatchWireFormat.Xz
-        ? await this.decompressXz(bytes)
-        : await this.inflateZlib(bytes);
+    let decompressedBytes: Uint8Array;
+    switch (format) {
+      case ProtocolBatchWireFormat.Xz:
+        decompressedBytes = await this.decompressXz(bytes);
+        break;
+      case ProtocolBatchWireFormat.Zstd:
+        decompressedBytes = await this.decompressZstd(bytes);
+        break;
+      case ProtocolBatchWireFormat.Lz4:
+        decompressedBytes = await this.decompressLz4(bytes);
+        break;
+      case ProtocolBatchWireFormat.Zlib:
+        decompressedBytes = await this.inflateZlib(bytes);
+        break;
+    }
     return this.batchDecoder.decode(decompressedBytes);
   }
 
@@ -141,6 +155,68 @@ export class SignedEnvelopeBatchPayloadDecoder {
         },
       );
     });
+  }
+
+  /**
+   * Асинхронно распаковывает стандартный Zstandard frame с лимитом результата.
+   * @param bytes - Zstandard frame
+   * @returns распакованные protobuf-байты
+   */
+  private decompressZstd(bytes: Uint8Array): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+      zstdDecompress(
+        bytes,
+        { maxOutputLength: this.maxDecompressedBytes },
+        (error, result) => {
+          if (!error) {
+            resolve(new Uint8Array(result));
+            return;
+          }
+
+          const code =
+            'code' in error && typeof error.code === 'string'
+              ? error.code
+              : undefined;
+          const limitExceeded = code === 'ERR_BUFFER_TOO_LARGE';
+          reject(
+            new ProtocolBatchDecodeError(
+              limitExceeded
+                ? ProtocolBatchDecodeErrorCode.BatchTooLarge
+                : ProtocolBatchDecodeErrorCode.DecompressionFailed,
+              limitExceeded
+                ? `Decompressed signed envelope batch exceeds ${this.maxDecompressedBytes} bytes`
+                : 'Signed envelope batch cannot be decompressed as Zstandard',
+              { cause: error },
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  /**
+   * Асинхронно распаковывает interoperable LZ4 frame и проверяет размер результата.
+   * @param bytes - LZ4 frame, подходящий для отправки с ESP32
+   * @returns распакованные protobuf-байты
+   */
+  private async decompressLz4(bytes: Uint8Array): Promise<Uint8Array> {
+    try {
+      const result = await decompressFrame(bytes);
+      if (result.byteLength > this.maxDecompressedBytes) {
+        throw new ProtocolBatchDecodeError(
+          ProtocolBatchDecodeErrorCode.BatchTooLarge,
+          `Decompressed signed envelope batch exceeds ${this.maxDecompressedBytes} bytes`,
+        );
+      }
+      return new Uint8Array(result);
+    } catch (error) {
+      if (error instanceof ProtocolBatchDecodeError) throw error;
+      throw new ProtocolBatchDecodeError(
+        ProtocolBatchDecodeErrorCode.DecompressionFailed,
+        'Signed envelope batch cannot be decompressed as LZ4 frame',
+        { cause: error },
+      );
+    }
   }
 
   /**

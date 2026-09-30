@@ -6,7 +6,7 @@
 
 - **Robonomics blockchain indexer** (Polkadot) — reads finalized blocks and processes `datalog.NewRecord` events and RWS extrinsics.
 - **IPFS loader** — asynchronous processing of `datalog` records with CIDs: fetches JSON via a list of gateways with fallback, parses it and stores sensor measurements.
-- **CPS ingestion** — snapshots configured numeric NodeIds, handles realtime `cps.PayloadSet`, resolves legacy binary CIDs through IPFS or reads chain-ready XZ batches directly from CPS storage, then verifies Ed25519 signatures before storing public Urban/Insight measurements.
+- **CPS ingestion** — snapshots configured numeric NodeIds, handles realtime `cps.PayloadSet`, resolves legacy binary CIDs through IPFS or reads compressed batches directly from CPS storage, selects Zstandard/XZ/LZ4 from `cps.meta`, then verifies Ed25519 signatures before storing public Urban/Insight measurements.
 - **Reverse geocoding** — derives country/region/city from sensor coordinates.
 - **REST API** — sensor data (V1/V2), public Connectivity Protocol messages (V3), story list and indexer status. See [docs/api_endpoints.md](./docs/api_endpoints.md).
 - **Prometheus metrics** at `/metrics`.
@@ -17,7 +17,7 @@
 - **NestJS 11** + TypeScript (ESM)
 - **MongoDB** via **Mongoose**
 - **@polkadot/api** + `robonomics-api-augment`
-- **Buf Protobuf**, **Ed25519** and **XZ/LZMA2** for CPS payloads
+- **Buf Protobuf**, **Ed25519**, **Zstandard**, **XZ/LZMA2** and **LZ4 frame** for CPS payloads
 - ESLint + Prettier
 
 A detailed description of the indexer, data formats and DB schemas is in [docs/indexer.md](./docs/indexer.md).

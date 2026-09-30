@@ -22,7 +22,7 @@ import {
   ed25519PairFromSeed,
   ed25519Sign,
 } from '@polkadot/util-crypto';
-import { createCompressor } from 'lzma-native';
+import { zstdCompressSync } from 'node:zlib';
 import { CpsAnchorStatus } from '../common/constants/cps-anchor-status.enum.js';
 import { CpsPayloadSource } from '../common/constants/connectivity-storage.enum.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
@@ -123,37 +123,6 @@ async function createSignedBatch(
   );
 }
 
-/**
- * Сжимает protobuf batch в chain-ready XZ-контейнер.
- * @param bytes - исходные protobuf-байты
- * @returns завершённый XZ payload
- */
-function compressXz(bytes: Uint8Array): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const compressor = createCompressor();
-    const chunks: Uint8Array[] = [];
-    let totalBytes = 0;
-
-    compressor.on('data', (chunk: Buffer) => {
-      chunks.push(new Uint8Array(chunk));
-      totalBytes += chunk.byteLength;
-    });
-    compressor.once('error', reject);
-    compressor.once('end', () => {
-      const result = new Uint8Array(totalBytes);
-      let offset = 0;
-      for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      resolve(result);
-    });
-    compressor.end(
-      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
-    );
-  });
-}
-
 describe('CpsAnchorProcessorService', () => {
   it('проверяет raw batch и завершает anchor только после MongoDB-upsert', async () => {
     const values: Record<string, unknown> = {
@@ -232,7 +201,7 @@ describe('CpsAnchorProcessorService', () => {
     );
   });
 
-  it('декодирует прямой XZ payload из чейна без IPFS-запроса', async () => {
+  it('декодирует прямой Zstandard payload из чейна без IPFS-запроса', async () => {
     const values: Record<string, unknown> = {
       'cps.enabled': true,
       'cps.rawPayloadStorageEnabled': true,
@@ -248,13 +217,14 @@ describe('CpsAnchorProcessorService', () => {
         (key: string, fallback?: unknown) => values[key] ?? fallback,
       ),
     } as unknown as ConfigService;
-    const chainPayload = await compressXz(await createSignedBatch(false));
+    const chainPayload = zstdCompressSync(await createSignedBatch(false));
     const anchor = {
       source_key: 'cps:0:chain:hash',
       node_id: '0',
       block: 11,
       payload_source: CpsPayloadSource.Chain,
       chain_payload: Buffer.from(chainPayload),
+      wire_format: ProtocolBatchWireFormat.Zstd,
       owner: '5Owner',
       attempt_count: 1,
     } as CpsAnchorDocument;
@@ -292,7 +262,7 @@ describe('CpsAnchorProcessorService', () => {
       block: anchor.block,
       cid: undefined,
       payloadSource: CpsPayloadSource.Chain,
-      wireFormat: ProtocolBatchWireFormat.Xz,
+      wireFormat: ProtocolBatchWireFormat.Zstd,
       rawPayload: chainPayload,
     });
     expect(upsertMany).toHaveBeenCalledWith([

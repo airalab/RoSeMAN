@@ -2,7 +2,10 @@ import type { ApiPromise } from '@polkadot/api';
 import type { Event } from '@polkadot/types/interfaces';
 import { ConfigService } from '@nestjs/config';
 import { CID } from 'multiformats/cid';
-import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
+import {
+  CpsPayloadSource,
+  ProtocolBatchWireFormat,
+} from '../../common/constants/connectivity-storage.enum.js';
 import { CpsAnchorRepository } from '../../database/repositories/cps-anchor.repository.js';
 import { RobonomicsService } from '../robonomics.service.js';
 import { CpsPayloadSetHandler } from './cps-payload-set.handler.js';
@@ -16,6 +19,7 @@ describe('CpsPayloadSetHandler', () => {
   const blockHash = { toString: () => '0x1234' };
   const payloadBytes = CID.parse(TEST_CID).bytes;
   let payload: jest.Mock;
+  let meta: jest.Mock;
   let nodes: jest.Mock;
   let scopes: jest.Mock;
   let getBlockHash: jest.Mock;
@@ -52,6 +56,7 @@ describe('CpsPayloadSetHandler', () => {
       isNone: false,
       unwrap: () => ({ toU8a: () => payloadBytes }),
     });
+    meta = jest.fn().mockResolvedValue({ isNone: true });
     const scopeId = { toString: () => '1' };
     nodes = jest.fn().mockResolvedValue({
       isNone: false,
@@ -75,7 +80,7 @@ describe('CpsPayloadSetHandler', () => {
       events: { cps: { PayloadSet: { is: isPayloadSet } } },
       rpc: { chain: { getBlockHash } },
       at: jest.fn().mockResolvedValue({
-        query: { cps: { payload, nodes, scopes } },
+        query: { cps: { payload, meta, nodes, scopes } },
       }),
     } as unknown as ApiPromise;
     getApi = jest.fn().mockResolvedValue(api);
@@ -94,6 +99,7 @@ describe('CpsPayloadSetHandler', () => {
       payloadSource: CpsPayloadSource.Ipfs,
       cid: TEST_CID,
       owner: '5Owner',
+      wireFormat: ProtocolBatchWireFormat.Zstd,
     });
   });
 
@@ -155,7 +161,23 @@ describe('CpsPayloadSetHandler', () => {
       payloadSource: CpsPayloadSource.Chain,
       chainPayload,
       owner: '5Owner',
+      wireFormat: ProtocolBatchWireFormat.Zstd,
     });
+  });
+
+  it('сохраняет wire format из отдельного CPS meta', async () => {
+    meta.mockResolvedValue({
+      isNone: false,
+      unwrap: () => ({
+        toU8a: () => new TextEncoder().encode('lz4'),
+      }),
+    });
+
+    await handler.handle(event, 123, true);
+
+    expect(upsertAnchor).toHaveBeenCalledWith(
+      expect.objectContaining({ wireFormat: ProtocolBatchWireFormat.Lz4 }),
+    );
   });
 
   it('сохраняет владельца Scope, а не инициатора PayloadSet', async () => {

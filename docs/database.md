@@ -99,7 +99,7 @@ Without claiming a complete list (each file is worth reading in full), here are 
 
 ### CpsAnchorRepository
 
-- `upsertAnchor(...)` — idempotent insert for either an IPFS CID (`cps:<nodeId>:<cid>`) or direct chain bytes (`cps:<nodeId>:chain:<sha256>`); numeric u64 NodeId is stored as canonical decimal text to avoid JavaScript precision loss.
+- `upsertAnchor(...)` — idempotent insert for either an IPFS CID (`cps:<nodeId>:<cid>`) or direct chain bytes (`cps:<nodeId>:chain:<sha256>`); numeric u64 NodeId is stored as canonical decimal text and `wire_format` is refreshed from CPS meta for an existing anchor.
 - `claimNext(now, leaseDurationMs)` — atomically claims pending/retry work and reclaims an expired processing lease after restart.
 - `updateStatus(sourceKey, status, details)` — records processing state, separate canonical/signature/decode/projection/private counters and retry/error details.
 - `countPending()` — counts first-attempt and retry-pending anchors.

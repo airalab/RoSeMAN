@@ -68,7 +68,8 @@ finalized cps.PayloadSet ─▶ CpsPayloadSetHandler ├─▶ cps_anchors
                               CID → IPFS bytes                     direct chain bytes
                                       │                                     │
                                       ▼                                     ▼
-                          configured raw/XZ/zlib                         fixed XZ
+                       saved meta or configured                 cps.meta, default Zstd
+                         raw/XZ/Zstd/LZ4/zlib                  raw/XZ/Zstd/LZ4/zlib
                                       └──────────────────┬──────────────────┘
                                                          ▼
                                                 bounded decode
@@ -147,7 +148,7 @@ File: `src/robonomics/handlers/cps-payload-set.handler.ts`. Reacts to successful
 - Confirms the event through runtime metadata.
 - Treats NodeId as a numeric u64 value, not a public key.
 - If `CPS_NODE_IDS` is non-empty, accepts only listed NodeIds; an empty or missing list allows any realtime NodeId.
-- Decorates the API with the runtime metadata of the event block and requires the pallet 1.0 split layout. It reads `cps.payload` and resolves the owner through `cps.nodes` (`NodeInfo`) and `cps.scopes` (`ScopeInfo`). The second `PayloadSet` field is treated only as the sender and is never persisted as the owner. Exact payload bytes are classified as a valid binary `CID.bytes` reference or a direct chain payload.
+- Decorates the API with the runtime metadata of the event block and requires the pallet 1.0 split layout. It reads separate `cps.meta` / `cps.payload` and resolves the owner through `cps.nodes` (`NodeInfo`) and `cps.scopes` (`ScopeInfo`). The second `PayloadSet` field is treated only as the sender and is never persisted as the owner. Exact payload bytes are classified as a valid binary `CID.bytes` reference or a direct chain payload.
 - Stores direct bytes in the anchor queue; CID payloads retain the existing deferred IPFS path. The block-processing path performs no network download, so checkpoint persistence is not delayed by gateway I/O.
 
 ### RwsNewDevicesHandler
@@ -190,7 +191,7 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 1. Atomically claims up to `CPS_MAX_ANCHORS_PER_POLL` pending anchors using a recoverable lease.
 2. Resolves exact transport bytes: binary CID anchors use `IpfsFetcherService.fetchBytes()`, while direct anchors use the bytes saved from CPS storage without an IPFS request.
 3. With `CPS_RAW_PAYLOAD_STORAGE_ENABLED=true`, upserts exact transport bytes and their SHA-256 into `connectivity_payloads` before any decompression or decode.
-4. Decodes direct chain payloads as `XZ(SignedEnvelopeBatch)`; legacy IPFS anchors keep the explicitly configured `raw`, `xz` or `zlib` format. Both paths use compressed/decompressed/envelope-count limits.
+4. Decodes payloads according to the `wire_format` saved from CPS meta: `zstd` (default for an empty meta in the split layout), `xz`, `lz4`, `zlib` or `raw`. Legacy database anchors without this field keep the XZ/configured IPFS fallback. Both paths use compressed/decompressed/envelope-count limits.
 5. Validates each `SignedEnvelope`, reconstructs the exact `sensor_id || nonce || message` bytes and verifies Ed25519 before decoding `core.v1.Message`.
 6. Validates that `Message.metadata.node_id` matches the CPS anchor NodeId and reads the millisecond timestamp from `Message.metadata.timestamp`.
 7. With `CPS_CANONICAL_STORAGE_ENABLED=true`, stores each occurrence in `connectivity_records`, including envelope bytes, the message timestamp, materialized protobuf JSON, compact measurement types and validation statuses.
@@ -198,7 +199,7 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 9. Upserts `measurements` and `cities`, finalizes canonical/raw statuses, then records `PROCESSED` or `PROCESSED_WITH_ERRORS`.
 10. Treats malformed immutable batches as terminal; infrastructure failures use lease recovery and exponential retry up to `CPS_MAX_ATTEMPTS`.
 
-The direct CPS payload is exactly `XZ(serialized SignedEnvelopeBatch)`: no magic bytes, version byte or custom framing is expected. RoSeMAN enforces the CPS chain limit of 8192 bytes when creating and resolving direct anchors. Payloads referenced by CID remain compatible with the existing configurable IPFS wire format.
+The direct CPS payload is a standard compressor frame around `serialized SignedEnvelopeBatch`: Zstandard, XZ/LZMA2, LZ4 frame or zlib, as declared in textual/JSON `cps.meta`; `raw` is also supported. Empty meta in the split pallet layout means Zstandard, while unknown values fail closed. RoSeMAN enforces the CPS chain limit of 8192 bytes when creating and resolving direct anchors. Existing database anchors without `wire_format` retain the historical XZ/configured IPFS fallback.
 
 CPS measurements use lowercase hexadecimal `sensor_id`, `source_type="cps"` and a deterministic source ID: `cps:<nodeId>:<cid>` for IPFS or `cps:<nodeId>:chain:<sha256>` for direct bytes. Their legacy timestamp is converted to Unix seconds after signature verification. Canonical storage keeps the original millisecond value as Decimal128; encrypted private sections remain in materialized protobuf JSON and exact raw bytes without a second BSON projection. Both new storage flags default to `false`, so rollout does not change the existing API or write path until explicitly enabled.
 
@@ -400,7 +401,8 @@ This additive collection is the active idempotent queue for snapshot and realtim
 | `block`                                             | Number          | Finalized block where the anchor was observed                    |
 | `payload_source`                                    | String          | `ipfs` or `chain` transport source                               |
 | `cid`                                               | String          | IPFS CID for a legacy anchor, otherwise absent                   |
-| `chain_payload`                                     | Buffer          | Direct XZ payload, otherwise absent                              |
+| `chain_payload`                                     | Buffer          | Direct compressed payload, otherwise absent                      |
+| `wire_format`                                       | String          | `raw`, `xz`, `zstd`, `lz4`, `zlib` or `unsupported` from meta    |
 | `owner`                                             | String          | CPS node owner, when available                                   |
 | `status`                                            | Number          | Pending/processing/result/retry state                            |
 | `attempt_count`                                     | Number          | Number of atomic processing claims                               |
@@ -552,7 +554,7 @@ The four module flags are disabled only by the exact value `false` (see `app.mod
 | `CPS_CANONICAL_STORAGE_ENABLED`   | `false`    | Writes occurrence records to `connectivity_records`                               |
 | `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | `false`    | Archives exact IPFS or chain transport bytes in `connectivity_payloads`           |
 | `CPS_NODE_IDS`                    | _(empty)_  | Numeric u64 NodeIds for snapshot; a non-empty list is also the realtime allowlist |
-| `CPS_BATCH_WIRE_FORMAT`           | `xz`       | Legacy IPFS format (`raw`, `xz`, `zlib`); direct chain payloads are always XZ     |
+| `CPS_BATCH_WIRE_FORMAT`           | `xz`       | Fallback for legacy IPFS anchors without meta (`raw`, `xz`, `zstd`, `lz4`, `zlib`) |
 | `CPS_POLL_INTERVAL`               | `10000`    | Processor poll interval (ms)                                                      |
 | `CPS_LEASE_DURATION`              | `60000`    | Processing lease duration (ms)                                                    |
 | `CPS_MAX_ANCHORS_PER_POLL`        | `10`       | Maximum claimed anchors per poll                                                  |
@@ -676,7 +678,9 @@ ERROR (3)          — fetch/parse error, see errorMessage
 - `@polkadot/api`, `@polkadot/types`, `robonomics-api-augment` — parachain interaction.
 - `@buf/airalab_connectivity-protocol.bufbuild_es`, `@bufbuild/protobuf` — generated CPS schemas and protobuf runtime.
 - `@polkadot/util-crypto` — Ed25519 signature verification and SS58 sensor encoding.
+- Node.js native zlib — bounded Zstandard and zlib decompression for CPS batches.
 - `lzma-native` — bounded XZ/LZMA2 decompression for CPS batches.
+- `lz4-napi` — LZ4 frame decompression for direct payloads from constrained devices.
 - `multiformats` — strict CID parsing and binary `CID.bytes` conversion.
 - `@nestjs/mongoose`, `mongoose` — MongoDB via the Repository pattern.
 - Native `fetch` — IPFS gateways and Nominatim.

@@ -30,7 +30,7 @@ describe('resolveCpsAnchorPayload', () => {
     expect(fetchBytes).toHaveBeenCalledWith('QmLegacy');
   });
 
-  it('возвращает chain bytes напрямую и всегда выбирает XZ', async () => {
+  it('возвращает chain bytes напрямую и сохраняет XZ fallback старых anchors', async () => {
     const chainPayload = Buffer.from([0xfd, 0x37, 0x7a, 0x58, 0x5a]);
     const fetchBytes = jest.fn();
     const anchor = {
@@ -54,6 +54,30 @@ describe('resolveCpsAnchorPayload', () => {
     });
     expect(result.bytes).not.toBe(chainPayload);
     expect(fetchBytes).not.toHaveBeenCalled();
+  });
+
+  it('использует wire format, сохранённый из CPS meta', async () => {
+    const chainPayload = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+    const anchor = {
+      source_key: 'cps:1:chain:hash',
+      node_id: '1',
+      block: 12,
+      payload_source: CpsPayloadSource.Chain,
+      chain_payload: chainPayload,
+      wire_format: ProtocolBatchWireFormat.Zstd,
+    } as CpsAnchorDocument;
+
+    await expect(
+      resolveCpsAnchorPayload(
+        anchor,
+        { fetchBytes: jest.fn() } as unknown as IpfsFetcherService,
+        ProtocolBatchWireFormat.Raw,
+      ),
+    ).resolves.toEqual({
+      bytes: new Uint8Array(chainPayload),
+      source: CpsPayloadSource.Chain,
+      wireFormat: ProtocolBatchWireFormat.Zstd,
+    });
   });
 
   it('отклоняет chain payload сверх лимита до декодирования', async () => {

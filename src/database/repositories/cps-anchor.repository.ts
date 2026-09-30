@@ -3,7 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
-import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
+import {
+  CpsPayloadSource,
+  ProtocolBatchWireFormat,
+} from '../../common/constants/connectivity-storage.enum.js';
 import {
   createCpsAnchorSourceKey,
   createCpsChainPayloadSourceKey,
@@ -18,6 +21,7 @@ interface CpsAnchorBaseInput {
   readonly nodeId: bigint | string;
   readonly block: number;
   readonly owner?: string;
+  readonly wireFormat?: ProtocolBatchWireFormat;
 }
 
 export type CpsAnchorInput = CpsAnchorBaseInput &
@@ -103,12 +107,16 @@ export class CpsAnchorRepository {
       backfill_attempt_count: 0,
     };
 
+    const update =
+      data.wireFormat === undefined
+        ? { $setOnInsert: anchor }
+        : {
+            $setOnInsert: anchor,
+            $set: { wire_format: data.wireFormat },
+          };
+
     await this.model
-      .updateOne(
-        { source_key: sourceKey },
-        { $setOnInsert: anchor },
-        { upsert: true },
-      )
+      .updateOne({ source_key: sourceKey }, update, { upsert: true })
       .exec();
   }
 

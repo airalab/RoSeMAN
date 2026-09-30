@@ -40,6 +40,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "iconv-lite": "^0.7.2",
+    "lz4-napi": "^2.10.0",
     "lzma-native": "8.0.6",
     "mongoose": "^7.8.9",
     "multiformats": "14.0.5",

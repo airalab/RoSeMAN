@@ -4,7 +4,8 @@ import {
   SignedEnvelopeSchema,
 } from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/envelope_pb.js';
 import { createCompressor } from 'lzma-native';
-import { deflateSync } from 'node:zlib';
+import { compressFrame } from 'lz4-napi';
+import { deflateSync, zstdCompressSync } from 'node:zlib';
 import {
   ProtocolBatchWireFormat,
   SignedEnvelopeBatchPayloadDecoder,
@@ -98,6 +99,30 @@ describe('SignedEnvelopeBatchPayloadDecoder', () => {
     expect(result.errors).toEqual([]);
   });
 
+  it('декодирует стандартный Zstandard frame connectivity', async () => {
+    const compressed = zstdCompressSync(createBatchBytes());
+
+    const result = await new SignedEnvelopeBatchPayloadDecoder().decode(
+      compressed,
+      ProtocolBatchWireFormat.Zstd,
+    );
+
+    expect(result.envelopes).toHaveLength(1);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('декодирует interoperable LZ4 frame от маломощного устройства', async () => {
+    const compressed = await compressFrame(createBatchBytes());
+
+    const result = await new SignedEnvelopeBatchPayloadDecoder().decode(
+      compressed,
+      ProtocolBatchWireFormat.Lz4,
+    );
+
+    expect(result.envelopes).toHaveLength(1);
+    expect(result.errors).toEqual([]);
+  });
+
   it('останавливает XZ-распаковку при превышении выходного лимита', async () => {
     const compressed = await compressXz(createBatchBytes());
 
@@ -145,6 +170,34 @@ describe('SignedEnvelopeBatchPayloadDecoder', () => {
       new SignedEnvelopeBatchPayloadDecoder({
         maxDecompressedBytes: 32,
       }).decode(compressed, ProtocolBatchWireFormat.Zlib),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: ProtocolBatchDecodeErrorCode.BatchTooLarge,
+      }) as ProtocolBatchDecodeError,
+    );
+  });
+
+  it('ограничивает распакованный Zstandard payload', async () => {
+    const compressed = zstdCompressSync(createBatchBytes());
+
+    await expect(
+      new SignedEnvelopeBatchPayloadDecoder({
+        maxDecompressedBytes: 32,
+      }).decode(compressed, ProtocolBatchWireFormat.Zstd),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: ProtocolBatchDecodeErrorCode.BatchTooLarge,
+      }) as ProtocolBatchDecodeError,
+    );
+  });
+
+  it('ограничивает распакованный LZ4 payload', async () => {
+    const compressed = await compressFrame(createBatchBytes());
+
+    await expect(
+      new SignedEnvelopeBatchPayloadDecoder({
+        maxDecompressedBytes: 32,
+      }).decode(compressed, ProtocolBatchWireFormat.Lz4),
     ).rejects.toEqual(
       expect.objectContaining({
         code: ProtocolBatchDecodeErrorCode.BatchTooLarge,

@@ -5,6 +5,7 @@ import { readCpsNodeAt } from './cps-node.reader.js';
 describe('readCpsNodeAt', () => {
   const blockHash = { toString: () => '0x1234' } as Codec;
   const payloadBytes = new Uint8Array([1, 2, 3]);
+  const metaBytes = new TextEncoder().encode('xz');
 
   /** Создаёт SCALE Option со значением для mock storage API. */
   function some<T>(value: T): { isNone: false; unwrap: () => T } {
@@ -38,6 +39,7 @@ describe('readCpsNodeAt', () => {
     const payload = jest
       .fn()
       .mockResolvedValue(some({ toU8a: () => payloadBytes }));
+    const meta = jest.fn().mockResolvedValue(some({ toU8a: () => metaBytes }));
     const nodes = jest.fn().mockResolvedValue(
       some({
         get: (key: string) => (key === 'scope' ? some(scopeId) : none()),
@@ -51,14 +53,16 @@ describe('readCpsNodeAt', () => {
             : undefined,
       }),
     );
-    const { api } = createApi({ payload, nodes, scopes });
+    const { api } = createApi({ payload, meta, nodes, scopes });
 
     await expect(readCpsNodeAt(api, blockHash, '7')).resolves.toEqual({
       owner: '5ScopeOwner',
+      meta: metaBytes,
       payload: payloadBytes,
     });
     expect(nodes).toHaveBeenCalledWith('7');
     expect(scopes).toHaveBeenCalledWith(scopeId);
+    expect(meta).toHaveBeenCalledWith('7');
   });
 
   it('наследует owner от ближайшего родительского Scope', async () => {
@@ -87,10 +91,12 @@ describe('readCpsNodeAt', () => {
             : undefined,
       }),
     );
-    const { api } = createApi({ payload, nodes, scopes });
+    const meta = jest.fn().mockResolvedValue(none());
+    const { api } = createApi({ payload, meta, nodes, scopes });
 
     await expect(readCpsNodeAt(api, blockHash, '7')).resolves.toEqual({
       owner: '5ParentScopeOwner',
+      meta: null,
       payload: payloadBytes,
     });
     expect(nodes).toHaveBeenNthCalledWith(1, '7');
@@ -100,13 +106,15 @@ describe('readCpsNodeAt', () => {
 
   it('не разрешает Scope для отсутствующего payload', async () => {
     const payload = jest.fn().mockResolvedValue(none());
+    const meta = jest.fn();
     const nodes = jest.fn();
     const scopes = jest.fn();
-    const { api } = createApi({ payload, nodes, scopes });
+    const { api } = createApi({ payload, meta, nodes, scopes });
 
     await expect(readCpsNodeAt(api, blockHash, '7')).resolves.toBeNull();
     expect(nodes).not.toHaveBeenCalled();
     expect(scopes).not.toHaveBeenCalled();
+    expect(meta).not.toHaveBeenCalled();
   });
 
   it('отклоняет runtime без полного split-layout', async () => {

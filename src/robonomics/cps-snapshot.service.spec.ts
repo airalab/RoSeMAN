@@ -1,7 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import type { ApiPromise } from '@polkadot/api';
 import { CID } from 'multiformats/cid';
-import { CpsPayloadSource } from '../common/constants/connectivity-storage.enum.js';
+import {
+  CpsPayloadSource,
+  ProtocolBatchWireFormat,
+} from '../common/constants/connectivity-storage.enum.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
 import { CpsSnapshotService } from './cps-snapshot.service.js';
 import { RobonomicsService } from './robonomics.service.js';
@@ -32,6 +35,7 @@ describe('CpsSnapshotService', () => {
           key === 'owner' ? { toString: () => '5Owner' } : undefined,
       }),
     });
+    const meta = jest.fn().mockResolvedValue({ isNone: true });
     const api = {
       rpc: {
         chain: {
@@ -42,7 +46,7 @@ describe('CpsSnapshotService', () => {
         },
       },
       at: jest.fn().mockResolvedValue({
-        query: { cps: { payload, nodes, scopes } },
+        query: { cps: { payload, meta, nodes, scopes } },
       }),
     } as unknown as ApiPromise;
     const upsertAnchor = jest.fn().mockResolvedValue(undefined);
@@ -68,6 +72,7 @@ describe('CpsSnapshotService', () => {
       payloadSource: CpsPayloadSource.Ipfs,
       cid: TEST_CID,
       owner: '5Owner',
+      wireFormat: ProtocolBatchWireFormat.Zstd,
     });
   });
 
@@ -95,6 +100,7 @@ describe('CpsSnapshotService', () => {
           key === 'owner' ? { toString: () => '5Owner' } : undefined,
       }),
     });
+    const meta = jest.fn().mockResolvedValue({ isNone: true });
     const api = {
       rpc: {
         chain: {
@@ -105,7 +111,7 @@ describe('CpsSnapshotService', () => {
         },
       },
       at: jest.fn().mockResolvedValue({
-        query: { cps: { payload, nodes, scopes } },
+        query: { cps: { payload, meta, nodes, scopes } },
       }),
     } as unknown as ApiPromise;
     const upsertAnchor = jest.fn().mockResolvedValue(undefined);
@@ -129,6 +135,7 @@ describe('CpsSnapshotService', () => {
       payloadSource: CpsPayloadSource.Chain,
       chainPayload,
       owner: '5Owner',
+      wireFormat: ProtocolBatchWireFormat.Zstd,
     });
   });
 });

@@ -19,12 +19,15 @@ function parsePositiveInteger(
 /** Разбирает формат сжатия CPS batch без эвристического определения. */
 function parseWireFormat(raw: string | undefined): ProtocolBatchWireFormat {
   const value = raw ?? ProtocolBatchWireFormat.Xz;
-  if (
-    !Object.values(ProtocolBatchWireFormat).includes(
-      value as ProtocolBatchWireFormat,
-    )
-  ) {
-    throw new Error('CPS_BATCH_WIRE_FORMAT must be raw, xz or zlib');
+  const allowedFormats = [
+    ProtocolBatchWireFormat.Raw,
+    ProtocolBatchWireFormat.Xz,
+    ProtocolBatchWireFormat.Zstd,
+    ProtocolBatchWireFormat.Lz4,
+    ProtocolBatchWireFormat.Zlib,
+  ] as const;
+  if (!allowedFormats.includes(value as (typeof allowedFormats)[number])) {
+    throw new Error('CPS_BATCH_WIRE_FORMAT must be raw, xz, zstd, lz4 or zlib');
   }
   return value as ProtocolBatchWireFormat;
 }

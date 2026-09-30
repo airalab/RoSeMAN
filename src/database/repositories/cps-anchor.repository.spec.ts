@@ -1,7 +1,10 @@
 import { type Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
-import { CpsPayloadSource } from '../../common/constants/connectivity-storage.enum.js';
+import {
+  CpsPayloadSource,
+  ProtocolBatchWireFormat,
+} from '../../common/constants/connectivity-storage.enum.js';
 import { MAX_CPS_NODE_ID } from '../../common/utils/cps-node-id.util.js';
 import { type CpsAnchorDocument } from '../schemas/cps-anchor.schema.js';
 import { CpsAnchorRepository } from './cps-anchor.repository.js';
@@ -146,11 +149,15 @@ describe('CpsAnchorRepository', () => {
       payloadSource: CpsPayloadSource.Chain,
       chainPayload,
       owner: 'owner',
+      wireFormat: ProtocolBatchWireFormat.Zstd,
     });
 
     const [filter, update] = model.updateOne.mock.calls[0] as unknown as [
       { source_key: string },
-      { $setOnInsert: Record<string, unknown> },
+      {
+        $setOnInsert: Record<string, unknown>;
+        $set: Record<string, unknown>;
+      },
     ];
     expect(filter.source_key).toMatch(/^cps:7:chain:[0-9a-f]{64}$/);
     expect(update.$setOnInsert).toMatchObject({
@@ -162,6 +169,9 @@ describe('CpsAnchorRepository', () => {
       owner: 'owner',
     });
     expect(update.$setOnInsert).not.toHaveProperty('cid');
+    expect(update.$set).toEqual({
+      wire_format: ProtocolBatchWireFormat.Zstd,
+    });
   });
 
   it('атомарно сохраняет раздельные processing counters', async () => {
