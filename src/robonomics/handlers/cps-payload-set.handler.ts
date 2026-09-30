@@ -76,7 +76,6 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
       return;
     }
 
-    const owner = event.data[1].toString();
     const blockHash = await api.rpc.chain.getBlockHash(blockNum);
     const node = await readCpsNodeAt(api, blockHash, nodeId);
 
@@ -94,7 +93,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
         block: blockNum,
         payloadSource: CpsPayloadSource.Ipfs,
         cid: reference.cid,
-        owner,
+        owner: node.owner,
       });
       this.logger.debug(
         `Block ${blockNum}: queued CPS node ${numericNodeId} IPFS payload ${reference.cid}`,
@@ -107,7 +106,7 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
       block: blockNum,
       payloadSource: CpsPayloadSource.Chain,
       chainPayload: reference.payload,
-      owner,
+      owner: node.owner,
     });
     this.logger.debug(
       `Block ${blockNum}: queued CPS node ${numericNodeId} chain payload (${reference.payload.byteLength} bytes)`,

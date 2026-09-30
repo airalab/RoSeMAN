@@ -11,16 +11,25 @@ const TEST_CID = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
 describe('CpsSnapshotService', () => {
   it('читает настроенные NodeId на одном финализированном блоке', async () => {
     const blockHash = { toString: () => '0xfinalized' };
-    const at = jest.fn().mockResolvedValue({
+    const payload = jest.fn().mockResolvedValue({
+      isNone: false,
+      unwrap: () => ({ toU8a: () => CID.parse(TEST_CID).bytes }),
+    });
+    const scopeId = { toString: () => '1' };
+    const nodes = jest.fn().mockResolvedValue({
       isNone: false,
       unwrap: () => ({
         get: (key: string) =>
-          key === 'owner'
-            ? { toString: () => '5Owner' }
-            : {
-                isNone: false,
-                unwrap: () => ({ toU8a: () => CID.parse(TEST_CID).bytes }),
-              },
+          key === 'scope'
+            ? { isNone: false, unwrap: () => scopeId }
+            : { isNone: true },
+      }),
+    });
+    const scopes = jest.fn().mockResolvedValue({
+      isNone: false,
+      unwrap: () => ({
+        get: (key: string) =>
+          key === 'owner' ? { toString: () => '5Owner' } : undefined,
       }),
     });
     const api = {
@@ -32,7 +41,9 @@ describe('CpsSnapshotService', () => {
           }),
         },
       },
-      query: { cps: { nodes: { at } } },
+      at: jest.fn().mockResolvedValue({
+        query: { cps: { payload, nodes, scopes } },
+      }),
     } as unknown as ApiPromise;
     const upsertAnchor = jest.fn().mockResolvedValue(undefined);
     const config = {
@@ -49,8 +60,8 @@ describe('CpsSnapshotService', () => {
     );
 
     await expect(service.snapshot()).resolves.toBe(2);
-    expect(at).toHaveBeenNthCalledWith(1, blockHash, '0');
-    expect(at).toHaveBeenNthCalledWith(2, blockHash, '42');
+    expect(payload).toHaveBeenNthCalledWith(1, '0');
+    expect(payload).toHaveBeenNthCalledWith(2, '42');
     expect(upsertAnchor).toHaveBeenNthCalledWith(1, {
       nodeId: '0',
       block: 321,
@@ -63,16 +74,25 @@ describe('CpsSnapshotService', () => {
   it('сохраняет прямой payload из snapshot без обращения к IPFS', async () => {
     const blockHash = { toString: () => '0xfinalized' };
     const chainPayload = new Uint8Array([0xfd, 0x37, 0x7a, 0x58, 0x5a]);
-    const at = jest.fn().mockResolvedValue({
+    const payload = jest.fn().mockResolvedValue({
+      isNone: false,
+      unwrap: () => ({ toU8a: () => chainPayload }),
+    });
+    const scopeId = { toString: () => '1' };
+    const nodes = jest.fn().mockResolvedValue({
       isNone: false,
       unwrap: () => ({
         get: (key: string) =>
-          key === 'owner'
-            ? { toString: () => '5Owner' }
-            : {
-                isNone: false,
-                unwrap: () => ({ toU8a: () => chainPayload }),
-              },
+          key === 'scope'
+            ? { isNone: false, unwrap: () => scopeId }
+            : { isNone: true },
+      }),
+    });
+    const scopes = jest.fn().mockResolvedValue({
+      isNone: false,
+      unwrap: () => ({
+        get: (key: string) =>
+          key === 'owner' ? { toString: () => '5Owner' } : undefined,
       }),
     });
     const api = {
@@ -84,7 +104,9 @@ describe('CpsSnapshotService', () => {
           }),
         },
       },
-      query: { cps: { nodes: { at } } },
+      at: jest.fn().mockResolvedValue({
+        query: { cps: { payload, nodes, scopes } },
+      }),
     } as unknown as ApiPromise;
     const upsertAnchor = jest.fn().mockResolvedValue(undefined);
     const config = {

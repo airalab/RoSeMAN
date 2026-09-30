@@ -11,11 +11,13 @@ const TEST_CID = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
 
 describe('CpsPayloadSetHandler', () => {
   const nodeId = { toBigInt: () => 42n };
-  const owner = { toString: () => '5Owner' };
-  const event = { data: [nodeId, owner] } as unknown as Event;
+  const sender = { toString: () => '5Delegate' };
+  const event = { data: [nodeId, sender] } as unknown as Event;
   const blockHash = { toString: () => '0x1234' };
   const payloadBytes = CID.parse(TEST_CID).bytes;
-  let at: jest.Mock;
+  let payload: jest.Mock;
+  let nodes: jest.Mock;
+  let scopes: jest.Mock;
   let getBlockHash: jest.Mock;
   let getApi: jest.Mock;
   let upsertAnchor: jest.Mock;
@@ -46,13 +48,25 @@ describe('CpsPayloadSetHandler', () => {
   }
 
   beforeEach(() => {
-    at = jest.fn().mockResolvedValue({
+    payload = jest.fn().mockResolvedValue({
+      isNone: false,
+      unwrap: () => ({ toU8a: () => payloadBytes }),
+    });
+    const scopeId = { toString: () => '1' };
+    nodes = jest.fn().mockResolvedValue({
       isNone: false,
       unwrap: () => ({
-        get: () => ({
-          isNone: false,
-          unwrap: () => ({ toU8a: () => payloadBytes }),
-        }),
+        get: (key: string) =>
+          key === 'scope'
+            ? { isNone: false, unwrap: () => scopeId }
+            : { isNone: true },
+      }),
+    });
+    scopes = jest.fn().mockResolvedValue({
+      isNone: false,
+      unwrap: () => ({
+        get: (key: string) =>
+          key === 'owner' ? { toString: () => '5Owner' } : undefined,
       }),
     });
     getBlockHash = jest.fn().mockResolvedValue(blockHash);
@@ -60,7 +74,9 @@ describe('CpsPayloadSetHandler', () => {
     const api = {
       events: { cps: { PayloadSet: { is: isPayloadSet } } },
       rpc: { chain: { getBlockHash } },
-      query: { cps: { nodes: { at } } },
+      at: jest.fn().mockResolvedValue({
+        query: { cps: { payload, nodes, scopes } },
+      }),
     } as unknown as ApiPromise;
     getApi = jest.fn().mockResolvedValue(api);
     upsertAnchor = jest.fn().mockResolvedValue(undefined);
@@ -71,7 +87,7 @@ describe('CpsPayloadSetHandler', () => {
     await handler.handle(event, 123, true);
 
     expect(getBlockHash).toHaveBeenCalledWith(123);
-    expect(at).toHaveBeenCalledWith(blockHash, nodeId);
+    expect(payload).toHaveBeenCalledWith(nodeId);
     expect(upsertAnchor).toHaveBeenCalledWith({
       nodeId: 42n,
       block: 123,
@@ -97,7 +113,7 @@ describe('CpsPayloadSetHandler', () => {
     await handler.handle(event, 123, true);
 
     expect(getBlockHash).not.toHaveBeenCalled();
-    expect(at).not.toHaveBeenCalled();
+    expect(payload).not.toHaveBeenCalled();
     expect(upsertAnchor).not.toHaveBeenCalled();
   });
 
@@ -118,7 +134,7 @@ describe('CpsPayloadSetHandler', () => {
   });
 
   it('не создаёт anchor для отсутствующего CPS payload', async () => {
-    at.mockResolvedValue({ isNone: true });
+    payload.mockResolvedValue({ isNone: true });
 
     await handler.handle(event, 123, true);
 
@@ -127,16 +143,9 @@ describe('CpsPayloadSetHandler', () => {
 
   it('ставит не-CID байты в очередь как прямой chain payload', async () => {
     const chainPayload = new Uint8Array([0xfd, 0x37, 0x7a, 0x58, 0x5a]);
-    at.mockResolvedValue({
+    payload.mockResolvedValue({
       isNone: false,
-      unwrap: () => ({
-        get: () => ({
-          isNone: false,
-          unwrap: () => ({
-            toU8a: () => chainPayload,
-          }),
-        }),
-      }),
+      unwrap: () => ({ toU8a: () => chainPayload }),
     });
 
     await expect(handler.handle(event, 123, true)).resolves.toBeUndefined();
@@ -147,5 +156,13 @@ describe('CpsPayloadSetHandler', () => {
       chainPayload,
       owner: '5Owner',
     });
+  });
+
+  it('сохраняет владельца Scope, а не инициатора PayloadSet', async () => {
+    await handler.handle(event, 123, true);
+
+    expect(upsertAnchor).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: '5Owner' }),
+    );
   });
 });

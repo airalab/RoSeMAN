@@ -147,7 +147,7 @@ File: `src/robonomics/handlers/cps-payload-set.handler.ts`. Reacts to successful
 - Confirms the event through runtime metadata.
 - Treats NodeId as a numeric u64 value, not a public key.
 - If `CPS_NODE_IDS` is non-empty, accepts only listed NodeIds; an empty or missing list allows any realtime NodeId.
-- Reads `api.query.cps.nodes.at(blockHash, nodeId)` at the event block and classifies the exact payload bytes as a valid binary `CID.bytes` reference or a direct chain payload.
+- Decorates the API with the runtime metadata of the event block and requires the pallet 1.0 split layout. It reads `cps.payload` and resolves the owner through `cps.nodes` (`NodeInfo`) and `cps.scopes` (`ScopeInfo`). The second `PayloadSet` field is treated only as the sender and is never persisted as the owner. Exact payload bytes are classified as a valid binary `CID.bytes` reference or a direct chain payload.
 - Stores direct bytes in the anchor queue; CID payloads retain the existing deferred IPFS path. The block-processing path performs no network download, so checkpoint persistence is not delayed by gateway I/O.
 
 ### RwsNewDevicesHandler
@@ -181,7 +181,7 @@ File: `src/robonomics/handlers/rws-story.handler.ts`. Reacts to `rws.call`, but 
 
 ### CpsSnapshotService
 
-`src/robonomics/cps-snapshot.service.ts` runs once at module initialization when `CPS_ENABLED=true`. It reads all configured `CPS_NODE_IDS` at one finalized block hash and creates the same idempotent anchors as the realtime handler. An empty list means that snapshot has no nodes to discover; it does not disable unrestricted realtime ingestion.
+`src/robonomics/cps-snapshot.service.ts` runs once at module initialization when `CPS_ENABLED=true`. It reads all configured `CPS_NODE_IDS` at one finalized block hash through the same pallet 1.0 reader as the realtime handler and creates the same idempotent anchors. An empty list means that snapshot has no nodes to discover; it does not disable unrestricted realtime ingestion.
 
 ### CpsAnchorProcessorService
 
