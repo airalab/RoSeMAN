@@ -144,7 +144,7 @@ CPS_NODE_IDS=0
 ENABLED_HANDLERS=cps-payload-set
 ```
 
-A non-empty `CPS_NODE_IDS` drives the initial snapshot and restricts realtime events to the same allowlist. If it is empty or absent, snapshot reads no nodes while realtime accepts any numeric NodeId. The two storage flags enable the lossless/canonical dual write; both default to `false` for a controlled rollout. `MEASUREMENT_ENABLED=true` also creates the legacy datalog processor; with `datalog-new-record` excluded it receives no new legacy records, but it can still process old pending rows already present in the shared database.
+A non-empty `CPS_NODE_IDS` defines roots for the initial recursive snapshot and restricts realtime events to those complete subtrees. If it is empty or absent, snapshot reads no nodes while realtime accepts any numeric NodeId. The two storage flags enable the lossless/canonical dual write; both default to `false` for a controlled rollout. `MEASUREMENT_ENABLED=true` also creates the legacy datalog processor; with `datalog-new-record` excluded it receives no new legacy records, but it can still process old pending rows already present in the shared database.
 
 See also [architecture.md → Run modes](./architecture.md#run-modes).
 

@@ -7,7 +7,6 @@ import {
   UrbanSchema,
   UrbanSensorSchema,
 } from '@buf/airalab_connectivity-protocol.bufbuild_es/device/v1/urban_pb.js';
-import { EncryptedSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/encrypted_pb.js';
 import {
   BME280Schema,
   GPSSchema,
@@ -56,13 +55,7 @@ describe('ConnectivityRecordMapper', () => {
   });
 
   it('сохраняет protobuf JSON и компактные типы публичных измерений', () => {
-    const privateSection = {
-      version: 1,
-      algorithm: 'xchacha20',
-      from: new Uint8Array([8, 9]),
-      nonce: new Uint8Array([10, 11, 12]),
-      ciphertext: new Uint8Array([13, 14, 15]),
-    };
+    const privateSection = new Uint8Array([8, 9]);
     const message = create(MessageSchema, {
       metadata: create(MetaSchema, {
         nodeId: 7n,
@@ -105,7 +98,7 @@ describe('ConnectivityRecordMapper', () => {
               },
             }),
           ],
-          private: [create(EncryptedSchema, privateSection)],
+          private: [privateSection],
         }),
       },
     });
@@ -128,15 +121,7 @@ describe('ConnectivityRecordMapper', () => {
           { gps: { lat: 53.1, lon: 50.2, heightM: 81.5 } },
           { bme280: { humidity: { centiPercent: 4550 } } },
         ],
-        private: [
-          {
-            version: 1,
-            algorithm: 'xchacha20',
-            from: 'CAk=',
-            nonce: 'CgsM',
-            ciphertext: 'DQ4P',
-          },
-        ],
+        private: ['CAk='],
       },
     });
     expect(record.measurement_types).toEqual([

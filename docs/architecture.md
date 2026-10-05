@@ -66,7 +66,7 @@ Robonomics (Polkadot) ─────────────▶ BlockIndexerSer
                              ▼
                         measurements ──▶ sensors ──▶ GeocodingService ──▶ Nominatim
 
-CpsSnapshotService ── configured CPS_NODE_IDS ──▶ cps_anchors
+CpsSnapshotService ── configured CPS_NODE_IDS + descendants ──▶ cps_anchors
 REST API (controllers) ──▶ Repositories ──▶ MongoDB
 ```
 

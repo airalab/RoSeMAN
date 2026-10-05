@@ -12,7 +12,7 @@ import { RobonomicsService } from './robonomics.service.js';
 const TEST_CID = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
 
 describe('CpsSnapshotService', () => {
-  it('читает настроенные NodeId на одном финализированном блоке', async () => {
+  it('читает корневые NodeId и их потомков на одном финализированном блоке', async () => {
     const blockHash = { toString: () => '0xfinalized' };
     const payload = jest.fn().mockResolvedValue({
       isNone: false,
@@ -36,6 +36,13 @@ describe('CpsSnapshotService', () => {
       }),
     });
     const meta = jest.fn().mockResolvedValue({ isNone: true });
+    const children = jest
+      .fn()
+      .mockImplementation((nodeId: string) =>
+        Promise.resolve(
+          nodeId === '0' ? [{ toString: (): string => '42' }] : [],
+        ),
+      );
     const api = {
       rpc: {
         chain: {
@@ -46,13 +53,13 @@ describe('CpsSnapshotService', () => {
         },
       },
       at: jest.fn().mockResolvedValue({
-        query: { cps: { payload, meta, nodes, scopes } },
+        query: { cps: { payload, meta, nodes, scopes, children } },
       }),
     } as unknown as ApiPromise;
     const upsertAnchor = jest.fn().mockResolvedValue(undefined);
     const config = {
       get: jest.fn((key: string, fallback: unknown) =>
-        key === 'cps.nodeIds' ? ['0', '42'] : fallback,
+        key === 'cps.nodeIds' ? ['0'] : fallback,
       ),
     } as unknown as ConfigService;
     const service = new CpsSnapshotService(
@@ -66,6 +73,8 @@ describe('CpsSnapshotService', () => {
     await expect(service.snapshot()).resolves.toBe(2);
     expect(payload).toHaveBeenNthCalledWith(1, '0');
     expect(payload).toHaveBeenNthCalledWith(2, '42');
+    expect(children).toHaveBeenNthCalledWith(1, '0');
+    expect(children).toHaveBeenNthCalledWith(2, '42');
     expect(upsertAnchor).toHaveBeenNthCalledWith(1, {
       nodeId: '0',
       block: 321,
@@ -101,6 +110,7 @@ describe('CpsSnapshotService', () => {
       }),
     });
     const meta = jest.fn().mockResolvedValue({ isNone: true });
+    const children = jest.fn().mockResolvedValue([]);
     const api = {
       rpc: {
         chain: {
@@ -111,7 +121,7 @@ describe('CpsSnapshotService', () => {
         },
       },
       at: jest.fn().mockResolvedValue({
-        query: { cps: { payload, meta, nodes, scopes } },
+        query: { cps: { payload, meta, nodes, scopes, children } },
       }),
     } as unknown as ApiPromise;
     const upsertAnchor = jest.fn().mockResolvedValue(undefined);

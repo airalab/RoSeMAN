@@ -1,6 +1,10 @@
 import type { ApiPromise } from '@polkadot/api';
 import type { Codec } from '@polkadot/types/types';
-import { readCpsNodeAt } from './cps-node.reader.js';
+import {
+  isCpsNodeInSubtreesAt,
+  readCpsNodeAt,
+  readCpsSubtreesAt,
+} from './cps-node.reader.js';
 
 describe('readCpsNodeAt', () => {
   const blockHash = { toString: () => '0x1234' } as Codec;
@@ -20,6 +24,11 @@ describe('readCpsNodeAt', () => {
         throw new Error('Option is None');
       },
     };
+  }
+
+  /** Создаёт минимальный SCALE-подобный NodeId для mock storage API. */
+  function nodeId(value: string): { toString: () => string } {
+    return { toString: () => value };
   }
 
   /** Создаёт минимальный ApiPromise с runtime metadata указанного блока. */
@@ -115,6 +124,89 @@ describe('readCpsNodeAt', () => {
     expect(nodes).not.toHaveBeenCalled();
     expect(scopes).not.toHaveBeenCalled();
     expect(meta).not.toHaveBeenCalled();
+  });
+
+  it('обходит все поддеревья, включая потомков узлов без payload', async () => {
+    const scopeId = nodeId('1');
+    const payload = jest
+      .fn()
+      .mockImplementation((id: string) =>
+        ['1', '3'].includes(id)
+          ? Promise.resolve(some({ toU8a: () => payloadBytes }))
+          : Promise.resolve(none()),
+      );
+    const meta = jest.fn().mockResolvedValue(none());
+    const nodes = jest.fn().mockResolvedValue(
+      some({
+        get: (key: string) => (key === 'scope' ? some(scopeId) : none()),
+      }),
+    );
+    const scopes = jest.fn().mockResolvedValue(
+      some({
+        get: (key: string) =>
+          key === 'owner' ? { toString: () => '5Owner' } : undefined,
+      }),
+    );
+    const children = jest.fn().mockImplementation((id: string) => {
+      const childIds: Record<string, { toString: () => string }[]> = {
+        '0': [nodeId('1'), nodeId('2')],
+        '1': [nodeId('3')],
+        '2': [],
+        '3': [nodeId('0')],
+      };
+      return Promise.resolve(childIds[id] ?? []);
+    });
+    const { api, at } = createApi({
+      payload,
+      meta,
+      nodes,
+      scopes,
+      children,
+    });
+
+    await expect(
+      readCpsSubtreesAt(api, blockHash, ['0', '1']),
+    ).resolves.toEqual([
+      {
+        nodeId: '1',
+        owner: '5Owner',
+        meta: null,
+        payload: payloadBytes,
+      },
+      {
+        nodeId: '3',
+        owner: '5Owner',
+        meta: null,
+        payload: payloadBytes,
+      },
+    ]);
+    expect(at).toHaveBeenCalledTimes(1);
+    expect(payload).toHaveBeenCalledTimes(4);
+    expect(children).toHaveBeenCalledTimes(4);
+  });
+
+  it('определяет потомка настроенного корня по цепочке parent', async () => {
+    const parents: Record<string, string | undefined> = {
+      '42': '7',
+      '7': '0',
+      '0': undefined,
+    };
+    const nodes = jest.fn().mockImplementation((id: string) => {
+      const parent = parents[id];
+      return Promise.resolve(
+        some({
+          get: (key: string) =>
+            key === 'parent' && parent ? some(nodeId(parent)) : none(),
+        }),
+      );
+    });
+    const { api } = createApi({ nodes });
+
+    await expect(
+      isCpsNodeInSubtreesAt(api, blockHash, 42n, new Set(['0'])),
+    ).resolves.toBe(true);
+    expect(nodes).toHaveBeenNthCalledWith(1, '42');
+    expect(nodes).toHaveBeenNthCalledWith(2, '7');
   });
 
   it('отклоняет runtime без полного split-layout', async () => {

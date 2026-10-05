@@ -1,7 +1,8 @@
 import type { ApiPromise } from '@polkadot/api';
 import type { Codec } from '@polkadot/types/types';
+import { normalizeCpsNodeId } from '../common/utils/cps-node-id.util.js';
 
-const MAX_CPS_SCOPE_RESOLUTION_NODES = 32;
+const MAX_CPS_TREE_DEPTH = 32;
 
 interface CpsCodecOption<T extends Codec> extends Codec {
   readonly isNone: boolean;
@@ -30,6 +31,8 @@ interface CpsScopeInfoCodec extends Codec {
 
 type CpsScopeInfoOption = CpsCodecOption<CpsScopeInfoCodec>;
 
+interface CpsChildrenCodec extends Codec, Iterable<CpsNodeIdCodec> {}
+
 interface CpsStorageEntry<T extends Codec> {
   (nodeId: unknown): Promise<T>;
 }
@@ -39,6 +42,7 @@ interface CpsStorageQuery {
   readonly meta?: CpsStorageEntry<CpsPayloadOption>;
   readonly payload?: CpsStorageEntry<CpsPayloadOption>;
   readonly scopes?: CpsStorageEntry<CpsScopeInfoOption>;
+  readonly children?: CpsStorageEntry<CpsChildrenCodec>;
 }
 
 interface CpsApiAt {
@@ -51,6 +55,10 @@ export interface CpsNodeState {
   readonly owner?: string;
   readonly meta: Uint8Array | null;
   readonly payload: Uint8Array | null;
+}
+
+export interface CpsSubtreeNodeState extends CpsNodeState {
+  readonly nodeId: string;
 }
 
 /**
@@ -72,6 +80,97 @@ export async function readCpsNodeAt(
   }
 
   return readSplitCpsNode(cpsQuery, nodeId);
+}
+
+/**
+ * Рекурсивно читает payload корневых CPS-узлов и всех их потомков.
+ * Пересекающиеся поддеревья и ошибочные циклические ссылки обрабатываются один раз.
+ * @param api - подключённый API Robonomics
+ * @param blockHash - хеш состояния для чтения
+ * @param rootNodeIds - корни CPS-поддеревьев
+ * @returns состояния всех узлов с установленным payload в порядке обхода в ширину
+ */
+export async function readCpsSubtreesAt(
+  api: ApiPromise,
+  blockHash: Codec,
+  rootNodeIds: readonly (bigint | string)[],
+): Promise<CpsSubtreeNodeState[]> {
+  const apiAt = (await api.at(blockHash.toString())) as unknown as CpsApiAt;
+  const cpsQuery = apiAt.query.cps;
+  if (!cpsQuery) {
+    throw new Error('CPS storage is unavailable at the requested block');
+  }
+
+  const children = cpsQuery.children;
+  if (!children) {
+    throw new Error('Incomplete CPS 1.0 storage layout: children unavailable');
+  }
+
+  const queue = rootNodeIds.map((nodeId) => normalizeCpsNodeId(nodeId));
+  const visited = new Set<string>();
+  const result: CpsSubtreeNodeState[] = [];
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const nodeId = queue[cursor];
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    const node = await readSplitCpsNode(cpsQuery, nodeId);
+    if (node) result.push({ nodeId, ...node });
+
+    const childIds = await children(nodeId);
+    for (const childId of childIds) {
+      const normalizedChildId = normalizeCpsNodeId(childId.toString());
+      if (!visited.has(normalizedChildId)) queue.push(normalizedChildId);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Проверяет, принадлежит ли CPS-узел одному из настроенных корневых поддеревьев.
+ * Пустой набор корней сохраняет режим без realtime-ограничения.
+ * @param api - подключённый API Robonomics
+ * @param blockHash - хеш состояния для чтения
+ * @param nodeId - проверяемый CPS NodeId
+ * @param rootNodeIds - разрешённые корни поддеревьев
+ * @returns `true`, если узел равен корню или является его потомком
+ */
+export async function isCpsNodeInSubtreesAt(
+  api: ApiPromise,
+  blockHash: Codec,
+  nodeId: bigint | string,
+  rootNodeIds: ReadonlySet<string>,
+): Promise<boolean> {
+  const normalizedNodeId = normalizeCpsNodeId(nodeId);
+  if (rootNodeIds.size === 0 || rootNodeIds.has(normalizedNodeId)) return true;
+
+  const apiAt = (await api.at(blockHash.toString())) as unknown as CpsApiAt;
+  const cpsQuery = apiAt.query.cps;
+  if (!cpsQuery) {
+    throw new Error('CPS storage is unavailable at the requested block');
+  }
+  const nodes = cpsQuery.nodes;
+  if (!nodes) {
+    throw new Error('Incomplete CPS 1.0 storage layout: nodes unavailable');
+  }
+
+  let currentNodeId = normalizedNodeId;
+  for (let depth = 0; depth <= MAX_CPS_TREE_DEPTH; depth += 1) {
+    const nodeOption = await nodes(currentNodeId);
+    if (nodeOption.isNone) return false;
+
+    const parentOption = nodeOption.unwrap().get('parent') as
+      | CpsParentOption
+      | undefined;
+    if (!parentOption || parentOption.isNone) return false;
+
+    currentNodeId = normalizeCpsNodeId(parentOption.unwrap().toString());
+    if (rootNodeIds.has(currentNodeId)) return true;
+  }
+
+  throw new Error('CPS ancestry depth exceeded');
 }
 
 /**
@@ -135,7 +234,7 @@ async function resolveScopeOwner(
 ): Promise<string | undefined> {
   let currentNodeId = nodeId;
 
-  for (let depth = 0; depth < MAX_CPS_SCOPE_RESOLUTION_NODES; depth += 1) {
+  for (let depth = 0; depth <= MAX_CPS_TREE_DEPTH; depth += 1) {
     const nodeOption = await nodes(currentNodeId);
     if (nodeOption.isNone) return undefined;
 

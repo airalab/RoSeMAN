@@ -6,7 +6,7 @@ import { CpsPayloadSource } from '../../common/constants/connectivity-storage.en
 import { CpsAnchorRepository } from '../../database/repositories/cps-anchor.repository.js';
 import { parseCpsCompressionMeta } from '../cps-compression-meta.js';
 import { decodeCpsPayloadReference } from '../cps-payload.decoder.js';
-import { readCpsNodeAt } from '../cps-node.reader.js';
+import { isCpsNodeInSubtreesAt, readCpsNodeAt } from '../cps-node.reader.js';
 import type { ChainEventHandler } from '../interfaces/chain-event-handler.interface.js';
 import { RobonomicsService } from '../robonomics.service.js';
 
@@ -28,20 +28,20 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
   readonly method = 'PayloadSet';
 
   private readonly logger = new Logger(CpsPayloadSetHandler.name);
-  private readonly configuredNodeIds: ReadonlySet<string>;
+  private readonly configuredRootNodeIds: ReadonlySet<string>;
 
   /**
    * Создаёт обработчик CPS-событий.
    * @param robonomics - подключение к Robonomics API
    * @param cpsAnchorRepo - идемпотентная очередь найденных anchors
-   * @param config - конфигурация CPS и allowlist NodeId
+   * @param config - конфигурация CPS и корни разрешённых поддеревьев
    */
   constructor(
     private readonly robonomics: RobonomicsService,
     private readonly cpsAnchorRepo: CpsAnchorRepository,
     private readonly config: ConfigService,
   ) {
-    this.configuredNodeIds = new Set(
+    this.configuredRootNodeIds = new Set(
       this.config.get<string[]>('cps.nodeIds', []),
     );
   }
@@ -70,14 +70,20 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
 
     const nodeId = event.data[0] as CpsNodeIdCodec;
     const numericNodeId = nodeId.toBigInt();
-    if (!this.isNodeAllowed(numericNodeId)) {
+    const blockHash = await api.rpc.chain.getBlockHash(blockNum);
+    const isAllowed = await isCpsNodeInSubtreesAt(
+      api,
+      blockHash,
+      numericNodeId,
+      this.configuredRootNodeIds,
+    );
+    if (!isAllowed) {
       this.logger.debug(
-        `Block ${blockNum}: CPS node ${numericNodeId} is not configured, skipping`,
+        `Block ${blockNum}: CPS node ${numericNodeId} is outside configured subtrees, skipping`,
       );
       return;
     }
 
-    const blockHash = await api.rpc.chain.getBlockHash(blockNum);
     const node = await readCpsNodeAt(api, blockHash, nodeId);
 
     if (!node?.payload) {
@@ -114,19 +120,6 @@ export class CpsPayloadSetHandler implements ChainEventHandler {
     });
     this.logger.debug(
       `Block ${blockNum}: queued CPS node ${numericNodeId} chain payload (${reference.payload.byteLength} bytes)`,
-    );
-  }
-
-  /**
-   * Проверяет NodeId по realtime allowlist.
-   * Пустой `CPS_NODE_IDS` означает отсутствие ограничения.
-   * @param nodeId - числовой идентификатор CPS node
-   * @returns `true`, если событие разрешено индексировать
-   */
-  private isNodeAllowed(nodeId: bigint): boolean {
-    return (
-      this.configuredNodeIds.size === 0 ||
-      this.configuredNodeIds.has(nodeId.toString(10))
     );
   }
 }

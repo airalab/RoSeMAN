@@ -113,12 +113,41 @@ describe('CpsPayloadSetHandler', () => {
     );
   });
 
-  it('пропускает NodeId вне настроенного CPS_NODE_IDS до чтения storage', async () => {
+  it('принимает потомка настроенного CPS_NODE_IDS', async () => {
+    const parentId = { toString: (): string => '7' };
+    nodes.mockImplementation((id: unknown) =>
+      Promise.resolve({
+        isNone: false,
+        unwrap: () => ({
+          get: (key: string) => {
+            if (id === '42') {
+              return key === 'parent'
+                ? { isNone: false, unwrap: () => parentId }
+                : { isNone: true };
+            }
+            return key === 'scope'
+              ? { isNone: false, unwrap: () => ({ toString: () => '1' }) }
+              : { isNone: true };
+          },
+        }),
+      }),
+    );
     handler = createHandler(['7']);
 
     await handler.handle(event, 123, true);
 
-    expect(getBlockHash).not.toHaveBeenCalled();
+    expect(nodes).toHaveBeenCalledWith('42');
+    expect(upsertAnchor).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 42n }),
+    );
+  });
+
+  it('пропускает NodeId вне настроенных CPS-поддеревьев', async () => {
+    handler = createHandler(['7']);
+
+    await handler.handle(event, 123, true);
+
+    expect(getBlockHash).toHaveBeenCalledWith(123);
     expect(payload).not.toHaveBeenCalled();
     expect(upsertAnchor).not.toHaveBeenCalled();
   });

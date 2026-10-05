@@ -5,7 +5,7 @@ import { formatSafeErrorForLog } from '../common/utils/safe-error-log.util.js';
 import { CpsAnchorRepository } from '../database/repositories/cps-anchor.repository.js';
 import { parseCpsCompressionMeta } from './cps-compression-meta.js';
 import { decodeCpsPayloadReference } from './cps-payload.decoder.js';
-import { readCpsNodeAt } from './cps-node.reader.js';
+import { readCpsSubtreesAt } from './cps-node.reader.js';
 import { RobonomicsService } from './robonomics.service.js';
 
 /** Создаёт anchors из текущего финализированного состояния настроенных CPS NodeId. */
@@ -29,7 +29,8 @@ export class CpsSnapshotService implements OnModuleInit {
   }
 
   /**
-   * Читает настроенные NodeId в одном финализированном состоянии и ставит payload в очередь.
+   * Читает настроенные корневые NodeId и их потомков в одном финализированном
+   * состоянии, после чего ставит найденные payload в очередь.
    * @returns число обнаруженных payload
    */
   async snapshot(): Promise<number> {
@@ -42,15 +43,11 @@ export class CpsSnapshotService implements OnModuleInit {
     const blockHash = await api.rpc.chain.getFinalizedHead();
     const header = await api.rpc.chain.getHeader(blockHash);
     const block = header.number.toNumber();
+    const nodes = await readCpsSubtreesAt(api, blockHash, nodeIds);
     let queued = 0;
-    for (const nodeId of nodeIds) {
-      const node = await readCpsNodeAt(api, blockHash, nodeId);
-      if (!node?.payload) {
-        this.logger.debug(
-          `Snapshot block ${block}: CPS node ${nodeId} has no payload`,
-        );
-        continue;
-      }
+    for (const node of nodes) {
+      const { nodeId } = node;
+      if (!node.payload) continue;
       const reference = decodeCpsPayloadReference(node.payload);
       const wireFormat = parseCpsCompressionMeta(node.meta);
       if (reference.source === CpsPayloadSource.Ipfs) {

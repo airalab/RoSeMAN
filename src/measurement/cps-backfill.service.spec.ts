@@ -4,7 +4,6 @@ import {
   MessageSchema,
   MetaSchema,
 } from '@buf/airalab_connectivity-protocol.bufbuild_es/core/v1/message_pb.js';
-import { EncryptedSchema } from '@buf/airalab_connectivity-protocol.bufbuild_es/crypto/v1/encrypted_pb.js';
 import {
   SignedEnvelopeBatchSchema,
   SignedEnvelopeSchema,
@@ -44,15 +43,7 @@ async function createSignedBatch(): Promise<Uint8Array> {
         case: 'urban',
         value: create(UrbanSchema, {
           public: [],
-          private: [
-            create(EncryptedSchema, {
-              version: 1,
-              algorithm: 'xchacha20',
-              from: new Uint8Array([1, 2]),
-              nonce: new Uint8Array([3, 4]),
-              ciphertext: new Uint8Array([5, 6, 7]),
-            }),
-          ],
+          private: [new Uint8Array([1, 2, 3, 4, 5, 6, 7])],
         }),
       },
     }),
@@ -171,15 +162,7 @@ describe('CpsBackfillService', () => {
       measurement_types: [],
       message_json: {
         urban: {
-          private: [
-            {
-              version: 1,
-              algorithm: 'xchacha20',
-              from: 'AQI=',
-              nonce: 'AwQ=',
-              ciphertext: 'BQYH',
-            },
-          ],
+          private: ['AQIDBAUGBw=='],
         },
       },
     });
