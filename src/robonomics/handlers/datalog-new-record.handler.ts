@@ -11,6 +11,7 @@ import { RobonomicsService } from '../robonomics.service.js';
  * Обработчик события `datalog.NewRecord`.
  * Фильтрует по whitelist аккаунтов, определяет статус (IPFS_PENDING / NEW)
  * и выполняет upsert записи в коллекцию datalog.
+ * @deprecated Новые данные индексируются обработчиком CPS PayloadSet.
  */
 @Injectable()
 export class DatalogNewRecordHandler implements ChainEventHandler {

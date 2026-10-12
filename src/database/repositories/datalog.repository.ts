@@ -6,6 +6,7 @@ import { Datalog, type DatalogDocument } from '../schemas/datalog.schema.js';
 
 /**
  * Репозиторий для работы с коллекцией datalog.
+ * @deprecated Новая индексация использует CpsAnchorRepository.
  */
 @Injectable()
 export class DatalogRepository {

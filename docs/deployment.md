@@ -9,7 +9,7 @@ The repository root contains two `.example` files from which you should create r
 | File            | Role                                                                                                                                        |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `.env`          | Base: Docker Compose settings, MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings                                 |
-| `.env.polkadot` | **Polkadot** CPS/RWS worker: indexer connection, CPS storage/processing and the `cps-payload-set,rws-extrinsic,rws-story` handler allowlist |
+| `.env.polkadot` | **Polkadot** CPS worker: indexer connection, CPS storage/processing and the `cps-payload-set` handler allowlist                          |
 
 The loading cascade (`src/env-bootstrap.ts`):
 
@@ -79,9 +79,9 @@ Compose uses the same Dockerfile and builds the image from the repository root. 
 | ------------------ | -------------------------- | ----------------------------------------------------------- |
 | `mongodb`          | `mongo:8`                  | DB with authenticated healthcheck and named volume          |
 | `rest-api`         | `${ROSEMAN_IMAGE}` / built | REST API; reads `.env`                                      |
-| `indexer-polkadot` | `${ROSEMAN_IMAGE}` / built | Polkadot CPS/RWS worker; reads `.env`, then `.env.polkadot` |
+| `indexer-polkadot` | `${ROSEMAN_IMAGE}` / built | Polkadot CPS worker; reads `.env`, then `.env.polkadot`     |
 
-Configuration is supplied through Compose `env_file`; environment files are not copied into the image or mounted into containers. Compose overrides `MONGODB_URI` with the internal `mongodb` hostname and the credentials from `.env`. All applications depend on the authenticated MongoDB healthcheck. The Polkadot example enables CPS with canonical and raw storage. Its explicit handler allowlist enables `cps-payload-set`, `rws-extrinsic` and `rws-story`, so legacy `datalog-new-record` remains disabled.
+Configuration is supplied through Compose `env_file`; environment files are not copied into the image or mounted into containers. Compose overrides `MONGODB_URI` with the internal `mongodb` hostname and the credentials from `.env`. All applications depend on the authenticated MongoDB healthcheck. The Polkadot example enables CPS with canonical and raw storage. Its explicit handler allowlist contains only `cps-payload-set`; deprecated Datalog/RWS handlers are disabled.
 
 ```bash
 cp .env.example .env
@@ -105,13 +105,12 @@ A typical production setup is to **split the roles across processes** so that ea
 
 ```
 ┌──────────────────────────┐    ┌────────────────────────────┐
-│ REST API                 │    │ Polkadot CPS/RWS worker    │
+│ REST API                 │    │ Polkadot CPS worker        │
 │ API_ENABLED=true         │    │ API_ENABLED=false          │
 │ MEASUREMENT_ENABLED=false│    │ INDEXER_ENABLED=true       │
 │ GEOCODING_ENABLED=false  │    │ MEASUREMENT_ENABLED=true   │
 │ INDEXER_ENABLED=false    │    │ ENABLED_HANDLERS=          │
-│                          │    │   cps-payload-set,          │
-│                          │    │   rws-extrinsic,rws-story   │
+│                          │    │   cps-payload-set           │
 └────────────┬─────────────┘    └─────────────┬──────────────┘
              │                                │
              ▼                                ▼
@@ -124,8 +123,8 @@ A typical production setup is to **split the roles across processes** so that ea
 Key points:
 
 - **Indexer state uses `ROBONOMICS_STATE_KEY=polkadot_robonomics`** in the `index_state` collection, so the Polkadot checkpoint is stable across process restarts.
-- **`MEASUREMENT_ENABLED` is enabled on the Polkadot worker only** — it starts both `MeasurementProcessorService` and `CpsAnchorProcessorService`. The CPS processor atomically claims `cps_anchors` with a lease and resolves each payload either directly from saved chain bytes or, for legacy CID anchors, through IPFS. The legacy processor may drain old pending rows, but no new datalog rows are created because `datalog-new-record` is absent from `ENABLED_HANDLERS`.
-- **`GEOCODING_ENABLED`** — same idea; it makes sense to keep it on a single instance because of Nominatim's rate limit.
+- **`MEASUREMENT_ENABLED` is enabled on the Polkadot worker only** — it starts `CpsAnchorProcessorService` and, during the compatibility period, the deprecated `MeasurementProcessorService`. The CPS processor atomically claims `cps_anchors` with a lease and resolves each payload either directly from saved chain bytes or, for CID anchors, through IPFS. No new datalog rows are created because the CPS-only allowlist excludes `datalog-new-record`.
+- **`GEOCODING_ENABLED`** starts deprecated enrichment of the `cities` compatibility projection and should remain disabled for CPS-only deployments.
 - **The REST API can be horizontally scaled** — it is stateless and reads the DB through repositories. Behind a load balancer you can put N instances with `API_ENABLED=true` and all the other flags set to `false`.
 
 ### Dedicated CPS role
@@ -145,6 +144,8 @@ ENABLED_HANDLERS=cps-payload-set
 ```
 
 A non-empty `CPS_NODE_IDS` defines roots for the initial recursive snapshot and restricts realtime events to those complete subtrees. If it is empty or absent, snapshot reads no nodes while realtime accepts any numeric NodeId. The two storage flags enable the lossless/canonical dual write; both default to `false` for a controlled rollout. `MEASUREMENT_ENABLED=true` also creates the legacy datalog processor; with `datalog-new-record` excluded it receives no new legacy records, but it can still process old pending rows already present in the shared database.
+
+Do not add Datalog/RWS handler names to new deployments. They remain available only for temporary compatibility and are documented in [Legacy functionality deprecation](./legacy-deprecation.md).
 
 See also [architecture.md → Run modes](./architecture.md#run-modes).
 

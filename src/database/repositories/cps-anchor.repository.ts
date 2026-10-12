@@ -183,6 +183,7 @@ export class CpsAnchorRepository {
       readonly invalidSignatureCount?: number;
       readonly decodedCount?: number;
       readonly unsupportedCount?: number;
+      /** @deprecated Число записей в совместимой legacy-проекции. */
       readonly legacyProjectionCount?: number;
       readonly privateSectionCount?: number;
       readonly errorCode?: string;

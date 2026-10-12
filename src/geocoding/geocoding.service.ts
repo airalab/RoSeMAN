@@ -27,6 +27,7 @@ interface NominatimResponse {
  * Фоновый сервис геокодирования сенсоров через Nominatim reverse geocoding API.
  * Поллит коллекцию sensor на записи с city === null и обогащает их данными
  * о местоположении (city, state, country).
+ * @deprecated Сервис обслуживает только legacy-коллекцию cities.
  */
 @Injectable()
 export class GeocodingService implements OnModuleInit, OnModuleDestroy {

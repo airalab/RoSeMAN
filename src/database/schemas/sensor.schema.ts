@@ -1,8 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
+/** @deprecated Документ совместимой legacy-проекции cities. */
 export type SensorDocument = HydratedDocument<Sensor>;
 
+/**
+ * Геокодированная проекция сенсора для старого Sensor API.
+ * @deprecated Используйте данные Connectivity Protocol V3.
+ */
 @Schema({ collection: 'cities', timestamps: true })
 export class Sensor {
   @Prop({ required: true, type: String, unique: true, index: true })
@@ -21,4 +26,5 @@ export class Sensor {
   country!: string | null;
 }
 
+/** @deprecated Схема совместимой legacy-проекции cities. */
 export const SensorSchema = SchemaFactory.createForClass(Sensor);

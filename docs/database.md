@@ -70,11 +70,11 @@ db.measurements.getIndexes();
 | `CpsAnchor`           | `cps_anchors`           | `CpsAnchorRepository`           | `CpsSnapshotService`, `CpsPayloadSetHandler`, `CpsAnchorProcessorService`  |
 | `ConnectivityPayload` | `connectivity_payloads` | `ConnectivityPayloadRepository` | Lossless CPS payload archive before decode                                 |
 | `ConnectivityRecord`  | `connectivity_records`  | `ConnectivityRecordRepository`  | Canonical CPS occurrence storage                                           |
-| `Datalog`             | `datalogs`              | `DatalogRepository`             | `DatalogNewRecordHandler`, `MeasurementProcessorService`, `MetricsService` |
-| `Measurement`         | `measurements`          | `MeasurementRepository`         | Legacy/CPS processors, `SensorService`                                     |
-| `Sensor`              | `cities`                | `SensorRepository`              | Legacy/CPS processors, `GeocodingService`, `SensorService`                 |
-| `Story`               | `stories`               | `StoryRepository`               | `RwsStoryHandler`, `StoryService`                                          |
-| `Subscription`        | `subscriptions`         | `SubscriptionRepository`        | `RwsExtrinsicHandler`, `RwsNewDevicesHandler`, `RwsStoryHandler`           |
+| `Datalog`             | `datalogs`              | `DatalogRepository`             | **Deprecated** Datalog queue and processor                                 |
+| `Measurement`         | `measurements`          | `MeasurementRepository`         | **Deprecated** Datalog/CPS compatibility projection                        |
+| `Sensor`              | `cities`                | `SensorRepository`              | **Deprecated** geocoded compatibility projection                           |
+| `Story`               | `stories`               | `StoryRepository`               | **Deprecated** RWS stories                                                 |
+| `Subscription`        | `subscriptions`         | `SubscriptionRepository`        | **Deprecated** RWS ownership                                               |
 | `IndexState`          | `index_state`           | `IndexStateRepository`          | `BlockIndexerService`, `StatusController`, `MetricsService`                |
 
 A detailed description of each schema (fields, types, indexes) is in [indexer.md → MongoDB schemas](./indexer.md#mongodb-schemas).
@@ -91,6 +91,8 @@ A detailed description of each schema (fields, types, indexes) is in [indexer.md
 Without claiming a complete list (each file is worth reading in full), here are characteristic methods — to give a sense of each repository's responsibility.
 
 ### DatalogRepository
+
+**Deprecated:** this repository is retained only for the legacy Datalog queue.
 
 - `upsertRecord({ block, sender, resultHash, status, timechain })` — idempotent insert via `$setOnInsert` keyed on the unique `{block, sender, resultHash}` index.
 - `findPending(limit)` — selects `status === IPFS_PENDING` with a limit for batch processing.

@@ -1,8 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
+/** @deprecated Документ совместимой legacy-проекции CPS/datalog. */
 export type MeasurementDocument = HydratedDocument<Measurement>;
 
+/**
+ * Совместимая проекция измерений для старого Sensor API.
+ * @deprecated Используйте ConnectivityRecord как каноническое хранилище CPS.
+ */
 @Schema({ collection: 'measurements', timestamps: true })
 export class Measurement {
   @Prop({ type: Types.ObjectId, ref: 'Datalog', index: true })
@@ -39,6 +44,7 @@ export class Measurement {
   timestamp!: number;
 }
 
+/** @deprecated Схема совместимой legacy-проекции measurements. */
 export const MeasurementSchema = SchemaFactory.createForClass(Measurement);
 
 MeasurementSchema.index({ sensor_id: 1, timestamp: 1 }, { unique: true });

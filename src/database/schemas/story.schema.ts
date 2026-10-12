@@ -1,11 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
+/** @deprecated Документ истории устаревшего RWS-потока. */
 export type StoryDocument = HydratedDocument<Story>;
 
 /**
  * Схема коллекции `story`.
  * Хранит пользовательские истории/сообщения, опубликованные через rws-подписку.
+ * @deprecated Актуальный CPS-поток не создаёт записи stories.
  */
 @Schema({ collection: 'stories', timestamps: true })
 export class Story {
@@ -34,6 +36,7 @@ export class Story {
   date!: string | null;
 }
 
+/** @deprecated Схема историй устаревшего RWS-потока. */
 export const StorySchema = SchemaFactory.createForClass(Story);
 
 StorySchema.index({ sensor_id: 1, timestamp: 1 }, { unique: true });

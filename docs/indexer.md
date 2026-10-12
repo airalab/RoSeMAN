@@ -1,10 +1,12 @@
 # RoSeMAN Indexer
 
-Indexer for legacy `datalog`/`rws` data and the CPS protocol of the Robonomics parachain, with JSON and binary IPFS processing, Ed25519 verification and sensor geocoding.
+Indexer for the CPS protocol of the Robonomics parachain, with binary/IPFS processing and Ed25519 verification. The `datalog`/`rws` path and its sensor projection are deprecated compatibility features; see [Legacy functionality deprecation](./legacy-deprecation.md).
 
 ## Architecture
 
 ### Legacy datalog/RWS path
+
+> **Deprecated since 2026-10-12.** This path remains operational only for existing deployments. New deployments must use the CPS path below.
 
 ```
                                ┌───────────────────────────────────────┐
@@ -127,9 +129,13 @@ Current names:
 | `rws-extrinsic`      | extrinsic | `rws.call`                                                     |
 | `rws-story`          | extrinsic | `rws.call` (reads `datalog.NewRecord` events of the extrinsic) |
 
+Only `cps-payload-set` is current. All other names in this table are deprecated and produce a startup warning when active. Use `ENABLED_HANDLERS=cps-payload-set` for new deployments.
+
 ## Handlers
 
 ### DatalogNewRecordHandler
+
+**Deprecated:** retained only to read historical Datalog deployments.
 
 File: `src/robonomics/handlers/datalog-new-record.handler.ts`. Reacts to `datalog.NewRecord`.
 
@@ -534,7 +540,7 @@ The four module flags are disabled only by the exact value `false` (see `app.mod
 | `ROBONOMICS_START_BLOCK`       | `latest`                                | First block when no saved checkpoint exists                          |
 | `ROBONOMICS_START_BLOCK_FORCE` | `false`                                 | Ignore the checkpoint and force the configured start on every launch |
 | `ROBONOMICS_STATE_KEY`         | `polkadot_robonomics`                   | Key in the `index_state` collection                                  |
-| `ROBONOMICS_ACCOUNTS`          | _(empty — all)_                         | Comma-separated whitelist of datalog senders                         |
+| `ROBONOMICS_ACCOUNTS`          | _(empty — all)_                         | **Deprecated:** whitelist of legacy datalog senders                   |
 
 ### IPFS
 

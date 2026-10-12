@@ -26,6 +26,7 @@ interface PublicSensor {
   };
 }
 
+/** @deprecated Коды ошибок совместимой проекции в legacy measurements. */
 export enum CpsMeasurementTransformErrorCode {
   InvalidGeo = 'INVALID_GEO',
   MissingOwner = 'MISSING_OWNER',
@@ -36,6 +37,7 @@ export enum CpsMeasurementTransformErrorCode {
   InvalidMeasurement = 'INVALID_MEASUREMENT',
 }
 
+/** @deprecated Результат совместимой проекции в legacy measurements. */
 export type CpsMeasurementTransformResult =
   | { readonly transformed: true; readonly measurement: Measurement }
   | {
@@ -43,7 +45,10 @@ export type CpsMeasurementTransformResult =
       readonly code: CpsMeasurementTransformErrorCode;
     };
 
-/** Преобразует проверенное сообщение Connectivity Protocol в документ MongoDB. */
+/**
+ * Преобразует проверенное сообщение Connectivity Protocol в legacy-документ.
+ * @deprecated Используйте canonical Connectivity records без legacy-проекции.
+ */
 @Injectable()
 export class CpsMeasurementTransformer {
   /**

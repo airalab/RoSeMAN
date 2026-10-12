@@ -2,6 +2,8 @@
 
 RoSeMAN is **a NestJS application that simultaneously serves as REST API server, blockchain indexer, IPFS data processor, and geocoder**. What exactly is started up at process boot is determined by environment flags. The same artifact can be launched in different configurations and the roles can be scaled independently.
 
+The Datalog/RWS pipeline, Sensor/Story API, geocoder and `measurements`/`cities` projection are [deprecated compatibility components](./legacy-deprecation.md). CPS ingestion, canonical Connectivity storage and API V3 are current.
+
 See also:
 
 - [Deployment](./deployment.md) — practical run scenarios;
@@ -40,7 +42,7 @@ Typical configurations:
 | -------------------------- | ----- | --------- | ------------- | ----------- | ----------------------------------------------------------- |
 | All-in-one (dev)           | ✅    | ✅        | ✅            | ✅          | Local development                                           |
 | REST API + IPFS + geocoder | ✅    | ❌        | ✅            | ✅          | Read-side instance without chain reads                      |
-| Polkadot CPS/RWS worker    | ❌    | ✅        | ✅            | ❌          | Headless, CPS processing and selected RWS handlers          |
+| Polkadot CPS worker        | ❌    | ✅        | ✅            | ❌          | Headless CPS processing; legacy handlers are not enabled    |
 | IPFS processor             | ❌    | ❌        | ✅            | ❌          | Headless, legacy processor; CPS too when `CPS_ENABLED=true` |
 | CPS indexer + processor    | ❌    | ✅        | ✅            | ❌          | `CPS_ENABLED=true`, `ENABLED_HANDLERS=cps-payload-set`      |
 
@@ -53,7 +55,7 @@ Robonomics (Polkadot) ─────────────▶ BlockIndexerSer
                                      │
               ┌──────────────────────┼────────────────────────┐
               ▼                      ▼                        ▼
-       legacy handlers       cps.PayloadSet handler    RWS handlers
+ deprecated legacy handlers  cps.PayloadSet handler  deprecated RWS handlers
               │                      │                        │
           datalogs              cps_anchors       subscriptions/stories
               │                      │

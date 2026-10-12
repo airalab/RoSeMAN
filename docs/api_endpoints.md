@@ -11,6 +11,7 @@ This page documents every HTTP route in newest-first order: V3, V2, then unversi
 - V3 ranges are `[start, end)`; V2 and legacy database ranges include both bounds.
 - V2 and legacy sensor ranges are limited by `MAX_PERIOD_DAYS` (31 days by default).
 - Path values must be URL-encoded when they contain characters that are not safe in a path segment.
+- Sensor V1/V2, Story V2 and `/api/status/agents` are deprecated and return `Deprecation` plus a documentation `Link`; V3 and `/api/status/last-block` do not.
 
 ## Endpoint index
 
@@ -35,7 +36,7 @@ This page documents every HTTP route in newest-first order: V3, V2, then unversi
 | Legacy     | `GET /api/sensor/messages/:start/:end`         | User messages                      |
 | Legacy     | `GET /api/sensor/:sensor/:start/:end`          | Sensor data                        |
 | Legacy     | `GET /api/status/agents`                       | Configured agents                  |
-| Legacy     | `GET /api/status/last-block`                   | Last indexed block                 |
+| Operations | `GET /api/status/last-block`                   | Last indexed block                 |
 
 ## V3 API
 
@@ -353,6 +354,8 @@ All `start` and `end` path parameters in this section are Unix seconds parsed as
 
 ## Legacy API
 
+All routes in this section except `/api/status/last-block` are deprecated and return the headers documented in [Legacy functionality deprecation](./legacy-deprecation.md).
+
 ### Legacy sensor endpoints
 
 - Controller: `src/api/sensor/sensor.controller.ts`
@@ -488,12 +491,14 @@ timestamp\tsensor_id\tgeo\tpm10\tpm25\t<other measurement fields>
 
 **Notes.** `geo` may be absent. Only sensor-data models are included.
 
-### Legacy status endpoints
+### Status endpoints
 
 - Controller: `src/api/status/status.controller.ts`
 - Prefix: `/api/status`
 
 ### `GET /api/status/agents`
+
+**Deprecated.** This route exposes configuration used by the legacy Datalog allowlist.
 
 **Purpose.** Returns agent addresses configured for the current process.
 
@@ -510,6 +515,8 @@ timestamp\tsensor_id\tgeo\tpm10\tpm25\t<other measurement fields>
 **Notes.** Values come from `ROBONOMICS_ACCOUNTS`. If none are configured, the result is an empty array.
 
 ### `GET /api/status/last-block`
+
+**Current operational endpoint.** This route is shared by the CPS block indexer and does not return deprecation headers.
 
 **Purpose.** Returns the last processed block stored for one index-state key.
 
@@ -530,6 +537,7 @@ timestamp\tsensor_id\tgeo\tpm10\tpm25\t<other measurement fields>
 - Total endpoints: 20.
 - HTTP methods: `GET` only.
 - V3 endpoints: 4.
-- V2 endpoints: 8 (6 sensor and 2 story).
-- Legacy endpoints: 8 (6 sensor and 2 status).
+- Deprecated V2 endpoints: 8 (6 sensor and 2 story).
+- Deprecated unversioned endpoints: 7 (6 sensor and `/api/status/agents`).
+- Current operational status endpoints: 1 (`/api/status/last-block`).
 - Controllers live in `ConnectivityModule`, `SensorModule`, `StoryModule` and `StatusModule`.

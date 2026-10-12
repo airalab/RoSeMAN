@@ -9,10 +9,13 @@ The newest API is listed first throughout the documentation.
 | Generation | Base path                    | Scope                                                              | Status                     |
 | ---------- | ---------------------------- | ------------------------------------------------------------------ | -------------------------- |
 | V3         | `/api/v3`                    | Verified Connectivity Protocol messages in JSON and protobuf       | Current protocol-aware API |
-| V2         | `/api/v2`                    | Aggregated sensor views, owner relationships and stories           | Current legacy-data API    |
-| Legacy     | `/api/sensor`, `/api/status` | Original sensor exports, measurements, messages and indexer status | Retained for compatibility |
+| V2         | `/api/v2`                    | Aggregated sensor views, owner relationships and stories           | Deprecated                 |
+| Legacy     | `/api/sensor`                | Original sensor exports, measurements and messages                 | Deprecated                 |
+| Operations | `/api/status`                | Indexer status; only `/agents` is deprecated                       | Mixed                      |
 
 Versioning is path-based. The application does not use NestJS `enableVersioning()`: each generation is mounted by its controller prefix. Adding a new generation therefore does not change the behavior of older routes.
+
+Deprecated routes retain their response bodies and status codes, but add `Deprecation: @1791763200` and a `Link` with `rel="deprecation"`. No `Sunset` header is emitted because no removal date is scheduled. See [Legacy functionality deprecation](./legacy-deprecation.md).
 
 ## Starting and addressing the API
 
@@ -199,6 +202,8 @@ Records indexed before `message_json` was introduced must be canonically backfil
 
 ## V2 API
 
+> **Deprecated since 2026-10-12.** Use the V3 Connectivity API for new integrations.
+
 V2 consists of two controllers:
 
 | Controller           | Prefix           | Responsibility                                                               |
@@ -212,6 +217,8 @@ Owner-based sensor results derive ownership from measurement records, not from b
 
 ## Legacy API
 
+> **Deprecated since 2026-10-12.** Existing clients remain supported during the compatibility period.
+
 The unversioned controllers are retained for existing clients:
 
 | Controller         | Prefix        | Responsibility                                                                        |
@@ -219,7 +226,7 @@ The unversioned controllers are retained for existing clients:
 | `SensorController` | `/api/sensor` | Cities, area queries, text export, measurement types, messages and per-sensor history |
 | `StatusController` | `/api/status` | Configured indexer agents and last processed block                                    |
 
-These routes use data from the legacy indexing pipeline. New Connectivity Protocol integrations should use V3.
+Sensor routes and `/api/status/agents` use legacy data/configuration and return deprecation headers. `/api/status/last-block` remains a current operational endpoint and does not return those headers. New Connectivity Protocol integrations should use V3.
 
 ## Endpoint reference
 

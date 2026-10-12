@@ -1,11 +1,13 @@
 # RoSeMAN
 
-**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode -- the indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN indexes legacy sensor datalogs and the CPS protocol from the Robonomics parachain, verifies IPFS payloads, stores measurements in MongoDB and serves them via REST API.
+**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode -- the CPS indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN indexes Connectivity Protocol data from the Robonomics parachain, verifies signed payloads, stores canonical messages in MongoDB and serves them via REST API.
+
+> **Deprecation notice:** Datalog/RWS indexing, the `measurements`/`cities` compatibility projection and the Sensor/Story APIs are deprecated and retained only for existing deployments. New deployments should use CPS indexing and the V3 Connectivity API. See [Legacy functionality deprecation](./docs/legacy-deprecation.md).
 
 ## Features
 
-- **Robonomics blockchain indexer** (Polkadot) — reads finalized blocks and processes `datalog.NewRecord` events and RWS extrinsics.
-- **IPFS loader** — asynchronous processing of `datalog` records with CIDs: fetches JSON via a list of gateways with fallback, parses it and stores sensor measurements.
+- **Robonomics blockchain indexer** (Polkadot) — reads finalized blocks and processes CPS payload events.
+- **Legacy compatibility** — Datalog/RWS handlers and their storage/API remain available only for existing deployments.
 - **CPS ingestion** — snapshots configured numeric NodeIds, handles realtime `cps.PayloadSet`, resolves legacy binary CIDs through IPFS or reads compressed batches directly from CPS storage, selects Zstandard/XZ/LZ4 from `cps.meta`, then verifies Ed25519 signatures before storing public Urban/Insight measurements.
 - **Reverse geocoding** — derives country/region/city from sensor coordinates.
 - **REST API** — sensor data (V1/V2), public Connectivity Protocol messages (V3), story list and indexer status. See [docs/api_endpoints.md](./docs/api_endpoints.md).
@@ -44,7 +46,7 @@ src/
 Environment files:
 
 - `.env` — shared settings + REST API (see [.env.example](./.env.example))
-- `.env.polkadot` — Polkadot CPS/RWS indexer (see [.env.polkadot.example](./.env.polkadot.example)); its handler allowlist excludes legacy datalog ingestion
+- `.env.polkadot` — Polkadot CPS indexer (see [.env.polkadot.example](./.env.polkadot.example)); its handler allowlist contains only `cps-payload-set`
 
 Key flags for splitting processes:
 
@@ -52,8 +54,8 @@ Key flags for splitting processes:
 | --------------------------------- | ------------------------------------------------------ |
 | `API_ENABLED`                     | REST API + Prometheus                                  |
 | `INDEXER_ENABLED`                 | Robonomics block scanner                               |
-| `MEASUREMENT_ENABLED`             | Legacy datalog and CPS queue processing                |
-| `GEOCODING_ENABLED`               | Reverse geocoding                                      |
+| `MEASUREMENT_ENABLED`             | CPS queue processing plus deprecated compatibility jobs |
+| `GEOCODING_ENABLED`               | Deprecated reverse geocoding of the cities projection  |
 | `CPS_ENABLED`                     | CPS snapshot, realtime handler and CPS processor       |
 | `CPS_CANONICAL_STORAGE_ENABLED`   | Canonical CPS occurrence writes (default off)          |
 | `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | Exact CPS payload archive writes (default off)         |
@@ -118,3 +120,4 @@ The full documentation lives in **[docs/](./docs/README.md)**:
 - [Endpoint reference](./docs/api_endpoints.md) — REST endpoint reference
 - [Database](./docs/database.md) — Repository pattern, repositories overview
 - [Metrics](./docs/metrics.md) — Prometheus `/metrics` endpoint
+- [Legacy deprecation](./docs/legacy-deprecation.md) — deprecated components, runtime signals and migration targets

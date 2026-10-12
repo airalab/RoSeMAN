@@ -102,6 +102,9 @@ export class CpsAnchorProcessorService
   /** Запускает немедленную обработку и последующий периодический poll. */
   onModuleInit(): void {
     if (!this.enabled) return;
+    this.logger.warn(
+      'Deprecated CPS compatibility projection to measurements/cities is active; use canonical Connectivity storage and V3 API',
+    );
     this.logger.log(`Starting CPS poll every ${this.pollInterval}ms`);
     void this.runOnce().catch((error: unknown) => this.logPollError(error));
     this.timer = setInterval(() => {

@@ -56,6 +56,11 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     this.blockRead.set({ chain }, block);
   }
 
+  /**
+   * Обновляет размер устаревшей очереди datalogs/IPFS.
+   * @param count - число необработанных записей
+   * @deprecated CPS использует очередь cps_anchors и отдельные метрики.
+   */
   setIpfsQueue(count: number) {
     this.ipfsQueue.set(count);
   }

@@ -1,4 +1,5 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { DeprecatedApi } from '../common/interceptors/legacy-api-deprecation.interceptor.js';
 import { StoryListQueryDto } from './dto/story-list-query.dto.js';
 import {
   StoryService,
@@ -8,7 +9,9 @@ import {
 
 /**
  * Контроллер для доступа к историям.
+ * @deprecated Истории из RWS больше не индексируются в актуальном CPS-потоке.
  */
+@DeprecatedApi()
 @Controller('v2/story')
 export class StoryController {
   constructor(private readonly storyService: StoryService) {}

@@ -16,7 +16,7 @@ import { MetricsService } from './metrics.service.js';
     }),
     makeGaugeProvider({
       name: 'roseman_ipfs_queue',
-      help: 'roseman_ipfs_queue Number of unprocessed ipfs hashes in queue',
+      help: 'DEPRECATED: number of unprocessed legacy datalog IPFS hashes',
     }),
     makeCounterProvider({
       name: 'roseman_cps_raw_payload_bytes_total',
@@ -40,7 +40,7 @@ import { MetricsService } from './metrics.service.js';
     }),
     makeCounterProvider({
       name: 'roseman_cps_projection_errors_total',
-      help: 'Total CPS records affected by legacy projection errors',
+      help: 'DEPRECATED: CPS records affected by legacy projection errors',
     }),
     CpsMetricsService,
   ],

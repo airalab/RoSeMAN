@@ -68,6 +68,7 @@ export class CpsAnchor {
   @Prop({ required: true, type: Number, default: 0 })
   unsupported_count!: number;
 
+  /** @deprecated Счётчик записи в совместимую коллекцию measurements. */
   @Prop({ required: true, type: Number, default: 0 })
   legacy_projection_count!: number;
 

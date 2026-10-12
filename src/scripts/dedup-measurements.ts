@@ -1,4 +1,5 @@
-// Одноразовый скрипт поиска и удаления дублей в коллекции measurements.
+// DEPRECATED: одноразовый скрипт обслуживает legacy-коллекцию measurements.
+// Для новых CPS-данных используйте canonical connectivity_records.
 //
 // Дубль — несколько документов с одинаковыми (sensor_id, timestamp). В каждой
 // такой группе оставляется один документ (с максимальным _id — самая свежая
@@ -76,6 +77,9 @@ async function run(): Promise<void> {
   const startedAt = Date.now();
 
   try {
+    logger.warn(
+      'Deprecated maintenance command: measurements is a legacy compatibility collection',
+    );
     const model = app.get<Model<MeasurementDocument>>(
       getModelToken(Measurement.name),
     );

@@ -150,6 +150,8 @@ describe('Connectivity API (e2e)', () => {
     expect(response.body.result.items[0]).not.toHaveProperty('nonce');
     expect(response.body.result.items[0]).not.toHaveProperty('signature');
     expect(response.body.result.next_cursor).toBeNull();
+    expect(response.headers.deprecation).toBeUndefined();
+    expect(response.headers.link).toBeUndefined();
   });
 
   it('GET /api/v3/messages/latest/json возвращает последнее сообщение каждого сенсора', async () => {

@@ -9,13 +9,16 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { type Response } from 'express';
+import { DeprecatedApi } from '../common/interceptors/legacy-api-deprecation.interceptor.js';
 import { DateRangeGuard } from '../common/guards/date-range.guard.js';
 import { SensorJsonQueryDto } from './dto/sensor-json-query.dto.js';
 import { SensorService } from './sensor.service.js';
 
 /**
  * Контроллер для получения справочных данных по сенсорам.
+ * @deprecated Используйте Connectivity API V3; контроллер читает legacy-проекцию.
  */
+@DeprecatedApi()
 @Controller('sensor')
 export class SensorController {
   constructor(private readonly sensorService: SensorService) {}

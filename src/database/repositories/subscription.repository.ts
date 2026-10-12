@@ -8,6 +8,7 @@ import {
 
 /**
  * Репозиторий для работы с коллекцией subscription.
+ * @deprecated CPS разрешает владельца через registry/scopes.
  */
 @Injectable()
 export class SubscriptionRepository {

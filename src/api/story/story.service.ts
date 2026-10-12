@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { StoryRepository } from '../../database/repositories/story.repository.js';
 
+/** @deprecated Тип ответа legacy RWS Story API. */
 export interface StoryListItem {
   author: string;
   sensor_id: string;
@@ -10,11 +11,13 @@ export interface StoryListItem {
   icon: string;
 }
 
+/** @deprecated Тип ответа legacy RWS Story API. */
 export interface StoryListResult {
   totalPages: number;
   list: StoryListItem[];
 }
 
+/** @deprecated Тип ответа legacy RWS Story API. */
 export interface StoryLastItem {
   author: string;
   message: string;
@@ -24,7 +27,8 @@ export interface StoryLastItem {
 }
 
 /**
- * Сервис для чтения историй.
+ * Сервис для чтения историй RWS.
+ * @deprecated Актуальный CPS-поток не создаёт записи stories.
  */
 @Injectable()
 export class StoryService {

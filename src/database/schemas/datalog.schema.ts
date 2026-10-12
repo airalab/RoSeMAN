@@ -2,8 +2,13 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { DatalogStatus } from '../../common/constants/datalog-status.enum.js';
 
+/** @deprecated Документ устаревшей очереди datalogs. */
 export type DatalogDocument = HydratedDocument<Datalog>;
 
+/**
+ * Запись устаревшей очереди datalogs.
+ * @deprecated Новая индексация использует CpsAnchor.
+ */
 @Schema({ collection: 'datalogs', timestamps: true })
 export class Datalog {
   @Prop({ required: true, type: Number, index: true })
@@ -25,6 +30,7 @@ export class Datalog {
   errorMessage?: string;
 }
 
+/** @deprecated Схема устаревшей очереди datalogs. */
 export const DatalogSchema = SchemaFactory.createForClass(Datalog);
 
 DatalogSchema.index({ block: 1, sender: 1, resultHash: 1 }, { unique: true });

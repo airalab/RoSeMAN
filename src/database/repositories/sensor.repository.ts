@@ -5,6 +5,7 @@ import { Sensor, type SensorDocument } from '../schemas/sensor.schema.js';
 
 /**
  * Репозиторий для работы с коллекцией sensor.
+ * @deprecated Используйте canonical Connectivity storage без cities-проекции.
  */
 @Injectable()
 export class SensorRepository {

@@ -18,6 +18,7 @@ interface AggregatedMaxEntry {
   value: number;
 }
 
+/** @deprecated Элемент ответа legacy Sensor API. */
 export interface SensorListEntry {
   sensor_id: string;
   model: number;
@@ -30,6 +31,7 @@ export interface SensorListEntry {
  * Запись сенсора с его owner. owner берётся из самого свежего измерения
  * сенсора (поле owner коллекции measurement) и равен пустой строке, если
  * в измерении не указан.
+ * @deprecated Используйте представление Connectivity API V3.
  */
 export interface OwnedSensorEntry extends SensorListEntry {
   owner: string;
@@ -39,6 +41,7 @@ export interface OwnedSensorEntry extends SensorListEntry {
  * Запись сенсора с его device_model и owner. Используется для построения
  * списка маркеров: device_model и owner берутся из самого свежего измерения
  * и нужны для фильтрации insight-сенсоров по владельцу.
+ * @deprecated Используйте представление Connectivity API V3.
  */
 export interface MarkerSensorEntry extends OwnedSensorEntry {
   device_model: string;
@@ -46,6 +49,7 @@ export interface MarkerSensorEntry extends OwnedSensorEntry {
 
 /**
  * Репозиторий для работы с коллекцией measurement.
+ * @deprecated Используйте ConnectivityRecordRepository для CPS-данных.
  */
 @Injectable()
 export class MeasurementRepository {

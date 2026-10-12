@@ -35,6 +35,7 @@ export interface ConnectivityRecordInput {
   readonly error_code?: string;
   readonly payload_type?: ConnectivityPayloadType;
   readonly measurement_types: string[];
+  /** @deprecated Ошибка необязательной проекции в legacy measurements. */
   readonly projection_error_code?: string;
 }
 

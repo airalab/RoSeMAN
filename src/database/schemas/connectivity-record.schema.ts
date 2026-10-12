@@ -88,6 +88,7 @@ export class ConnectivityRecord {
   @Prop({ required: true, type: [String], default: [] })
   measurement_types!: string[];
 
+  /** @deprecated Ошибка необязательной проекции в legacy measurements. */
   @Prop({ type: String })
   projection_error_code?: string;
 }

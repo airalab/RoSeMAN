@@ -33,7 +33,8 @@ interface MarkerSensorItem extends SensorListEntry {
 const INSIGHT_REGEX = /insight/i;
 
 /**
- * Сервис для агрегации данных сенсоров.
+ * Сервис для агрегации данных legacy-проекции сенсоров.
+ * @deprecated Используйте Connectivity API V3 и canonical records.
  */
 @Injectable()
 export class SensorService {
@@ -321,7 +322,18 @@ export class SensorService {
       const values = allMeasurementKeys.map((key) => {
         const v = doc.measurement[key];
         if (v == null) return '';
-        return typeof v === 'object' ? JSON.stringify(v) : String(v);
+        if (typeof v === 'object') return JSON.stringify(v);
+        if (typeof v === 'string') return v;
+        if (
+          typeof v === 'number' ||
+          typeof v === 'boolean' ||
+          typeof v === 'bigint' ||
+          typeof v === 'symbol' ||
+          typeof v === 'function'
+        ) {
+          return v.toString();
+        }
+        return '';
       });
 
       return [formattedDate, doc.sensor_id, geo, ...values].join('\t');

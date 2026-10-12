@@ -44,6 +44,7 @@ export class CpsMetricsService {
   /**
    * Учитывает records, для которых не удалось обновить legacy-проекцию.
    * @param count - число records с ошибкой проекции
+   * @deprecated Метрика исчезнет вместе с compatibility projection.
    */
   recordProjectionErrors(count: number): void {
     this.increment(this.projectionErrors, count);

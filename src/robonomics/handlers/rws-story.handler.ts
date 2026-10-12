@@ -23,6 +23,7 @@ interface StoryPayload {
  * Для каждого события `datalog.NewRecord`, порождённого этим экстринсиком,
  * проверяет что подписант (owner) присутствует в коллекции subscription,
  * парсит inline-JSON и сохраняет записи типа Story (model=5).
+ * @deprecated Актуальный CPS-поток не использует RWS stories.
  */
 @Injectable()
 export class RwsStoryHandler implements ChainExtrinsicHandler {

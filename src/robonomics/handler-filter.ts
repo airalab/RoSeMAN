@@ -1,6 +1,12 @@
 import { Logger } from '@nestjs/common';
 
 const logger = new Logger('HandlerFilter');
+const LEGACY_HANDLER_NAMES = new Set([
+  'datalog-new-record',
+  'rws-new-devices',
+  'rws-extrinsic',
+  'rws-story',
+]);
 
 /**
  * Парсит env-переменную в Set имён хендлеров.
@@ -34,16 +40,28 @@ export function filterHandlers<T extends { name: string }>(
   const enabled = parseList(process.env.ENABLED_HANDLERS);
   const disabled = parseList(process.env.DISABLED_HANDLERS);
 
-  if (!enabled && !disabled) return handlers;
+  const filtered =
+    enabled || disabled
+      ? handlers.filter((handler) => {
+          if (enabled && !enabled.has(handler.name)) return false;
+          if (disabled && disabled.has(handler.name)) return false;
+          return true;
+        })
+      : handlers;
 
-  const filtered = handlers.filter((h) => {
-    if (enabled && !enabled.has(h.name)) return false;
-    if (disabled && disabled.has(h.name)) return false;
-    return true;
-  });
+  if (enabled || disabled) {
+    const activeNames = filtered.map((handler) => handler.name).join(', ');
+    logger.log(`Active ${kind} handlers: ${activeNames || '(none)'}`);
+  }
 
-  const activeNames = filtered.map((h) => h.name).join(', ') || '(none)';
-  logger.log(`Active ${kind} handlers: ${activeNames}`);
+  const activeLegacyNames = filtered
+    .map((handler) => handler.name)
+    .filter((name) => LEGACY_HANDLER_NAMES.has(name));
+  if (activeLegacyNames.length > 0) {
+    logger.warn(
+      `Deprecated legacy ${kind} handlers are active: ${activeLegacyNames.join(', ')}`,
+    );
+  }
 
   return filtered;
 }

@@ -1,6 +1,7 @@
 import { Controller, Get, NotFoundException, Query } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IndexStateRepository } from '../../database/repositories/index-state.repository.js';
+import { DeprecatedApi } from '../common/interceptors/legacy-api-deprecation.interceptor.js';
 
 @Controller('status')
 export class StatusController {
@@ -12,8 +13,10 @@ export class StatusController {
   /**
    * Возвращает список адресов агентов из конфига.
    * GET /api/status/agents
+   * @deprecated ROBONOMICS_ACCOUNTS используется только legacy datalog-потоком.
    */
   @Get('agents')
+  @DeprecatedApi()
   getAgents(): { result: string[] } {
     const accounts = this.config.get<string[]>('robonomics.accounts') ?? [];
     return { result: accounts };

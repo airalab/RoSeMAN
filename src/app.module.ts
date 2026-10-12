@@ -28,10 +28,10 @@ import { RobonomicsModule } from './robonomics/robonomics.module.js';
  * Собирает список импортируемых модулей.
  *
  * Флаги окружения (все по умолчанию включены):
- * - `API_ENABLED` — StatusModule, SensorModule, StoryModule (REST API).
+ * - `API_ENABLED` — StatusModule, deprecated Sensor/Story и Connectivity API.
  * - `INDEXER_ENABLED` — RobonomicsModule (сканирование блоков).
- * - `MEASUREMENT_ENABLED` — MeasurementModule (обработка IPFS-записей в measurements).
- * - `GEOCODING_ENABLED` — GeocodingModule (обратное геокодирование сенсоров).
+ * - `MEASUREMENT_ENABLED` — CPS processor и deprecated datalog/projection.
+ * - `GEOCODING_ENABLED` — deprecated геокодирование cities-проекции.
  *
  * Выставив нужные флаги в `false`, можно запускать отдельные инстансы:
  * индексатор, обработчик IPFS, геокодер, REST API — в любых комбинациях.

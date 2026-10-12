@@ -7,6 +7,7 @@ import { RobonomicsService } from '../robonomics.service.js';
 /**
  * Обработчик события `rws.NewDevices`.
  * Сохраняет каждый аккаунт из списка устройств подписки в коллекцию subscription.
+ * @deprecated CPS разрешает владельца через registry/scopes.
  */
 @Injectable()
 export class RwsNewDevicesHandler implements ChainEventHandler {

@@ -10,6 +10,7 @@ import type { ChainExtrinsicHandler } from '../interfaces/chain-extrinsic-handle
  * При успешном выполнении любого rws-экстринсика выполняет upsert
  * записи subscription (account = signer, owner = args[0]): существующую
  * запись обновляет номером блока, отсутствующую — создаёт.
+ * @deprecated CPS разрешает владельца через registry/scopes.
  */
 @Injectable()
 export class RwsExtrinsicHandler implements ChainExtrinsicHandler {

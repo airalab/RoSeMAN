@@ -9,6 +9,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+/**
+ * Граница координат для legacy Sensor API.
+ * @deprecated Используйте фильтры Connectivity API V3.
+ */
 export class GeoBound {
   south!: number;
   west!: number;
@@ -53,6 +57,7 @@ function parseBound(value: string): GeoBound {
  * DTO для query-параметров эндпоинта GET /api/sensor/json.
  * Обязательны start и end (unix timestamp).
  * Необходим хотя бы один из параметров: bound или city.
+ * @deprecated Используйте DTO Connectivity API V3.
  */
 export class SensorJsonQueryDto {
   @Type(() => Number)

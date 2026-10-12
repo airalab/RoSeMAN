@@ -1,6 +1,6 @@
 # RoSeMAN documentation
 
-**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode — indexer for legacy `datalog`/`rws` data and the CPS protocol of the Robonomics parachain, with verified IPFS ingestion and a REST API on top of the collected measurements.
+**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode — indexer for the CPS protocol of the Robonomics parachain, with verified payload ingestion and a protocol-aware REST API. Datalog/RWS support is retained as a [deprecated compatibility layer](./legacy-deprecation.md).
 
 The documentation covers every project component: blockchain indexer, IPFS processing, geocoding, REST API, metrics and deployment.
 
@@ -10,6 +10,7 @@ The documentation covers every project component: blockchain indexer, IPFS proce
 
 - **[Architecture](./architecture.md)** — project modules, run modes (full / headless / indexer), `.env` loading cascade, data flow between services.
 - **[Deployment](./deployment.md)** — local launch and Docker Compose configuration for Polkadot and REST API on a single DB.
+- **[Legacy deprecation](./legacy-deprecation.md)** — deprecated components, runtime signals and migration targets.
 
 ### Services
 

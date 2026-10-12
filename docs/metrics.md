@@ -20,7 +20,7 @@ Default Node.js metrics (`process_cpu_seconds_total`, `nodejs_eventloop_lag_seco
 | Metric                    | Type  | Labels    | Description                                      |
 |---------------------------|-------|-----------|--------------------------------------------------|
 | `roseman_block_read`      | gauge | `chain`   | Number of the last processed block for each `index_state` key (currently `polkadot_robonomics`) |
-| `roseman_ipfs_queue`      | gauge | —         | Count of `datalogs` records with status `IPFS_PENDING` (unprocessed IPFS CIDs)            |
+| `roseman_ipfs_queue`      | gauge | —         | **Deprecated:** count of legacy `datalogs` records with status `IPFS_PENDING`              |
 
 ## Exported CPS counters
 
@@ -31,13 +31,15 @@ Default Node.js metrics (`process_cpu_seconds_total`, `nodejs_eventloop_lag_seco
 | `roseman_cps_invalid_signatures_total`      | counter | Invalid signatures in completed anchors                            |
 | `roseman_cps_unsupported_messages_total`    | counter | Unsupported protocol messages in completed anchors                 |
 | `roseman_cps_private_sections_total`        | counter | Encrypted private sections in completed anchors                    |
-| `roseman_cps_projection_errors_total`       | counter | Records affected by failed legacy-projection attempts              |
+| `roseman_cps_projection_errors_total`       | counter | **Deprecated:** records affected by failed compatibility projection |
 
 Completed-anchor counters are incremented only after the final anchor status is persisted. A retry therefore does not count the same successful anchor twice. Projection errors describe failed attempts and may increase again if a later retry fails at the same boundary.
 
 These counters are process-local and reset when the process restarts; they are not reconstructed from MongoDB. Raw bytes are counted only when `CPS_RAW_PAYLOAD_STORAGE_ENABLED=true`, and canonical records only when `CPS_CANONICAL_STORAGE_ENABLED=true`.
 
 ## MetricsService
+
+`roseman_ipfs_queue` is retained only while the deprecated Datalog queue remains available. CPS monitoring should use the CPS counters and anchor storage instead.
 
 File: `src/metrics/metrics.service.ts`. Gauge values come from the DB:
 

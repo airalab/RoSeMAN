@@ -43,6 +43,10 @@ interface RawMessageEntry {
   type?: number;
 }
 
+/**
+ * Обрабатывает записи старого формата из коллекции datalogs.
+ * @deprecated Новая индексация выполняется через CPS и canonical storage.
+ */
 @Injectable()
 export class MeasurementProcessorService
   implements OnModuleInit, OnModuleDestroy
@@ -60,6 +64,9 @@ export class MeasurementProcessorService
 
   onModuleInit(): void {
     const interval = this.config.get<number>('ipfs.pollInterval')!;
+    this.logger.warn(
+      'Deprecated legacy datalog measurement processor is active; use CPS ingestion for new data',
+    );
     this.logger.log(`Starting IPFS poll every ${interval}ms`);
     this.timer = setInterval(() => {
       this.poll().catch((err) =>

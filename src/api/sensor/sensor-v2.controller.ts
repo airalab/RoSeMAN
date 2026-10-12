@@ -7,13 +7,16 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { DateRangeGuard } from '../common/guards/date-range.guard.js';
+import { DeprecatedApi } from '../common/interceptors/legacy-api-deprecation.interceptor.js';
 import { SensorService } from './sensor.service.js';
 
 const TYPE_REGEX = /^[a-z0-9_]+$/;
 
 /**
  * Контроллер для получения агрегированных данных сенсоров.
+ * @deprecated Используйте Connectivity API V3; контроллер читает legacy-проекцию.
  */
+@DeprecatedApi()
 @Controller('v2/sensor')
 export class SensorV2Controller {
   constructor(private readonly sensorService: SensorService) {}

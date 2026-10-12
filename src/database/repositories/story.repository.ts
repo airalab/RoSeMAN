@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Story, type StoryDocument } from '../schemas/story.schema.js';
 
+/** @deprecated Входные данные устаревшего RWS Story-потока. */
 export interface StoryInput {
   block?: number;
   author: string;
@@ -16,6 +17,7 @@ export interface StoryInput {
 
 /**
  * Репозиторий для работы с коллекцией story.
+ * @deprecated Актуальный CPS-поток не создаёт записи stories.
  */
 @Injectable()
 export class StoryRepository {
