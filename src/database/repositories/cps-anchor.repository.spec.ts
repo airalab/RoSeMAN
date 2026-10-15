@@ -2,6 +2,9 @@ import { type Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
 import {
+  ConnectivityRecordDecodeStatus,
+  ConnectivitySignatureStatus,
+  ConnectivityStructureStatus,
   CpsPayloadSource,
   ProtocolBatchWireFormat,
 } from '../../common/constants/connectivity-storage.enum.js';
@@ -37,6 +40,94 @@ function asModel(mock: ModelMock): Model<CpsAnchorDocument> {
 }
 
 describe('CpsAnchorRepository', () => {
+  it('выбирает текущие сенсоры владельца только из канонических CPS-записей', async () => {
+    const model = createModelMock();
+    const exec = jest
+      .fn()
+      .mockResolvedValue([{ _id: 'sensor-a' }, { _id: 'sensor-b' }]);
+    const aggregate = jest.fn().mockReturnValue({ exec });
+    Object.assign(model, { aggregate });
+    const repository = new CpsAnchorRepository(asModel(model));
+
+    await expect(
+      repository.findCurrentSensorIdsByOwner('5Owner'),
+    ).resolves.toEqual(['sensor-a', 'sensor-b']);
+
+    const aggregateCalls = aggregate.mock.calls as unknown as Array<
+      [Array<Record<string, unknown>>]
+    >;
+    const pipeline = aggregateCalls[0][0];
+    expect(pipeline[0]).toEqual({ $match: { owner: '5Owner' } });
+    expect(pipeline).toEqual(
+      expect.arrayContaining([
+        {
+          $group: { _id: '$owned_records.sensor_id' },
+        },
+        {
+          $match: { 'latest_anchors.owner': '5Owner' },
+        },
+        {
+          $sort: { _id: 1 },
+        },
+      ]),
+    );
+    expect(pipeline[1]).toEqual({
+      $lookup: {
+        from: 'connectivity_records',
+        let: { sourceKey: '$source_key' },
+        pipeline: [
+          {
+            $match: {
+              structure_status: ConnectivityStructureStatus.Valid,
+              signature_status: ConnectivitySignatureStatus.Valid,
+              decode_status: ConnectivityRecordDecodeStatus.Decoded,
+              message_json: { $type: 'object' },
+              sensor_id: { $type: 'string' },
+              $expr: { $eq: ['$payload_key', '$$sourceKey'] },
+            },
+          },
+          { $project: { _id: 0, sensor_id: 1 } },
+        ],
+        as: 'owned_records',
+      },
+    });
+    expect(pipeline[4]).toEqual({
+      $lookup: {
+        from: 'connectivity_records',
+        let: { sensorId: '$_id' },
+        pipeline: [
+          {
+            $match: {
+              structure_status: ConnectivityStructureStatus.Valid,
+              signature_status: ConnectivitySignatureStatus.Valid,
+              decode_status: ConnectivityRecordDecodeStatus.Decoded,
+              message_json: { $type: 'object' },
+              sensor_id: { $type: 'string' },
+              $expr: { $eq: ['$sensor_id', '$$sensorId'] },
+            },
+          },
+          { $sort: { recorded_at: -1, _id: -1 } },
+          { $limit: 1 },
+          { $project: { _id: 0, payload_key: 1 } },
+        ],
+        as: 'latest_records',
+      },
+    });
+    expect(exec).toHaveBeenCalled();
+  });
+
+  it('не обращается к MongoDB для пустого владельца', async () => {
+    const model = createModelMock();
+    const aggregate = jest.fn();
+    Object.assign(model, { aggregate });
+    const repository = new CpsAnchorRepository(asModel(model));
+
+    await expect(repository.findCurrentSensorIdsByOwner('')).resolves.toEqual(
+      [],
+    );
+    expect(aggregate).not.toHaveBeenCalled();
+  });
+
   it('сохраняет максимальный u64 NodeId без преобразования в number', async () => {
     const model = createModelMock();
     const exec = jest.fn().mockResolvedValue(undefined);

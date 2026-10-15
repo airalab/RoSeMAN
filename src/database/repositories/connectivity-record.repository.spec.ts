@@ -222,6 +222,118 @@ describe('ConnectivityRecordRepository', () => {
     },
   );
 
+  it('агрегирует максимальные сообщения без фильтра measurement_type', async () => {
+    const sensorId = Buffer.alloc(32, 1);
+    const nonce = Buffer.alloc(16, 2);
+    const signature = Buffer.alloc(64, 3);
+    const messageRaw = new mongo.Binary();
+    messageRaw.put(10);
+    const record = {
+      _id: new Types.ObjectId('68b95ae07796696240566a01'),
+      sensor_id_raw: new mongo.Binary(sensorId),
+      timestamp_ms: Types.Decimal128.fromString('1788517399949'),
+      recorded_at: new Date('2026-09-04T10:23:19.949Z'),
+      nonce: new mongo.Binary(nonce),
+      message_json: { metadata: {} },
+      message_raw: messageRaw,
+      signature: new mongo.Binary(signature),
+    };
+    const exec = jest.fn().mockResolvedValue([record]);
+    const aggregate = jest.fn().mockReturnValue({ exec });
+    const model = { aggregate } as unknown as Model<ConnectivityRecordDocument>;
+    const repository = new ConnectivityRecordRepository(model);
+    const start = new Date('2026-09-04T00:00:00.000Z');
+    const end = new Date('2026-09-05T00:00:00.000Z');
+
+    const result = await repository.findMaxMessages({
+      includeMessageRaw: true,
+      start,
+      end,
+      type: 'futureMetric',
+    });
+
+    expect(aggregate).toHaveBeenCalledWith([
+      {
+        $match: {
+          structure_status: ConnectivityStructureStatus.Valid,
+          signature_status: ConnectivitySignatureStatus.Valid,
+          decode_status: ConnectivityRecordDecodeStatus.Decoded,
+          message_json: { $type: 'object' },
+          recorded_at: { $gte: start, $lt: end },
+        },
+      },
+      {
+        $set: {
+          max_public: {
+            $concatArrays: [
+              { $ifNull: ['$message_json.urban.public', []] },
+              { $ifNull: ['$message_json.insight.public', []] },
+            ],
+          },
+        },
+      },
+      { $unwind: '$max_public' },
+      {
+        $set: {
+          max_sensors: { $objectToArray: '$max_public' },
+        },
+      },
+      { $unwind: '$max_sensors' },
+      {
+        $set: {
+          max_measurements: { $objectToArray: '$max_sensors.v' },
+        },
+      },
+      { $unwind: '$max_measurements' },
+      {
+        $match: {
+          'max_measurements.k': 'futureMetric',
+          'max_measurements.v': { $type: 'object' },
+        },
+      },
+      {
+        $set: {
+          max_values: { $objectToArray: '$max_measurements.v' },
+        },
+      },
+      { $unwind: '$max_values' },
+      { $match: { 'max_values.v': { $type: 'number' } } },
+      { $set: { max_value: '$max_values.v' } },
+      {
+        $sort: {
+          sensor_id: 1,
+          max_value: -1,
+          recorded_at: -1,
+          _id: -1,
+        },
+      },
+      { $group: { _id: '$sensor_id', record: { $first: '$$ROOT' } } },
+      { $replaceRoot: { newRoot: '$record' } },
+      { $sort: { max_value: -1, recorded_at: -1, _id: -1 } },
+      {
+        $project: {
+          _id: 1,
+          sensor_id_raw: 1,
+          timestamp_ms: 1,
+          recorded_at: 1,
+          nonce: 1,
+          message_json: 1,
+          signature: 1,
+          message_raw: 1,
+        },
+      },
+    ]);
+    expect(result).toEqual([
+      {
+        ...record,
+        sensor_id_raw: sensorId,
+        nonce,
+        signature,
+        message_raw: Buffer.from([10]),
+      },
+    ]);
+  });
+
   it.each([false, true])(
     'нормализует BSON Binary с includeMessageRaw=%s',
     async (includeMessageRaw) => {
@@ -276,4 +388,95 @@ describe('ConnectivityRecordRepository', () => {
       expect(Buffer.isBuffer(result[0].signature)).toBe(true);
     },
   );
+
+  it('выбирает последние валидные GPS-позиции без актуальной проекции', async () => {
+    const candidate = {
+      sensorId: 'aa'.repeat(32),
+      geo: { lat: 53.2, lng: 50.1 },
+      sourceRecordKey: 'cps:1:cid:0',
+      sourceRecordId: new Types.ObjectId(),
+      sourceRecordedAt: new Date('2026-10-15T10:00:00.000Z'),
+    };
+    const exec = jest.fn().mockResolvedValue([candidate]);
+    const aggregate = jest.fn().mockReturnValue({ exec });
+    const model = { aggregate } as unknown as Model<ConnectivityRecordDocument>;
+    const repository = new ConnectivityRecordRepository(model);
+
+    await expect(
+      repository.findLatestUnprojectedSensorLocations(25),
+    ).resolves.toEqual([candidate]);
+
+    const calls = aggregate.mock.calls as unknown as Array<
+      [Array<Record<string, unknown>>]
+    >;
+    const pipeline = calls[0][0];
+    expect(pipeline[0]).toEqual({
+      $match: {
+        structure_status: ConnectivityStructureStatus.Valid,
+        signature_status: ConnectivitySignatureStatus.Valid,
+        decode_status: ConnectivityRecordDecodeStatus.Decoded,
+        sensor_id: { $type: 'string' },
+        recorded_at: { $type: 'date' },
+        measurement_types: 'location',
+      },
+    });
+    expect(JSON.stringify(pipeline)).toContain('"from":"sensor_locations"');
+    expect(pipeline).toContainEqual({ $limit: 25 });
+    expect(pipeline).toContainEqual({
+      $replaceRoot: { newRoot: '$candidate' },
+    });
+  });
+
+  it('выбирает валидные Urban и Insight записи для CSV по сенсорам и периоду', async () => {
+    const records = [
+      {
+        sensor_id: 'aa'.repeat(32),
+        recorded_at: new Date('2026-09-03T10:00:00.123Z'),
+        message_json: { urban: { public: [] } },
+      },
+    ];
+    const exec = jest.fn().mockResolvedValue(records);
+    const lean = jest.fn().mockReturnValue({ exec });
+    const sort = jest.fn().mockReturnValue({ lean });
+    const find = jest.fn().mockReturnValue({ sort });
+    const model = { find } as unknown as Model<ConnectivityRecordDocument>;
+    const repository = new ConnectivityRecordRepository(model);
+    const start = new Date('2026-09-03T00:00:00.000Z');
+    const end = new Date('2026-09-04T00:00:00.000Z');
+    const sensorIds = ['aa'.repeat(32), 'bb'.repeat(32)];
+
+    await expect(
+      repository.findCsvRecords({ sensorIds, start, end }),
+    ).resolves.toEqual(records);
+    expect(find).toHaveBeenCalledWith(
+      {
+        structure_status: ConnectivityStructureStatus.Valid,
+        signature_status: ConnectivitySignatureStatus.Valid,
+        decode_status: ConnectivityRecordDecodeStatus.Decoded,
+        message_json: { $type: 'object' },
+        recorded_at: { $gte: start, $lt: end },
+        sensor_id: { $in: sensorIds },
+        payload_type: {
+          $in: [ConnectivityPayloadType.Urban, ConnectivityPayloadType.Insight],
+        },
+      },
+      { _id: 0, sensor_id: 1, recorded_at: 1, message_json: 1 },
+    );
+    expect(sort).toHaveBeenCalledWith({ recorded_at: 1, _id: 1 });
+  });
+
+  it('не обращается к MongoDB при пустом списке сенсоров CSV', async () => {
+    const find = jest.fn();
+    const model = { find } as unknown as Model<ConnectivityRecordDocument>;
+    const repository = new ConnectivityRecordRepository(model);
+
+    await expect(
+      repository.findCsvRecords({
+        sensorIds: [],
+        start: new Date(0),
+        end: new Date(1),
+      }),
+    ).resolves.toEqual([]);
+    expect(find).not.toHaveBeenCalled();
+  });
 });

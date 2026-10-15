@@ -29,6 +29,7 @@ describe('ConnectivityRecordSchema', () => {
         [{ sensor_id: 1, recorded_at: 1 }, { background: true }],
         [{ node_id: 1, recorded_at: 1 }, { background: true }],
         [{ payload_type: 1, recorded_at: 1 }, { background: true }],
+        [{ measurement_types: 1, recorded_at: -1 }, { background: true }],
       ]),
     );
   });

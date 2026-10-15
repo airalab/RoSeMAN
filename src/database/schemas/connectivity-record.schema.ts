@@ -105,3 +105,4 @@ ConnectivityRecordSchema.index({ sensor_id: 1, recorded_at: 1 });
 ConnectivityRecordSchema.index({ node_id: 1, recorded_at: 1 });
 ConnectivityRecordSchema.index({ payload_type: 1, recorded_at: 1 });
 ConnectivityRecordSchema.index({ recorded_at: -1, _id: -1 });
+ConnectivityRecordSchema.index({ measurement_types: 1, recorded_at: -1 });

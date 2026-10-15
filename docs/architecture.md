@@ -2,7 +2,7 @@
 
 RoSeMAN is **a NestJS application that simultaneously serves as REST API server, blockchain indexer, IPFS data processor, and geocoder**. What exactly is started up at process boot is determined by environment flags. The same artifact can be launched in different configurations and the roles can be scaled independently.
 
-The Datalog/RWS pipeline, Sensor/Story API, geocoder and `measurements`/`cities` projection are [deprecated compatibility components](./legacy-deprecation.md). CPS ingestion, canonical Connectivity storage and API V3 are current.
+The Datalog/RWS pipeline, Sensor/Story API and `measurements`/`cities` projection are [deprecated compatibility components](./legacy-deprecation.md). CPS ingestion, canonical Connectivity storage, the CPS geocoder and API V3 are current.
 
 See also:
 
@@ -66,10 +66,13 @@ Robonomics (Polkadot) ─────────────▶ BlockIndexerSer
          IpfsFetcher      chain payload       CID via IpfsFetcher
               └──────────────┬──────────────────────┘
                              ▼
-                        measurements ──▶ sensors ──▶ GeocodingService ──▶ Nominatim
+                        measurements ──▶ cities (deprecated)
+
+ connectivity_records ──▶ sensor_locations ──▶ GeocodingService ──▶ Nominatim
 
 CpsSnapshotService ── configured CPS_NODE_IDS + descendants ──▶ cps_anchors
 REST API (controllers) ──▶ Repositories ──▶ MongoDB
+V3 CPS CSV ──▶ sensor_locations (city) + connectivity_records (messages)
 ```
 
 A detailed description of each node is in [indexer.md](./indexer.md).

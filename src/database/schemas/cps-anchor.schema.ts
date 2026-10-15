@@ -126,4 +126,5 @@ export const CpsAnchorSchema = SchemaFactory.createForClass(CpsAnchor);
 CpsAnchorSchema.index({ source_key: 1 }, { unique: true });
 CpsAnchorSchema.index({ status: 1, available_at: 1, block: 1 });
 CpsAnchorSchema.index({ node_id: 1, block: -1 });
+CpsAnchorSchema.index({ owner: 1, source_key: 1 });
 CpsAnchorSchema.index({ backfill_status: 1, block: 1 });

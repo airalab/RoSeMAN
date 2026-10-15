@@ -9,8 +9,8 @@ import { ConnectivityPayloadType } from '../../../common/constants/connectivity-
 
 export const MAX_CONNECTIVITY_DATE_MILLISECONDS = 8_640_000_000_000_000;
 
-/** Общие фильтры публичных запросов сообщений Connectivity Protocol. */
-export class ConnectivityMessageFilterQueryDto {
+/** Базовые фильтры публичных запросов сообщений Connectivity Protocol. */
+export class ConnectivityMessageBaseFilterQueryDto {
   @IsOptional()
   @IsString()
   @Matches(/^[0-9a-f]{64}$/)
@@ -25,10 +25,13 @@ export class ConnectivityMessageFilterQueryDto {
   @IsOptional()
   @IsIn([ConnectivityPayloadType.Urban, ConnectivityPayloadType.Insight])
   payload_type?: ConnectivityPayloadType;
+}
 
+/** Фильтры сообщений, допускающие ограничение по типу измерения. */
+export class ConnectivityMessageFilterQueryDto extends ConnectivityMessageBaseFilterQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(64)
   @Matches(/^[a-z0-9_]+$/)
-  measurement_type?: string;
+  type?: string;
 }

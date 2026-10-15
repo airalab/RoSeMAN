@@ -12,6 +12,7 @@ import {
   type ConnectivityRecordDocument,
   type ConnectivityMessageJson,
 } from '../schemas/connectivity-record.schema.js';
+import type { SensorLocationCandidate } from './sensor-location.repository.js';
 
 export interface ConnectivityRecordInput {
   readonly record_key: string;
@@ -74,6 +75,25 @@ export interface ConnectivityLatestMessagesQuery extends Omit<
   ConnectivityPublicFilterQuery,
   'start' | 'end'
 > {
+  readonly start: Date;
+  readonly end: Date;
+}
+
+export interface ConnectivityMaxMessagesQuery extends Omit<
+  ConnectivityLatestMessagesQuery,
+  'measurementType'
+> {
+  readonly type: string;
+}
+
+export interface ConnectivityCsvRecord {
+  readonly sensor_id: string;
+  readonly recorded_at: Date;
+  readonly message_json: ConnectivityMessageJson;
+}
+
+export interface ConnectivityCsvRecordsQuery {
+  readonly sensorIds: string[];
   readonly start: Date;
   readonly end: Date;
 }
@@ -199,6 +219,122 @@ export class ConnectivityRecordRepository {
   }
 
   /**
+   * Возвращает последние валидные GPS-позиции, ещё не отражённые в
+   * канонической проекции sensor_locations.
+   * @param limit - максимальное количество сенсоров
+   * @returns актуальные CPS-позиции сенсоров
+   */
+  async findLatestUnprojectedSensorLocations(
+    limit: number,
+  ): Promise<SensorLocationCandidate[]> {
+    return this.model
+      .aggregate<SensorLocationCandidate>([
+        {
+          $match: {
+            structure_status: ConnectivityStructureStatus.Valid,
+            signature_status: ConnectivitySignatureStatus.Valid,
+            decode_status: ConnectivityRecordDecodeStatus.Decoded,
+            sensor_id: { $type: 'string' },
+            recorded_at: { $type: 'date' },
+            measurement_types: 'location',
+          },
+        },
+        {
+          $set: {
+            public_events: {
+              $concatArrays: [
+                { $ifNull: ['$message_json.urban.public', []] },
+                { $ifNull: ['$message_json.insight.public', []] },
+              ],
+            },
+          },
+        },
+        {
+          $unwind: {
+            path: '$public_events',
+            includeArrayIndex: 'public_event_index',
+          },
+        },
+        { $set: { gps: '$public_events.gps' } },
+        {
+          $match: {
+            'gps.lat': { $type: 'number', $gte: -90, $lte: 90 },
+            'gps.lon': { $type: 'number', $gte: -180, $lte: 180 },
+          },
+        },
+        {
+          $sort: {
+            sensor_id: 1,
+            recorded_at: -1,
+            _id: -1,
+            public_event_index: -1,
+          },
+        },
+        {
+          $group: {
+            _id: '$sensor_id',
+            candidate: {
+              $first: {
+                sensorId: '$sensor_id',
+                geo: { lat: '$gps.lat', lng: '$gps.lon' },
+                sourceRecordKey: '$record_key',
+                sourceRecordId: '$_id',
+                sourceRecordedAt: '$recorded_at',
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'sensor_locations',
+            localField: '_id',
+            foreignField: 'sensor_id',
+            as: 'existing_locations',
+          },
+        },
+        {
+          $set: {
+            existing: { $arrayElemAt: ['$existing_locations', 0] },
+          },
+        },
+        {
+          $match: {
+            $expr: {
+              $or: [
+                { $eq: [{ $type: '$existing' }, 'missing'] },
+                {
+                  $lt: [
+                    '$existing.source_recorded_at',
+                    '$candidate.sourceRecordedAt',
+                  ],
+                },
+                {
+                  $and: [
+                    {
+                      $eq: [
+                        '$existing.source_recorded_at',
+                        '$candidate.sourceRecordedAt',
+                      ],
+                    },
+                    {
+                      $lt: [
+                        '$existing.source_record_id',
+                        '$candidate.sourceRecordId',
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        { $limit: limit },
+        { $replaceRoot: { newRoot: '$candidate' } },
+      ])
+      .exec();
+  }
+
+  /**
    * Возвращает валидные records в стабильном порядке для cursor pagination.
    * Запрашивает на один документ больше limit, чтобы вызывающий код определил next cursor.
    * @param query - публичные фильтры и позиция курсора
@@ -265,5 +401,113 @@ export class ConnectivityRecordRepository {
       .exec();
 
     return normalizeMessageRecords(records);
+  }
+
+  /**
+   * Возвращает сообщение с максимальным показателем для каждого сенсора.
+   * @param query - диапазон, тип показателя и необязательные публичные фильтры
+   * @returns по одной записи на sensor_id, отсортированной по значению убывающе
+   */
+  async findMaxMessages(
+    query: ConnectivityMaxMessagesQuery,
+  ): Promise<ConnectivityMessageRecord[]> {
+    const records = await this.model
+      .aggregate<LeanConnectivityMessageRecord>([
+        { $match: buildPublicMessageFilter(query) },
+        {
+          $set: {
+            max_public: {
+              $concatArrays: [
+                { $ifNull: ['$message_json.urban.public', []] },
+                { $ifNull: ['$message_json.insight.public', []] },
+              ],
+            },
+          },
+        },
+        { $unwind: '$max_public' },
+        {
+          $set: {
+            max_sensors: { $objectToArray: '$max_public' },
+          },
+        },
+        { $unwind: '$max_sensors' },
+        {
+          $set: {
+            max_measurements: { $objectToArray: '$max_sensors.v' },
+          },
+        },
+        { $unwind: '$max_measurements' },
+        {
+          $match: {
+            'max_measurements.k': query.type,
+            'max_measurements.v': { $type: 'object' },
+          },
+        },
+        {
+          $set: {
+            max_values: { $objectToArray: '$max_measurements.v' },
+          },
+        },
+        { $unwind: '$max_values' },
+        { $match: { 'max_values.v': { $type: 'number' } } },
+        { $set: { max_value: '$max_values.v' } },
+        {
+          $sort: {
+            sensor_id: 1,
+            max_value: -1,
+            recorded_at: -1,
+            _id: -1,
+          },
+        },
+        {
+          $group: {
+            _id: '$sensor_id',
+            record: { $first: '$$ROOT' },
+          },
+        },
+        { $replaceRoot: { newRoot: '$record' } },
+        { $sort: { max_value: -1, recorded_at: -1, _id: -1 } },
+        {
+          $project: {
+            ...MESSAGE_RECORD_PROJECTION,
+            ...(query.includeMessageRaw ? { message_raw: 1 } : {}),
+          },
+        },
+      ])
+      .exec();
+
+    return normalizeMessageRecords(records);
+  }
+
+  /**
+   * Возвращает валидные CPS-сообщения выбранных сенсоров для CSV-экспорта.
+   * @param query - идентификаторы сенсоров и полуоткрытый временной диапазон
+   * @returns сообщения в хронологическом порядке
+   */
+  async findCsvRecords(
+    query: ConnectivityCsvRecordsQuery,
+  ): Promise<ConnectivityCsvRecord[]> {
+    if (query.sensorIds.length === 0) return [];
+
+    return this.model
+      .find(
+        {
+          ...buildPublicMessageFilter({
+            start: query.start,
+            end: query.end,
+          }),
+          sensor_id: { $in: query.sensorIds },
+          payload_type: {
+            $in: [
+              ConnectivityPayloadType.Urban,
+              ConnectivityPayloadType.Insight,
+            ],
+          },
+        },
+        { _id: 0, sensor_id: 1, recorded_at: 1, message_json: 1 },
+      )
+      .sort({ recorded_at: 1, _id: 1 })
+      .lean<ConnectivityCsvRecord[]>()
+      .exec();
   }
 }

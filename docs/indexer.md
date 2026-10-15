@@ -44,15 +44,6 @@ Robonomics Chain ───events────▶  catch-up + realtime            
  │  → measurements + sensors        │    │  IPFS_GATEWAYS       │
  │  → datalog.status PROCESSED/ERR  │    └──────────────────────┘
  └──────────────────────────────────┘
-                │
-                ▼
-       sensors (city === null)
-                │
-                ▼
- ┌──────────────────────────────────┐
- │  GeocodingService                │ → Nominatim (reverse)
- │  poll → city/state/country       │
- └──────────────────────────────────┘
 ```
 
 ### CPS path
@@ -80,7 +71,14 @@ finalized cps.PayloadSet ─▶ CpsPayloadSetHandler ├─▶ cps_anchors
                                                          ▼
                                       public Urban/Insight + optional GPS
                                                          ▼
-                                               measurements + cities
+                                   connectivity_records + measurements/cities
+                                                         │
+                                                         ▼
+                                                sensor_locations
+                                                         │
+                                                         ▼
+                                      GeocodingService → Nominatim (reverse)
+                                      → city/region/country
 ```
 
 Background responsibilities are split between `RobonomicsModule`, `MeasurementModule` and `GeocodingModule`. `RobonomicsModule` owns the chain connection, block indexer, handlers and CPS snapshot. `MeasurementModule` owns the shared IPFS fetcher plus the legacy and CPS processors. Module flags select process roles, while `CPS_ENABLED=true` additionally activates the CPS snapshot, realtime CPS handler and CPS processor.
@@ -274,19 +272,17 @@ After successful parsing of measurements, unique sensors by `sensor_id` are writ
 
 ## GeocodingService
 
-File: `src/geocoding/geocoding.service.ts`. Enriches records of the `cities` collection (Sensor) with location data via **Nominatim reverse geocoding**.
+File: `src/geocoding/geocoding.service.ts`. Builds the canonical `sensor_locations` projection from valid public GPS events in `connectivity_records` and enriches current positions via **Nominatim reverse geocoding**. The deprecated `cities` collection is not read or enriched by this service.
 
 ### Lifecycle
 
-1. `onModuleInit` starts a `setInterval` at `GEOCODING_POLL_INTERVAL` (default `30_000` ms).
-2. Each tick: `SensorRepository.findWithoutCity(GEOCODING_BATCH_SIZE)` — picks up records with `city === null`.
-3. For each one it issues a request to `NOMINATIM_BASE_URL?lat=&lon=&format=json&zoom=10&accept-language=en` with the header `User-Agent: NOMINATIM_USER_AGENT` and an `NOMINATIM_FETCH_TIMEOUT` timeout.
-4. Between requests there is a pause of `NOMINATIM_REQUEST_INTERVAL` (default `1100` ms — to honor the Nominatim 1 req/s rate limit).
-5. From the response it picks:
-   - `city || town || village || hamlet` → `city`;
-   - `state || county || state_district || region` → `state`;
-   - `country` → `country`.
-6. On error / invalid response it writes empty strings `''` (not `null`), so the record is not picked up by polling again.
+1. `onModuleInit` runs one cycle immediately, then starts a non-overlapping `setInterval` at `GEOCODING_POLL_INTERVAL` (default `30_000` ms).
+2. Each cycle selects up to `GEOCODING_BATCH_SIZE` newest valid GPS positions not yet reflected in `sensor_locations`. This same path incrementally fills historical data.
+3. A newer CPS record advances the source position. Changed coordinates reset the address to `pending`; an unchanged position keeps the resolved address.
+4. Pending positions are requested from `NOMINATIM_BASE_URL?lat=&lon=&format=json&zoom=10&accept-language=en` with `User-Agent: NOMINATIM_USER_AGENT` and an `NOMINATIM_FETCH_TIMEOUT` timeout.
+5. `city || town || village || hamlet` becomes `city`; `state || county || state_district || region` becomes `region`; `country` becomes `country`. A missing region is stored as an empty string. Between requests the service waits `NOMINATIM_REQUEST_INTERVAL`.
+6. Network failures, HTTP 429 and 5xx remain `pending` and are retried. A successful response without a complete city/country pair is marked `not_found`.
+7. Existing resolved documents without the `region` field are selected again and enriched incrementally without a separate migration.
 
 ## RobonomicsService
 
@@ -424,7 +420,7 @@ This additive collection is the active idempotent queue for snapshot and realtim
 | `backfill_error_code` / `backfill_error_message`    | String          | Sanitized backfill-only diagnostics                              |
 | `backfill_*_count`                                  | Number          | Stored records, invalid/unsupported and private-section counters |
 
-Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, node history `{node_id, block: -1}`, and backfill scan `{backfill_status, block}`. A partially valid batch ends with `error_code="ENVELOPE_ERRORS"`; fatal batch and retry failures retain their stable error codes. Backfill repository methods never overwrite the main `status`, lease, or ingestion errors.
+Indexes: unique `{source_key}`, queue scan `{status, available_at, block}`, node history `{node_id, block: -1}`, owner lookup `{owner, source_key}`, and backfill scan `{backfill_status, block}`. The owner lookup supports `GET /api/v3/sensors/:owner` without reading the deprecated `measurements` projection. A partially valid batch ends with `error_code="ENVELOPE_ERRORS"`; fatal batch and retry failures retain their stable error codes. Backfill repository methods never overwrite the main `status`, lease, or ingestion errors.
 
 ### Collection `connectivity_payloads` (ConnectivityPayload)
 
@@ -436,9 +432,15 @@ Indexes: unique `{payload_key}`, CID lookup `{cid}`, and decode queue `{decode_s
 
 One document per envelope occurrence in a payload. It stores `record_key=<payload_key>:<envelope_index>`, `payload_key`, CPS `node_id`, compact provenance, exact envelope binary fields, message-derived `timestamp_ms` as Decimal128, optional `recorded_at`, structure/signature/decode statuses, materialized `message_json`, and unique `measurement_types` for API filtering. `source_id`, duplicated owner metadata, repeated protocol/schema metadata, a second private-section projection and legacy projection success keys are intentionally omitted. Sparse `projection_error_code` remains for failed or skipped legacy projection. `message_json` is created once during successful protocol decoding and serves API reads without repeated protobuf decoding. Invalid envelopes receive a diagnostic occurrence record while their exact source bytes remain in `connectivity_payloads`.
 
-Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, time-range indexes by `sensor_id`, `node_id`, and `payload_type` paired with `recorded_at`, and `{recorded_at: -1, _id: -1}` for stable cursor pagination in the public protocol-aware API.
+Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, time-range indexes by `sensor_id`, `node_id`, and `payload_type` paired with `recorded_at`, `{recorded_at: -1, _id: -1}` for stable cursor pagination, and `{measurement_types, recorded_at: -1}` for CPS location projection.
 
-The public `GET /api/v3/messages/latest` endpoint uses the bounded 24-hour range, scans matching records in `{recorded_at: -1, _id: -1}` order and keeps the first record for each `sensor_id`. Sensors without a matching record are omitted; the endpoint has no pagination metadata.
+The public `GET /api/v3/messages/latest` endpoint uses the bounded 24-hour range, exposes its optional stored measurement-type filter as `type`, scans matching records in `{recorded_at: -1, _id: -1}` order and keeps the first record for each `sensor_id`. The paired `GET /api/v3/messages/max` endpoint uses the same range and base identity/payload filters but requires `type`: it extracts that public numeric measurement from `message_json`, keeps its greatest value for each `sensor_id`, and sorts the selected records by value descending. Sensors without a matching record are omitted; neither endpoint has pagination metadata.
+
+`GET /api/v3/sensors/:owner` starts with CPS anchors of the requested owner, finds candidate sensor IDs through `payload_key → source_key`, then resolves every candidate's newest valid decoded record and verifies the owner of that record's anchor. This preserves current-owner semantics when a sensor moves between CPS nodes while keeping the V3 read path independent of `measurements`.
+
+### Collection `sensor_locations` (SensorLocation)
+
+One current position per CPS `sensor_id`. It stores `{lat, lng}`, nullable `city`, `region` and `country`, geocoding status (`pending`, `resolved`, `not_found`) and the source record key, ObjectId and timestamp. Source ordering prevents historical backfill from replacing a newer position; changed coordinates reset geocoding. Indexes: unique `{sensor_id}`, queue scan `{geocoding_status, updatedAt}`, and covered city export lookup `{geocoding_status, city, sensor_id}`. `GET /api/v3/cities` returns resolved city/country pairs grouped by region; the empty region key represents a missing Nominatim region. `GET /api/v3/messages/csv` uses current resolved city membership from this collection and reads the corresponding valid messages from `connectivity_records` without the deprecated projections.
 
 ### Collection `measurements` (Measurement)
 
@@ -540,7 +542,7 @@ The four module flags are disabled only by the exact value `false` (see `app.mod
 | `ROBONOMICS_START_BLOCK`       | `latest`                                | First block when no saved checkpoint exists                          |
 | `ROBONOMICS_START_BLOCK_FORCE` | `false`                                 | Ignore the checkpoint and force the configured start on every launch |
 | `ROBONOMICS_STATE_KEY`         | `polkadot_robonomics`                   | Key in the `index_state` collection                                  |
-| `ROBONOMICS_ACCOUNTS`          | _(empty — all)_                         | **Deprecated:** whitelist of legacy datalog senders                   |
+| `ROBONOMICS_ACCOUNTS`          | _(empty — all)_                         | **Deprecated:** whitelist of legacy datalog senders                  |
 
 ### IPFS
 
@@ -554,36 +556,36 @@ The four module flags are disabled only by the exact value `false` (see `app.mod
 
 ### CPS
 
-| Variable                          | Default    | Description                                                                       |
-| --------------------------------- | ---------- | --------------------------------------------------------------------------------- |
-| `CPS_ENABLED`                     | `false`    | Enables all CPS-specific work                                                     |
-| `CPS_CANONICAL_STORAGE_ENABLED`   | `false`    | Writes occurrence records to `connectivity_records`                               |
-| `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | `false`    | Archives exact IPFS or chain transport bytes in `connectivity_payloads`           |
-| `CPS_NODE_IDS`                    | _(empty)_  | Numeric u64 roots whose complete subtrees are indexed by snapshot and realtime    |
+| Variable                          | Default    | Description                                                                        |
+| --------------------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| `CPS_ENABLED`                     | `false`    | Enables all CPS-specific work                                                      |
+| `CPS_CANONICAL_STORAGE_ENABLED`   | `false`    | Writes occurrence records to `connectivity_records`                                |
+| `CPS_RAW_PAYLOAD_STORAGE_ENABLED` | `false`    | Archives exact IPFS or chain transport bytes in `connectivity_payloads`            |
+| `CPS_NODE_IDS`                    | _(empty)_  | Numeric u64 roots whose complete subtrees are indexed by snapshot and realtime     |
 | `CPS_BATCH_WIRE_FORMAT`           | `xz`       | Fallback for legacy IPFS anchors without meta (`raw`, `xz`, `zstd`, `lz4`, `zlib`) |
-| `CPS_POLL_INTERVAL`               | `10000`    | Processor poll interval (ms)                                                      |
-| `CPS_LEASE_DURATION`              | `60000`    | Processing lease duration (ms)                                                    |
-| `CPS_MAX_ANCHORS_PER_POLL`        | `10`       | Maximum claimed anchors per poll                                                  |
-| `CPS_MAX_ATTEMPTS`                | `5`        | Maximum processing claims before terminal error                                   |
-| `CPS_RETRY_BASE_DELAY`            | `15000`    | Exponential retry base delay (ms)                                                 |
-| `CPS_MAX_COMPRESSED_BYTES`        | `10485760` | Maximum compressed payload size                                                   |
-| `CPS_MAX_DECOMPRESSED_BYTES`      | `10485760` | Maximum decoded batch size                                                        |
-| `CPS_MAX_XZ_MEMORY_BYTES`         | `67108864` | XZ decoder memory limit                                                           |
-| `CPS_MAX_ENVELOPE_COUNT`          | `10000`    | Maximum envelopes per batch                                                       |
-| `CPS_SENSOR_SS58_PREFIX`          | `32`       | SS58 prefix used for `sensorId` in the V3 JSON API                                |
+| `CPS_POLL_INTERVAL`               | `10000`    | Processor poll interval (ms)                                                       |
+| `CPS_LEASE_DURATION`              | `60000`    | Processing lease duration (ms)                                                     |
+| `CPS_MAX_ANCHORS_PER_POLL`        | `10`       | Maximum claimed anchors per poll                                                   |
+| `CPS_MAX_ATTEMPTS`                | `5`        | Maximum processing claims before terminal error                                    |
+| `CPS_RETRY_BASE_DELAY`            | `15000`    | Exponential retry base delay (ms)                                                  |
+| `CPS_MAX_COMPRESSED_BYTES`        | `10485760` | Maximum compressed payload size                                                    |
+| `CPS_MAX_DECOMPRESSED_BYTES`      | `10485760` | Maximum decoded batch size                                                         |
+| `CPS_MAX_XZ_MEMORY_BYTES`         | `67108864` | XZ decoder memory limit                                                            |
+| `CPS_MAX_ENVELOPE_COUNT`          | `10000`    | Maximum envelopes per batch                                                        |
+| `CPS_SENSOR_SS58_PREFIX`          | `32`       | SS58 prefix used for `sensorId` in the V3 JSON API                                 |
 
 If `CPS_NODE_IDS` is empty, snapshot performs no reads and realtime accepts any NodeId. If non-empty, snapshot walks every listed root and its descendants through `cps.children`; realtime accepts the same roots and descendants by checking their historical parent chains.
 
 ### Geocoding (Nominatim)
 
-| Variable                     | Default                                       | Description                                       |
-| ---------------------------- | --------------------------------------------- | ------------------------------------------------- |
-| `NOMINATIM_BASE_URL`         | `https://nominatim.openstreetmap.org/reverse` | Reverse geocoding endpoint                        |
-| `NOMINATIM_USER_AGENT`       | `RoSeMAN/1.0`                                 | User-Agent (Nominatim ToS requirement)            |
-| `NOMINATIM_REQUEST_INTERVAL` | `1100`                                        | Pause between requests (ms), rate-limit 1/s       |
-| `NOMINATIM_FETCH_TIMEOUT`    | `10000`                                       | HTTP request timeout (ms)                         |
-| `GEOCODING_POLL_INTERVAL`    | `30000`                                       | Polling interval for sensors with `city === null` |
-| `GEOCODING_BATCH_SIZE`       | `10`                                          | Sensor batch size per polling tick                |
+| Variable                     | Default                                       | Description                                     |
+| ---------------------------- | --------------------------------------------- | ----------------------------------------------- |
+| `NOMINATIM_BASE_URL`         | `https://nominatim.openstreetmap.org/reverse` | Reverse geocoding endpoint                      |
+| `NOMINATIM_USER_AGENT`       | `RoSeMAN/1.0`                                 | User-Agent (Nominatim ToS requirement)          |
+| `NOMINATIM_REQUEST_INTERVAL` | `1100`                                        | Pause between requests (ms), rate-limit 1/s     |
+| `NOMINATIM_FETCH_TIMEOUT`    | `10000`                                       | HTTP request timeout (ms)                       |
+| `GEOCODING_POLL_INTERVAL`    | `30000`                                       | CPS location synchronization and geocoding poll |
+| `GEOCODING_BATCH_SIZE`       | `10`                                          | CPS location/geocoding batch size per poll      |
 
 ---
 

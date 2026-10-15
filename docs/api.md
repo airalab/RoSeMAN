@@ -6,12 +6,12 @@ This document describes the shared behavior and versioning of the RoSeMAN HTTP A
 
 The newest API is listed first throughout the documentation.
 
-| Generation | Base path                    | Scope                                                              | Status                     |
-| ---------- | ---------------------------- | ------------------------------------------------------------------ | -------------------------- |
-| V3         | `/api/v3`                    | Verified Connectivity Protocol messages in JSON and protobuf       | Current protocol-aware API |
-| V2         | `/api/v2`                    | Aggregated sensor views, owner relationships and stories           | Deprecated                 |
-| Legacy     | `/api/sensor`                | Original sensor exports, measurements and messages                 | Deprecated                 |
-| Operations | `/api/status`                | Indexer status; only `/agents` is deprecated                       | Mixed                      |
+| Generation | Base path     | Scope                                                    | Status                     |
+| ---------- | ------------- | -------------------------------------------------------- | -------------------------- |
+| V3         | `/api/v3`     | Connectivity messages and current sensor ownership       | Current protocol-aware API |
+| V2         | `/api/v2`     | Aggregated sensor views, owner relationships and stories | Deprecated                 |
+| Legacy     | `/api/sensor` | Original sensor exports, measurements and messages       | Deprecated                 |
+| Operations | `/api/status` | Indexer status; only `/agents` is deprecated             | Mixed                      |
 
 Versioning is path-based. The application does not use NestJS `enableVersioning()`: each generation is mounted by its controller prefix. Adding a new generation therefore does not change the behavior of older routes.
 
@@ -41,12 +41,12 @@ The bootstrap configuration in `src/main.ts` also:
 
 The API generations do not use the same timestamp unit. Clients should choose the unit from the requested route, not from the data being displayed.
 
-| Routes               | Timestamp unit    | Range semantics                                             | Maximum range                                           |
-| -------------------- | ----------------- | ----------------------------------------------------------- | ------------------------------------------------------- |
-| V3 `/messages*`      | Unix milliseconds | `[start, end)`; `start` is inclusive and `end` is exclusive | None for paginated routes; 24 hours for `latest` routes |
-| V2 sensor routes     | Unix seconds      | `[start, end]`; both bounds are inclusive                   | `MAX_PERIOD_DAYS`, default 31 days                      |
-| V2 story routes      | Unix seconds      | `[start, end]`; either bound may be omitted                 | No guard-based limit                                    |
-| Legacy sensor routes | Unix seconds      | `[start, end]`; both bounds are inclusive                   | `MAX_PERIOD_DAYS`, default 31 days                      |
+| Routes               | Timestamp unit    | Range semantics                                             | Maximum range                                                           |
+| -------------------- | ----------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| V3 `/messages*`      | Unix milliseconds | `[start, end)`; `start` is inclusive and `end` is exclusive | None for paginated routes; 24 hours for `latest`/`max`; 31 days for CSV |
+| V2 sensor routes     | Unix seconds      | `[start, end]`; both bounds are inclusive                   | `MAX_PERIOD_DAYS`, default 31 days                                      |
+| V2 story routes      | Unix seconds      | `[start, end]`; either bound may be omitted                 | No guard-based limit                                                    |
+| Legacy sensor routes | Unix seconds      | `[start, end]`; both bounds are inclusive                   | `MAX_PERIOD_DAYS`, default 31 days                                      |
 
 For all bounded V3 requests, `start` must be less than `end`. The V2 and legacy `DateRangeGuard` only enforces the maximum span; integer route parameters are validated separately by `ParseIntPipe`.
 
@@ -78,6 +78,7 @@ The V2 sensor-by-owner view is the only JSON route with an additional top-level 
 ### Binary and text
 
 - V3 protobuf endpoints return `application/protobuf` and a `crypto.v1.SignedEnvelopeBatch` body.
+- The V3 CSV endpoint returns `text/csv; charset=utf-8` with SS58 sensor IDs and canonical CPS measurements.
 - The legacy CSV endpoint returns `text/csv; charset=utf-8`; its content is tab-separated despite the `.csv` filename.
 
 ### Empty results
@@ -114,6 +115,8 @@ For NestJS validation errors, `message` can be an array of strings. If an `HttpE
 
 ## V3: Connectivity Protocol API
 
+In addition to protocol-message selections, V3 exposes `GET /api/v3/sensors/:owner`, `GET /api/v3/cities` and `GET /api/v3/messages/csv`. The ownership route reads only canonical CPS storage. The cities route reads the `sensor_locations` projection populated from valid public CPS GPS events and returns unique, sorted city names grouped by country and region. The CSV route joins current resolved city membership from that projection with valid canonical `connectivity_records`. An address without a Nominatim region uses the empty-string region key. Pending and unresolved locations are omitted. None of these routes depends on the deprecated `measurements` projection or emits deprecation headers.
+
 The V3 API reads the canonical `connectivity_records` collection. Public results include only records that:
 
 - have a valid envelope structure;
@@ -127,12 +130,17 @@ Records are ordered by `recorded_at` descending and then MongoDB `_id` descendin
 
 Each V3 selection has a default protobuf representation and an explicit JSON representation:
 
-| Selection                 | Protobuf (default)            | JSON                               |
-| ------------------------- | ----------------------------- | ---------------------------------- |
-| Paginated messages        | `GET /api/v3/messages`        | `GET /api/v3/messages/json`        |
-| Latest message per sensor | `GET /api/v3/messages/latest` | `GET /api/v3/messages/latest/json` |
+| Selection                  | Protobuf (default)            | JSON                               |
+| -------------------------- | ----------------------------- | ---------------------------------- |
+| Paginated messages         | `GET /api/v3/messages`        | `GET /api/v3/messages/json`        |
+| Latest message per sensor  | `GET /api/v3/messages/latest` | `GET /api/v3/messages/latest/json` |
+| Maximum message per sensor | `GET /api/v3/messages/max`    | `GET /api/v3/messages/max/json`    |
 
 The routes without a format suffix return protobuf. Their `/json` variants are intended for clients that cannot consume protobuf. Paired routes use the same filters, ordering and range rules; protobuf preserves the original signed envelope fields required for independent signature verification.
+
+All V3 message routes expose their measurement selector under the query name `type`. For the paginated list and latest routes it is an optional filter over the stored measurement-type index. Max requires it to select the exact, case-sensitive protobuf JSON key used for maximum-value ordering and does not restrict the name to a predefined list, so newly stored measurement types are available without an API code change. Latest and max require `start` and `end` and limit the range to 24 hours.
+
+The CSV route uses required `start`, `end` and `city` query parameters, accepts at most 31 days and returns rows in chronological order. Its tab-separated layout is compatible with the legacy CSV, except that `sensor_id` is the public SS58 address and data comes only from canonical CPS storage. Known measurements are normalized to legacy units; other numeric protobuf fields are exported in their protocol units. GPS is represented by the `geo` column, while metadata and private sections are never exported.
 
 ### Protobuf responses
 

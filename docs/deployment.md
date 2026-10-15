@@ -6,10 +6,10 @@ This document describes practical scenarios for running RoSeMAN. The architectur
 
 The repository root contains two `.example` files from which you should create real `.env` files:
 
-| File            | Role                                                                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.env`          | Base: Docker Compose settings, MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings                                 |
-| `.env.polkadot` | **Polkadot** CPS worker: indexer connection, CPS storage/processing and the `cps-payload-set` handler allowlist                          |
+| File            | Role                                                                                                            |
+| --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `.env`          | Base: Docker Compose settings, MongoDB, module flags, Robonomics accounts, IPFS, Nominatim and CPS settings     |
+| `.env.polkadot` | **Polkadot** CPS worker: indexer connection, CPS storage/processing and the `cps-payload-set` handler allowlist |
 
 The loading cascade (`src/env-bootstrap.ts`):
 
@@ -57,6 +57,8 @@ DOTENV_CONFIG_PATH=.env.polkadot npm run sync-indexes
 
 For large collections, create indexes manually via `mongosh` instead (online build, no drops). See [database.md → Index management](./database.md#index-management).
 
+The V3 CPS CSV export adds the covered `sensor_locations` index `{ geocoding_status: 1, city: 1, sensor_id: 1 }`. Apply it with the other declared indexes before exposing `GET /api/v3/messages/csv` on an existing database.
+
 ## Docker
 
 The repository root contains `Dockerfile` and `docker-compose.yml`.
@@ -75,11 +77,11 @@ Compose uses the same Dockerfile and builds the image from the repository root. 
 
 `docker-compose.yml` brings up three services:
 
-| Service            | Image                      | Purpose                                                     |
-| ------------------ | -------------------------- | ----------------------------------------------------------- |
-| `mongodb`          | `mongo:8`                  | DB with authenticated healthcheck and named volume          |
-| `rest-api`         | `${ROSEMAN_IMAGE}` / built | REST API; reads `.env`                                      |
-| `indexer-polkadot` | `${ROSEMAN_IMAGE}` / built | Polkadot CPS worker; reads `.env`, then `.env.polkadot`     |
+| Service            | Image                      | Purpose                                                 |
+| ------------------ | -------------------------- | ------------------------------------------------------- |
+| `mongodb`          | `mongo:8`                  | DB with authenticated healthcheck and named volume      |
+| `rest-api`         | `${ROSEMAN_IMAGE}` / built | REST API; reads `.env`                                  |
+| `indexer-polkadot` | `${ROSEMAN_IMAGE}` / built | Polkadot CPS worker; reads `.env`, then `.env.polkadot` |
 
 Configuration is supplied through Compose `env_file`; environment files are not copied into the image or mounted into containers. Compose overrides `MONGODB_URI` with the internal `mongodb` hostname and the credentials from `.env`. All applications depend on the authenticated MongoDB healthcheck. The Polkadot example enables CPS with canonical and raw storage. Its explicit handler allowlist contains only `cps-payload-set`; deprecated Datalog/RWS handlers are disabled.
 
@@ -124,7 +126,7 @@ Key points:
 
 - **Indexer state uses `ROBONOMICS_STATE_KEY=polkadot_robonomics`** in the `index_state` collection, so the Polkadot checkpoint is stable across process restarts.
 - **`MEASUREMENT_ENABLED` is enabled on the Polkadot worker only** — it starts `CpsAnchorProcessorService` and, during the compatibility period, the deprecated `MeasurementProcessorService`. The CPS processor atomically claims `cps_anchors` with a lease and resolves each payload either directly from saved chain bytes or, for CID anchors, through IPFS. No new datalog rows are created because the CPS-only allowlist excludes `datalog-new-record`.
-- **`GEOCODING_ENABLED`** starts deprecated enrichment of the `cities` compatibility projection and should remain disabled for CPS-only deployments.
+- **`GEOCODING_ENABLED`** starts the canonical `sensor_locations` projection from `connectivity_records` and Nominatim enrichment. Enable it on exactly one dedicated worker or all-in-one instance to avoid duplicate external requests.
 - **The REST API can be horizontally scaled** — it is stateless and reads the DB through repositories. Behind a load balancer you can put N instances with `API_ENABLED=true` and all the other flags set to `false`.
 
 ### Dedicated CPS role

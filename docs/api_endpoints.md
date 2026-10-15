@@ -15,48 +15,91 @@ This page documents every HTTP route in newest-first order: V3, V2, then unversi
 
 ## Endpoint index
 
-| Generation | Method and path                                | Response                           |
-| ---------- | ---------------------------------------------- | ---------------------------------- |
-| V3         | `GET /api/v3/messages`                         | Paginated protobuf messages        |
-| V3         | `GET /api/v3/messages/latest`                  | Latest protobuf message per sensor |
-| V3         | `GET /api/v3/messages/json`                    | Paginated JSON messages            |
-| V3         | `GET /api/v3/messages/latest/json`             | Latest JSON message per sensor     |
-| V2         | `GET /api/v2/sensor/maxdata/:type/:start/:end` | Maximum values by sensor           |
-| V2         | `GET /api/v2/sensor/list/:start/:end`          | Sensor list                        |
-| V2         | `GET /api/v2/sensor/urban/:start/:end`         | Urban sensor list                  |
-| V2         | `GET /api/v2/sensor/markers/:start/:end`       | Map marker list                    |
-| V2         | `GET /api/v2/sensor/owner/:owner`              | Current sensors by owner           |
-| V2         | `GET /api/v2/sensor/:sensor/:start/:end`       | Sensor and owner-related data      |
-| V2         | `GET /api/v2/story/list`                       | Paginated stories                  |
-| V2         | `GET /api/v2/story/last/:sensor_id`            | Latest story for a sensor          |
-| Legacy     | `GET /api/sensor/cities`                       | Cities grouped by location         |
-| Legacy     | `GET /api/sensor/json`                         | Area or city sensor data           |
-| Legacy     | `GET /api/sensor/csv/:start/:end/:city`        | Tab-separated sensor export        |
-| Legacy     | `GET /api/sensor/measurements/:start/:end`     | Measurement types                  |
-| Legacy     | `GET /api/sensor/messages/:start/:end`         | User messages                      |
-| Legacy     | `GET /api/sensor/:sensor/:start/:end`          | Sensor data                        |
-| Legacy     | `GET /api/status/agents`                       | Configured agents                  |
-| Operations | `GET /api/status/last-block`                   | Last indexed block                 |
+| Generation | Method and path                                | Response                            |
+| ---------- | ---------------------------------------------- | ----------------------------------- |
+| V3         | `GET /api/v3/cities`                           | CPS cities by country and region    |
+| V3         | `GET /api/v3/sensors/:owner`                   | Current sensors by owner            |
+| V3         | `GET /api/v3/messages`                         | Paginated protobuf messages         |
+| V3         | `GET /api/v3/messages/latest`                  | Latest protobuf message per sensor  |
+| V3         | `GET /api/v3/messages/max`                     | Maximum protobuf message per sensor |
+| V3         | `GET /api/v3/messages/json`                    | Paginated JSON messages             |
+| V3         | `GET /api/v3/messages/latest/json`             | Latest JSON message per sensor      |
+| V3         | `GET /api/v3/messages/max/json`                | Maximum JSON message per sensor     |
+| V3         | `GET /api/v3/messages/csv`                     | CPS sensor TSV export               |
+| V2         | `GET /api/v2/sensor/maxdata/:type/:start/:end` | Maximum values by sensor            |
+| V2         | `GET /api/v2/sensor/list/:start/:end`          | Sensor list                         |
+| V2         | `GET /api/v2/sensor/urban/:start/:end`         | Urban sensor list                   |
+| V2         | `GET /api/v2/sensor/markers/:start/:end`       | Map marker list                     |
+| V2         | `GET /api/v2/sensor/owner/:owner`              | Current sensors by owner            |
+| V2         | `GET /api/v2/sensor/:sensor/:start/:end`       | Sensor and owner-related data       |
+| V2         | `GET /api/v2/story/list`                       | Paginated stories                   |
+| V2         | `GET /api/v2/story/last/:sensor_id`            | Latest story for a sensor           |
+| Legacy     | `GET /api/sensor/cities`                       | Cities grouped by location          |
+| Legacy     | `GET /api/sensor/json`                         | Area or city sensor data            |
+| Legacy     | `GET /api/sensor/csv/:start/:end/:city`        | Tab-separated sensor export         |
+| Legacy     | `GET /api/sensor/measurements/:start/:end`     | Measurement types                   |
+| Legacy     | `GET /api/sensor/messages/:start/:end`         | User messages                       |
+| Legacy     | `GET /api/sensor/:sensor/:start/:end`          | Sensor data                         |
+| Legacy     | `GET /api/status/agents`                       | Configured agents                   |
+| Operations | `GET /api/status/last-block`                   | Last indexed block                  |
 
 ## V3 API
 
 - Controller: `src/api/connectivity/connectivity.controller.ts`
 - Prefix: `/api/v3`
 
-All V3 message routes return only structurally valid, correctly signed and successfully decoded Connectivity Protocol records with materialized JSON. Results are ordered from newest to oldest.
+All V3 message routes return only structurally valid, correctly signed and successfully decoded Connectivity Protocol records with materialized JSON. List and latest results are ordered from newest to oldest; max results are ordered by the selected measurement value descending.
+
+### `GET /api/v3/cities`
+
+**Purpose.** Returns unique geocoded CPS cities grouped by country and region.
+
+**Response.** HTTP `200`, `application/json`:
+
+```json
+{
+  "result": {
+    "France": {
+      "Ile-de-France": ["Paris"]
+    },
+    "Russia": {
+      "": ["Moscow"],
+      "Samara Oblast": ["Samara", "Tolyatti"]
+    }
+  }
+}
+```
+
+**Notes.** Countries, regions and cities are sorted. An empty region key means Nominatim returned a complete city/country pair without a region. Sensors whose current GPS position is still pending reverse geocoding or has no complete city/country pair are omitted. The route reads `sensor_locations` and does not emit deprecation headers.
+
+### `GET /api/v3/sensors/:owner`
+
+**Purpose.** Lists sensor IDs whose current owner equals the supplied owner.
+
+**Parameters.** `owner` is a required path string. URL-encode the value when necessary.
+
+**Response.** HTTP `200`, `application/json`:
+
+```json
+{
+  "result": ["sensor-a", "sensor-b"]
+}
+```
+
+**Notes.** “Current” means the owner of the CPS anchor linked to each sensor's newest valid, correctly signed and decoded canonical record across all time. The result is sorted, contains unique sensor IDs and is an empty array when the owner has no sensors. The route reads `connectivity_records` and `cps_anchors`, does not depend on the deprecated `measurements` projection and does not emit deprecation headers.
 
 ### Shared V3 filters
 
-| Query parameter    | Required              | Type and validation                               | Meaning                                                      |
-| ------------------ | --------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
-| `start`            | List: no; latest: yes | Integer, `0..8640000000000000`                    | Inclusive `recorded_at` lower bound in Unix milliseconds     |
-| `end`              | List: no; latest: yes | Integer, `0..8640000000000000`                    | Exclusive `recorded_at` upper bound in Unix milliseconds     |
-| `sensor_id`        | No                    | 64 lowercase hexadecimal characters               | Raw Ed25519 public key used by the indexed record            |
-| `node_id`          | No                    | Canonical decimal uint64                          | Robonomics CPS NodeId from signed message metadata            |
-| `payload_type`     | No                    | `urban` or `insight`                              | Decoded message payload branch                               |
-| `measurement_type` | No                    | Up to 64 lowercase letters, digits or underscores | Public measurement type, for example `temperature` or `pm10` |
+| Query parameter | Required                  | Type and validation                                              | Meaning                                                  |
+| --------------- | ------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+| `start`         | List: no; latest/max: yes | Integer, `0..8640000000000000`                                   | Inclusive `recorded_at` lower bound in Unix milliseconds |
+| `end`           | List: no; latest/max: yes | Integer, `0..8640000000000000`                                   | Exclusive `recorded_at` upper bound in Unix milliseconds |
+| `sensor_id`     | No                        | 64 lowercase hexadecimal characters                              | Raw Ed25519 public key used by the indexed record        |
+| `node_id`       | No                        | Canonical decimal uint64                                         | Robonomics CPS NodeId from signed message metadata       |
+| `payload_type`  | No                        | `urban` or `insight`                                             | Decoded message payload branch                           |
+| `type`          | Max: yes; others: no      | List/latest: lowercase identifier up to 64 chars; max: non-empty | Public measurement selector                              |
 
-The paginated routes allow either date boundary to be supplied independently and do not impose a maximum range. When both are present, `start < end` is required. The latest routes require both boundaries and allow at most 24 hours.
+The paginated routes allow either date boundary to be supplied independently and do not impose a maximum range. When both are present, `start < end` is required. The latest and max routes require both boundaries and allow at most 24 hours. All public V3 message routes expose the measurement selector as `type`.
 
 ### Shared pagination parameters
 
@@ -86,11 +129,21 @@ An absent `X-Next-Cursor` header marks the last page. An empty result is a valid
 
 **Purpose.** Returns at most one complete signed envelope per `sensor_id`: the newest matching message in the requested period. This is the default representation of the latest-message endpoint.
 
-**Parameters.** Accepts all [shared V3 filters](#shared-v3-filters). `start` and `end` are required, must satisfy `start < end`, and may span at most 24 hours. This endpoint has no `limit` or `cursor`.
+**Parameters.** Accepts the shared `sensor_id`, `node_id` and `payload_type` filters. `start` and `end` are required, must satisfy `start < end`, and may span at most 24 hours. Optional `type` filters records by the stored measurement-type index; it must contain up to 64 lowercase letters, digits or underscores. This endpoint has no `limit` or `cursor`.
 
 **Response.** HTTP `200`, `Content-Type: application/protobuf`; body type `crypto.v1.SignedEnvelopeBatch`. An empty selection produces a zero-byte body.
 
 **Notes.** Sensors with no matching message are omitted. Batch items are sorted from newest to oldest. This route has no pagination and never returns `X-Next-Cursor`.
+
+### `GET /api/v3/messages/max`
+
+**Purpose.** Returns at most one complete signed envelope per `sensor_id`: the message with the maximum selected public measurement in the requested period.
+
+**Parameters.** Accepts the shared `sensor_id`, `node_id` and `payload_type` filters. `start`, `end` and a non-empty string `type` are required; the date range must satisfy `start < end` and may span at most 24 hours. `type` is matched exactly and case-sensitively against public measurement keys in protobuf JSON; it is not restricted to a predefined list. This endpoint has no `limit` or `cursor`.
+
+**Response.** HTTP `200`, `Content-Type: application/protobuf`; body type `crypto.v1.SignedEnvelopeBatch`. An empty selection produces a zero-byte body.
+
+**Notes.** Sensors without a numeric value for the selected measurement are omitted, so an unknown type returns an empty selection. Batch items are sorted by the selected value descending. Equal values are ordered by `recorded_at` and then MongoDB `_id` descending. When one message contains the selected measurement or numeric value more than once, its greatest value participates in the comparison.
 
 ### `GET /api/v3/messages/json`
 
@@ -151,6 +204,30 @@ An absent `X-Next-Cursor` header marks the last page. An empty result is a valid
 ```
 
 **Notes.** Sensors with no matching message are omitted. Items have the same JSON format as `/api/v3/messages/json` and are sorted from newest to oldest.
+
+### `GET /api/v3/messages/max/json`
+
+**Purpose.** Returns the same maximum-per-sensor selection as `/api/v3/messages/max`, materialized as protobuf JSON.
+
+**Parameters.** The same as `/api/v3/messages/max`: required `start`, `end` and `type`, plus optional `sensor_id`, `node_id` and `payload_type`. This endpoint has no `limit` or `cursor`.
+
+**Response.** HTTP `200`, `application/json`, with the same `{ "result": { "items": [...] } }` shape as `/api/v3/messages/latest/json`.
+
+**Notes.** Items are sorted by the selected measurement value descending and do not include a separate computed value field or pagination metadata.
+
+### `GET /api/v3/messages/csv`
+
+**Purpose.** Downloads public CPS measurements for sensors whose current resolved location belongs to the requested city. The route reads `connectivity_records` and `sensor_locations`; it does not use the deprecated `measurements` or `sensor` collections.
+
+**Parameters.** Required query parameters `start` and `end` are integer Unix milliseconds and define a `[start, end)` range of at most 31 days. Required `city` is matched exactly against the current resolved CPS location.
+
+**Response.** HTTP `200`, `Content-Type: text/csv; charset=utf-8`, with an attachment filename `sensors_<city>_<start>_<end>.csv`.
+
+```text
+timestamp\tsensor_id\tgeo\tpm10\tpm25\t<other measurement fields>
+```
+
+**Notes.** The file is tab-separated. Timestamps use UTC `DD.MM.YYYY HH:mm`; sensor IDs use the configured CPS SS58 prefix. Known fields use the normalized legacy units. Future numeric protobuf measurements are retained in protocol units and use either `<type>` or `<type>.<field>` columns. GPS is written only to `geo`; metadata and private sections are excluded. Columns after `pm25` are sorted alphabetically. An empty selection returns only the five fixed headers.
 
 ## V2 API
 

@@ -16,6 +16,10 @@ import {
   MeasurementSchema,
 } from './schemas/measurement.schema.js';
 import { Sensor, SensorSchema } from './schemas/sensor.schema.js';
+import {
+  SensorLocation,
+  SensorLocationSchema,
+} from './schemas/sensor-location.schema.js';
 import { Story, StorySchema } from './schemas/story.schema.js';
 import {
   Subscription,
@@ -28,6 +32,7 @@ import { DatalogRepository } from './repositories/datalog.repository.js';
 import { IndexStateRepository } from './repositories/index-state.repository.js';
 import { MeasurementRepository } from './repositories/measurement.repository.js';
 import { SensorRepository } from './repositories/sensor.repository.js';
+import { SensorLocationRepository } from './repositories/sensor-location.repository.js';
 import { StoryRepository } from './repositories/story.repository.js';
 import { SubscriptionRepository } from './repositories/subscription.repository.js';
 
@@ -47,6 +52,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
       { name: IndexState.name, schema: IndexStateSchema },
       { name: Measurement.name, schema: MeasurementSchema },
       { name: Sensor.name, schema: SensorSchema },
+      { name: SensorLocation.name, schema: SensorLocationSchema },
       { name: Story.name, schema: StorySchema },
       { name: Subscription.name, schema: SubscriptionSchema },
     ]),
@@ -59,6 +65,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     IndexStateRepository,
     MeasurementRepository,
     SensorRepository,
+    SensorLocationRepository,
     StoryRepository,
     SubscriptionRepository,
   ],
@@ -70,6 +77,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     IndexStateRepository,
     MeasurementRepository,
     SensorRepository,
+    SensorLocationRepository,
     StoryRepository,
     SubscriptionRepository,
   ],

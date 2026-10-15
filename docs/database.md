@@ -65,17 +65,18 @@ db.measurements.getIndexes();
 
 ## Collections and repositories
 
-| Mongoose class        | Collection              | Repository                      | Where it is used                                                           |
-| --------------------- | ----------------------- | ------------------------------- | -------------------------------------------------------------------------- |
-| `CpsAnchor`           | `cps_anchors`           | `CpsAnchorRepository`           | `CpsSnapshotService`, `CpsPayloadSetHandler`, `CpsAnchorProcessorService`  |
-| `ConnectivityPayload` | `connectivity_payloads` | `ConnectivityPayloadRepository` | Lossless CPS payload archive before decode                                 |
-| `ConnectivityRecord`  | `connectivity_records`  | `ConnectivityRecordRepository`  | Canonical CPS occurrence storage                                           |
-| `Datalog`             | `datalogs`              | `DatalogRepository`             | **Deprecated** Datalog queue and processor                                 |
-| `Measurement`         | `measurements`          | `MeasurementRepository`         | **Deprecated** Datalog/CPS compatibility projection                        |
-| `Sensor`              | `cities`                | `SensorRepository`              | **Deprecated** geocoded compatibility projection                           |
-| `Story`               | `stories`               | `StoryRepository`               | **Deprecated** RWS stories                                                 |
-| `Subscription`        | `subscriptions`         | `SubscriptionRepository`        | **Deprecated** RWS ownership                                               |
-| `IndexState`          | `index_state`           | `IndexStateRepository`          | `BlockIndexerService`, `StatusController`, `MetricsService`                |
+| Mongoose class        | Collection              | Repository                      | Where it is used                                                          |
+| --------------------- | ----------------------- | ------------------------------- | ------------------------------------------------------------------------- |
+| `CpsAnchor`           | `cps_anchors`           | `CpsAnchorRepository`           | `CpsSnapshotService`, `CpsPayloadSetHandler`, `CpsAnchorProcessorService` |
+| `ConnectivityPayload` | `connectivity_payloads` | `ConnectivityPayloadRepository` | Lossless CPS payload archive before decode                                |
+| `ConnectivityRecord`  | `connectivity_records`  | `ConnectivityRecordRepository`  | Canonical CPS occurrence storage                                          |
+| `Datalog`             | `datalogs`              | `DatalogRepository`             | **Deprecated** Datalog queue and processor                                |
+| `Measurement`         | `measurements`          | `MeasurementRepository`         | **Deprecated** Datalog/CPS compatibility projection                       |
+| `Sensor`              | `cities`                | `SensorRepository`              | **Deprecated** geocoded compatibility projection                          |
+| `SensorLocation`      | `sensor_locations`      | `SensorLocationRepository`      | Current city/region/country projection from canonical CPS GPS records     |
+| `Story`               | `stories`               | `StoryRepository`               | **Deprecated** RWS stories                                                |
+| `Subscription`        | `subscriptions`         | `SubscriptionRepository`        | **Deprecated** RWS ownership                                              |
+| `IndexState`          | `index_state`           | `IndexStateRepository`          | `BlockIndexerService`, `StatusController`, `MetricsService`               |
 
 A detailed description of each schema (fields, types, indexes) is in [indexer.md → MongoDB schemas](./indexer.md#mongodb-schemas).
 
@@ -115,6 +116,16 @@ Without claiming a complete list (each file is worth reading in full), here are 
 - `ConnectivityRecordRepository.upsertRecord(...)` — idempotently updates one occurrence using deterministic `record_key=<payload_key>:<envelope_index>`.
 - `ConnectivityRecordRepository.findMessagePage(...)` — reads only valid/signed/decoded records with materialized `message_json` and the SignedEnvelope fields needed by the API, filters measurement types through compact `measurement_types`, and uses stable cursor ordering by millisecond timestamp plus MongoDB `_id`.
 - `ConnectivityRecordRepository.findLatestMessages(...)` — scans the bounded public date range from newest to oldest and groups by `sensor_id`, returning only the first matching record for each sensor without pagination.
+- `ConnectivityRecordRepository.findCsvRecords(...)` — reads valid Urban/Insight CPS messages for selected city sensor IDs in chronological order with the minimal projection required by the V3 CSV export.
+- `ConnectivityRecordRepository.findLatestUnprojectedSensorLocations(...)` — selects the newest valid public GPS event per sensor that is newer than its current `sensor_locations` projection.
+
+### SensorLocationRepository
+
+- `upsertCandidates(...)` — advances a sensor only to a newer CPS position and resets geocoding only when coordinates change.
+- `findPending(limit)` — selects pending positions and older resolved documents that still lack the `region` field.
+- `markResolved(...)` / `markNotFound(...)` — finish geocoding only when the source CPS record is still current.
+- `getCitiesGrouped()` — returns sorted unique cities grouped by country and region for `GET /api/v3/cities`.
+- `findSensorIdsByCity(city)` — selects sensors whose current resolved location matches the city for `GET /api/v3/messages/csv`; the `{geocoding_status, city, sensor_id}` index covers this lookup.
 
 ### MeasurementRepository
 
@@ -126,8 +137,10 @@ Without claiming a complete list (each file is worth reading in full), here are 
 
 ### SensorRepository
 
+**Deprecated:** this repository remains part of the legacy `cities` compatibility projection.
+
 - `bulkUpsert([{ sensor_id, geo }])` — updates `geo` for known sensors + inserts new ones with `city/state/country: null` (the "needs geocoding" marker).
-- `findWithoutCity(limit)` — used by `GeocodingService`.
+- `findWithoutCity(limit)` — retained for legacy compatibility.
 - `updateLocation(_id, { city, state, country })` — writes the Nominatim result.
 
 ### StoryRepository

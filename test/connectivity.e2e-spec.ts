@@ -23,6 +23,8 @@ import {
   type ConnectivityMessageRecord,
   ConnectivityRecordRepository,
 } from '../src/database/repositories/connectivity-record.repository.js';
+import { CpsAnchorRepository } from '../src/database/repositories/cps-anchor.repository.js';
+import { SensorLocationRepository } from '../src/database/repositories/sensor-location.repository.js';
 
 const START = '1788429600000';
 const END = '1788516000000';
@@ -74,23 +76,46 @@ describe('Connectivity API (e2e)', () => {
   let app: INestApplication<App>;
   let findMessagePage: jest.Mock;
   let findLatestMessages: jest.Mock;
+  let findMaxMessages: jest.Mock;
+  let findCsvRecords: jest.Mock;
+  let findCurrentSensorIdsByOwner: jest.Mock;
+  let getCitiesGrouped: jest.Mock;
+  let findSensorIdsByCity: jest.Mock;
 
   beforeEach(async () => {
     findMessagePage = jest.fn().mockResolvedValue([createRecord()]);
     findLatestMessages = jest.fn().mockResolvedValue([createRecord()]);
+    findMaxMessages = jest.fn().mockResolvedValue([createRecord()]);
+    findCsvRecords = jest.fn().mockResolvedValue([]);
+    findCurrentSensorIdsByOwner = jest.fn().mockResolvedValue([]);
+    getCitiesGrouped = jest.fn().mockResolvedValue({});
+    findSensorIdsByCity = jest.fn().mockResolvedValue([]);
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [ConnectivityController],
       providers: [
         ConnectivityService,
         {
           provide: ConnectivityRecordRepository,
-          useValue: { findMessagePage, findLatestMessages },
+          useValue: {
+            findMessagePage,
+            findLatestMessages,
+            findMaxMessages,
+            findCsvRecords,
+          },
         },
         {
           provide: ConfigService,
           useValue: {
             get: jest.fn((_key: string, fallback: number) => fallback),
           },
+        },
+        {
+          provide: CpsAnchorRepository,
+          useValue: { findCurrentSensorIdsByOwner },
+        },
+        {
+          provide: SensorLocationRepository,
+          useValue: { getCitiesGrouped, findSensorIdsByCity },
         },
       ],
     }).compile();
@@ -108,6 +133,126 @@ describe('Connectivity API (e2e)', () => {
     await app.close();
   });
 
+  it('GET /api/v3/sensors/:owner возвращает текущие сенсоры владельца', async () => {
+    findCurrentSensorIdsByOwner.mockResolvedValueOnce(['sensor-a', 'sensor-b']);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v3/sensors/5Owner')
+      .expect(200);
+
+    expect(findCurrentSensorIdsByOwner).toHaveBeenCalledWith('5Owner');
+    expect(response.body).toEqual({ result: ['sensor-a', 'sensor-b'] });
+    expect(response.headers.deprecation).toBeUndefined();
+    expect(response.headers.link).toBeUndefined();
+  });
+
+  it('GET /api/v3/cities группирует города по странам и регионам', async () => {
+    getCitiesGrouped.mockResolvedValueOnce({
+      France: { 'Ile-de-France': ['Paris'] },
+      Russia: {
+        '': ['Moscow'],
+        'Samara Oblast': ['Samara', 'Tolyatti'],
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v3/cities')
+      .expect(200);
+
+    expect(getCitiesGrouped).toHaveBeenCalledTimes(1);
+    expect(response.body).toEqual({
+      result: {
+        France: { 'Ile-de-France': ['Paris'] },
+        Russia: {
+          '': ['Moscow'],
+          'Samara Oblast': ['Samara', 'Tolyatti'],
+        },
+      },
+    });
+    expect(response.headers.deprecation).toBeUndefined();
+  });
+
+  it('GET /api/v3/sensors/:owner возвращает пустой список', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v3/sensors/5Nobody')
+      .expect(200);
+
+    expect(findCurrentSensorIdsByOwner).toHaveBeenCalledWith('5Nobody');
+    expect(response.body).toEqual({ result: [] });
+  });
+
+  it('GET /api/v3/messages/csv скачивает CPS-показания города как TSV', async () => {
+    const sensorId = Buffer.alloc(32, 1);
+    const sensorHex = sensorId.toString('hex');
+    findSensorIdsByCity.mockResolvedValueOnce([sensorHex]);
+    findCsvRecords.mockResolvedValueOnce([
+      {
+        sensor_id: sensorHex,
+        recorded_at: new Date('2026-09-03T10:00:00.123Z'),
+        message_json: {
+          urban: {
+            public: [
+              { gps: { lat: 53.2, lon: 50.1 } },
+              { bme280: { temperature: { centiCelsius: 2250 } } },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v3/messages/csv')
+      .query({ start: START, end: END, city: 'Samara' })
+      .expect(200)
+      .expect('Content-Type', 'text/csv; charset=utf-8');
+
+    expect(response.headers['content-disposition']).toBe(
+      `attachment; filename="sensors_Samara_${START}_${END}.csv"`,
+    );
+    expect(response.text).toBe(
+      [
+        'timestamp\tsensor_id\tgeo\tpm10\tpm25\ttemperature',
+        `03.09.2026 10:00\t${encodeAddress(sensorId, 32)}\t{"lat":53.2,"lng":50.1}\t\t\t22.5`,
+      ].join('\n'),
+    );
+    expect(findSensorIdsByCity).toHaveBeenCalledWith('Samara');
+    expect(findCsvRecords).toHaveBeenCalledWith({
+      sensorIds: [sensorHex],
+      start: new Date(Number(START)),
+      end: new Date(Number(END)),
+    });
+    expect(response.headers.deprecation).toBeUndefined();
+  });
+
+  it('GET /api/v3/messages/csv проверяет обязательные параметры и 31 день', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/csv')
+      .query({ start: START, end: END })
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/csv')
+      .query({ start: END, end: START, city: 'Samara' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/csv')
+      .query({ start: '0', end: String(31 * 86_400_000 + 1), city: 'Samara' })
+      .expect(413);
+
+    expect(findSensorIdsByCity).not.toHaveBeenCalled();
+    expect(findCsvRecords).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v3/messages/csv поддерживает Unicode в имени файла', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v3/messages/csv')
+      .query({ start: START, end: END, city: 'Самара' })
+      .expect(200);
+
+    expect(response.headers['content-disposition']).toContain(
+      "filename*=UTF-8''sensors_%D0%A1%D0%B0%D0%BC%D0%B0%D1%80%D0%B0_",
+    );
+  });
+
   it('GET /api/v3/messages/json возвращает JSON без nonce и signature', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/v3/messages/json')
@@ -117,7 +262,7 @@ describe('Connectivity API (e2e)', () => {
         end: '1788429601000',
         sensor_id: 'ab'.repeat(32),
         payload_type: 'urban',
-        measurement_type: 'temperature',
+        type: 'temperature',
       })
       .expect(200);
 
@@ -160,7 +305,7 @@ describe('Connectivity API (e2e)', () => {
       .query({
         start: START,
         end: END,
-        measurement_type: 'temperature',
+        type: 'temperature',
         limit: '1',
         cursor: 'ignored',
       })
@@ -182,6 +327,38 @@ describe('Connectivity API (e2e)', () => {
     expect(findMessagePage).not.toHaveBeenCalled();
   });
 
+  it('GET /api/v3/messages/max/json возвращает максимальное сообщение каждого сенсора', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v3/messages/max/json')
+      .query({
+        start: START,
+        end: END,
+        type: 'futureMetric',
+        node_id: '42',
+        limit: '1',
+        cursor: 'ignored',
+      })
+      .expect(200);
+
+    expect(findMaxMessages).toHaveBeenCalledWith({
+      start: new Date(Number(START)),
+      end: new Date(Number(END)),
+      type: 'futureMetric',
+      nodeId: '42',
+    });
+    expect(response.body.result).toEqual({
+      items: [
+        {
+          sensorId: encodeAddress(Buffer.alloc(32, 1), 32),
+          message: createRecord().message_json,
+        },
+      ],
+    });
+    expect(response.body.result).not.toHaveProperty('next_cursor');
+    expect(findMessagePage).not.toHaveBeenCalled();
+    expect(findLatestMessages).not.toHaveBeenCalled();
+  });
+
   it('не регистрирует прежний длинный маршрут', async () => {
     await request(app.getHttpServer())
       .get('/api/v3/connectivity/messages')
@@ -190,15 +367,17 @@ describe('Connectivity API (e2e)', () => {
     expect(findMessagePage).not.toHaveBeenCalled();
   });
 
-  it.each(['/api/v3/messages/protobuf', '/api/v3/messages/latest/protobuf'])(
-    'не регистрирует прежний protobuf-маршрут %s',
-    async (path) => {
-      await request(app.getHttpServer()).get(path).expect(404);
+  it.each([
+    '/api/v3/messages/protobuf',
+    '/api/v3/messages/latest/protobuf',
+    '/api/v3/messages/max/protobuf',
+  ])('не регистрирует прежний protobuf-маршрут %s', async (path) => {
+    await request(app.getHttpServer()).get(path).expect(404);
 
-      expect(findMessagePage).not.toHaveBeenCalled();
-      expect(findLatestMessages).not.toHaveBeenCalled();
-    },
-  );
+    expect(findMessagePage).not.toHaveBeenCalled();
+    expect(findLatestMessages).not.toHaveBeenCalled();
+    expect(findMaxMessages).not.toHaveBeenCalled();
+  });
 
   it('отклоняет некорректные фильтры до обращения к repository', async () => {
     await request(app.getHttpServer())
@@ -319,12 +498,47 @@ describe('Connectivity API (e2e)', () => {
       .expect(400);
     await request(app.getHttpServer())
       .get('/api/v3/messages/latest/json')
+      .query({ start: START, end: END, type: 'Temperature' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/latest/json')
       .query({ start: '0', end: '86400001' })
       .expect(413);
 
     expect(findLatestMessages).not.toHaveBeenCalled();
   });
-  it.each(['/api/v3/messages', '/api/v3/messages/latest'])(
+
+  it('требует непустой type, но принимает неизвестное имя измерения', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/max/json')
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/max/json')
+      .query({ start: START, end: END, type: '' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/max/json')
+      .query({ start: '0', end: '86400001', type: 'pm10' })
+      .expect(413);
+    expect(findMaxMessages).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/max/json')
+      .query({ start: START, end: END, type: 'futureMetric' })
+      .expect(200);
+
+    expect(findMaxMessages).toHaveBeenCalledWith({
+      start: new Date(Number(START)),
+      end: new Date(Number(END)),
+      type: 'futureMetric',
+    });
+  });
+
+  it.each([
+    '/api/v3/messages',
+    '/api/v3/messages/latest',
+    '/api/v3/messages/max',
+  ])(
     '%s сохраняет исходные байты и проверяемую Ed25519-подпись',
     async (path) => {
       await cryptoWaitReady();
@@ -345,6 +559,7 @@ describe('Connectivity API (e2e)', () => {
       };
       findMessagePage.mockResolvedValue([record]);
       findLatestMessages.mockResolvedValue([record]);
+      findMaxMessages.mockResolvedValue([record]);
       const response = await request(app.getHttpServer())
         .get(path)
         .query({
@@ -353,7 +568,7 @@ describe('Connectivity API (e2e)', () => {
           sensor_id: 'ab'.repeat(32),
           node_id: '42',
           payload_type: 'urban',
-          measurement_type: 'temperature',
+          type: 'temperature',
         })
         .buffer(true)
         .parse(parseBinary)
@@ -371,9 +586,12 @@ describe('Connectivity API (e2e)', () => {
           envelopeIndex: 0,
         }),
       ).toMatchObject({ verified: true });
-      expect(
-        path.endsWith('/latest') ? findLatestMessages : findMessagePage,
-      ).toHaveBeenCalledWith(
+      const repositoryMethod = path.endsWith('/latest')
+        ? findLatestMessages
+        : path.endsWith('/max')
+          ? findMaxMessages
+          : findMessagePage;
+      expect(repositoryMethod).toHaveBeenCalledWith(
         expect.objectContaining({
           includeMessageRaw: true,
           start: new Date(Number(START)),
@@ -381,9 +599,18 @@ describe('Connectivity API (e2e)', () => {
           sensorId: 'ab'.repeat(32),
           nodeId: '42',
           payloadType: 'urban',
-          measurementType: 'temperature',
+          ...(path.endsWith('/max')
+            ? { type: 'temperature' }
+            : { measurementType: 'temperature' }),
         }),
       );
+      const repositoryQuery = repositoryMethod.mock.calls.at(-1)?.[0];
+      if (path.endsWith('/max')) {
+        expect(repositoryQuery).not.toHaveProperty('measurementType');
+      }
+      if (path.endsWith('/latest')) {
+        expect(repositoryQuery).not.toHaveProperty('type');
+      }
       expect(response.headers['x-next-cursor']).toBeUndefined();
     },
   );
@@ -457,14 +684,31 @@ describe('Connectivity API (e2e)', () => {
     expect(findLatestMessages).not.toHaveBeenCalled();
   });
 
-  it.each(['/api/v3/messages', '/api/v3/messages/latest'])(
-    '%s не восстанавливает отсутствующие байты из JSON',
-    async (path) => {
-      await request(app.getHttpServer())
-        .get(path)
-        .query({ start: START, end: END })
-        .expect(500)
-        .expect('Content-Type', /application\/json/);
-    },
-  );
+  it('возвращает пустой max batch', async () => {
+    findMaxMessages.mockResolvedValueOnce([]);
+
+    const empty = await request(app.getHttpServer())
+      .get('/api/v3/messages/max')
+      .query({ start: START, end: END, type: 'pm10' })
+      .buffer(true)
+      .parse(parseBinary)
+      .expect(200);
+
+    expect(empty.body).toEqual(Buffer.alloc(0));
+    expect(
+      fromBinary(SignedEnvelopeBatchSchema, empty.body as Buffer).batch,
+    ).toEqual([]);
+  });
+
+  it.each([
+    '/api/v3/messages',
+    '/api/v3/messages/latest',
+    '/api/v3/messages/max',
+  ])('%s не восстанавливает отсутствующие байты из JSON', async (path) => {
+    await request(app.getHttpServer())
+      .get(path)
+      .query({ start: START, end: END, type: 'temperature' })
+      .expect(500)
+      .expect('Content-Type', /application\/json/);
+  });
 });

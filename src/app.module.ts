@@ -31,7 +31,7 @@ import { RobonomicsModule } from './robonomics/robonomics.module.js';
  * - `API_ENABLED` — StatusModule, deprecated Sensor/Story и Connectivity API.
  * - `INDEXER_ENABLED` — RobonomicsModule (сканирование блоков).
  * - `MEASUREMENT_ENABLED` — CPS processor и deprecated datalog/projection.
- * - `GEOCODING_ENABLED` — deprecated геокодирование cities-проекции.
+ * - `GEOCODING_ENABLED` — CPS-проекция sensor_locations и reverse geocoding.
  *
  * Выставив нужные флаги в `false`, можно запускать отдельные инстансы:
  * индексатор, обработчик IPFS, геокодер, REST API — в любых комбинациях.

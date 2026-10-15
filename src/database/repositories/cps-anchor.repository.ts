@@ -4,6 +4,9 @@ import { Model } from 'mongoose';
 import { CpsAnchorStatus } from '../../common/constants/cps-anchor-status.enum.js';
 import { CpsBackfillStatus } from '../../common/constants/cps-backfill-status.enum.js';
 import {
+  ConnectivityRecordDecodeStatus,
+  ConnectivitySignatureStatus,
+  ConnectivityStructureStatus,
   CpsPayloadSource,
   ProtocolBatchWireFormat,
 } from '../../common/constants/connectivity-storage.enum.js';
@@ -68,6 +71,80 @@ export class CpsAnchorRepository {
     @InjectModel(CpsAnchor.name)
     private readonly model: Model<CpsAnchorDocument>,
   ) {}
+
+  /**
+   * Возвращает сенсоры, чья самая свежая валидная CPS-запись принадлежит
+   * указанному владельцу. Кандидаты выбираются по CPS-якорям владельца,
+   * после чего владелец перепроверяется по якорю последней записи сенсора.
+   * @param owner - адрес владельца CPS-узла
+   * @returns отсортированный список уникальных sensor_id
+   */
+  async findCurrentSensorIdsByOwner(owner: string): Promise<string[]> {
+    if (!owner) return [];
+
+    const validRecordMatch = {
+      structure_status: ConnectivityStructureStatus.Valid,
+      signature_status: ConnectivitySignatureStatus.Valid,
+      decode_status: ConnectivityRecordDecodeStatus.Decoded,
+      message_json: { $type: 'object' },
+      sensor_id: { $type: 'string' },
+    };
+    const sensors = await this.model
+      .aggregate<{ _id: string }>([
+        { $match: { owner } },
+        {
+          $lookup: {
+            from: 'connectivity_records',
+            let: { sourceKey: '$source_key' },
+            pipeline: [
+              {
+                $match: {
+                  ...validRecordMatch,
+                  $expr: { $eq: ['$payload_key', '$$sourceKey'] },
+                },
+              },
+              { $project: { _id: 0, sensor_id: 1 } },
+            ],
+            as: 'owned_records',
+          },
+        },
+        { $unwind: '$owned_records' },
+        { $group: { _id: '$owned_records.sensor_id' } },
+        {
+          $lookup: {
+            from: 'connectivity_records',
+            let: { sensorId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  ...validRecordMatch,
+                  $expr: { $eq: ['$sensor_id', '$$sensorId'] },
+                },
+              },
+              { $sort: { recorded_at: -1, _id: -1 } },
+              { $limit: 1 },
+              { $project: { _id: 0, payload_key: 1 } },
+            ],
+            as: 'latest_records',
+          },
+        },
+        { $unwind: '$latest_records' },
+        {
+          $lookup: {
+            from: 'cps_anchors',
+            localField: 'latest_records.payload_key',
+            foreignField: 'source_key',
+            as: 'latest_anchors',
+          },
+        },
+        { $unwind: '$latest_anchors' },
+        { $match: { 'latest_anchors.owner': owner } },
+        { $sort: { _id: 1 } },
+      ])
+      .exec();
+
+    return sensors.map((sensor) => sensor._id);
+  }
 
   /**
    * Добавляет CPS anchor только при первом появлении пары NodeId и содержимого.

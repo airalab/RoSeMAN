@@ -13,6 +13,7 @@ describe('CpsAnchorSchema', () => {
       expect.arrayContaining([
         [{ status: 1, available_at: 1, block: 1 }, { background: true }],
         [{ node_id: 1, block: -1 }, { background: true }],
+        [{ owner: 1, source_key: 1 }, { background: true }],
         [{ backfill_status: 1, block: 1 }, { background: true }],
       ]),
     );

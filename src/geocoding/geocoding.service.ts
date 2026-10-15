@@ -5,7 +5,11 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SensorRepository } from '../database/repositories/sensor.repository.js';
+import { ConnectivityRecordRepository } from '../database/repositories/connectivity-record.repository.js';
+import {
+  type PendingSensorLocation,
+  SensorLocationRepository,
+} from '../database/repositories/sensor-location.repository.js';
 
 interface NominatimAddress {
   city?: string;
@@ -23,16 +27,25 @@ interface NominatimResponse {
   address?: NominatimAddress;
 }
 
+type ReverseGeocodeResult =
+  | {
+      readonly status: 'resolved';
+      readonly city: string;
+      readonly region: string;
+      readonly country: string;
+    }
+  | { readonly status: 'not_found' }
+  | { readonly status: 'retry' };
+
 /**
- * Фоновый сервис геокодирования сенсоров через Nominatim reverse geocoding API.
- * Поллит коллекцию sensor на записи с city === null и обогащает их данными
- * о местоположении (city, state, country).
- * @deprecated Сервис обслуживает только legacy-коллекцию cities.
+ * Синхронизирует актуальные GPS-позиции из CPS и обогащает их через
+ * Nominatim reverse geocoding API.
  */
 @Injectable()
 export class GeocodingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GeocodingService.name);
   private timer?: ReturnType<typeof setInterval>;
+  private running = false;
 
   private readonly baseUrl: string;
   private readonly userAgent: string;
@@ -41,9 +54,16 @@ export class GeocodingService implements OnModuleInit, OnModuleDestroy {
   private readonly pollInterval: number;
   private readonly batchSize: number;
 
+  /**
+   * Создаёт CPS-геокодер с проверенной конфигурацией.
+   * @param config - конфигурация приложения
+   * @param connectivityRecordRepo - репозиторий канонических CPS-записей
+   * @param sensorLocationRepo - репозиторий актуальных локаций сенсоров
+   */
   constructor(
     private readonly config: ConfigService,
-    private readonly sensorRepo: SensorRepository,
+    private readonly connectivityRecordRepo: ConnectivityRecordRepository,
+    private readonly sensorLocationRepo: SensorLocationRepository,
   ) {
     this.baseUrl = this.config.get<string>('geocoding.baseUrl')!;
     this.userAgent = this.config.get<string>('geocoding.userAgent')!;
@@ -55,110 +75,151 @@ export class GeocodingService implements OnModuleInit, OnModuleDestroy {
     this.batchSize = this.config.get<number>('geocoding.batchSize')!;
   }
 
+  /** Запускает немедленную синхронизацию и последующий периодический poll. */
   onModuleInit(): void {
-    this.logger.log(`Starting geocoding poll every ${this.pollInterval}ms`);
+    this.logger.log(
+      `Starting CPS sensor geocoding poll every ${this.pollInterval}ms`,
+    );
+    void this.runOnce().catch((error: unknown) => this.logPollError(error));
     this.timer = setInterval(() => {
-      this.poll().catch((err) =>
-        this.logger.error(
-          'Geocoding poll error',
-          err instanceof Error ? err.stack : err,
-        ),
-      );
+      void this.runOnce().catch((error: unknown) => this.logPollError(error));
     }, this.pollInterval);
   }
 
+  /** Останавливает периодический poll при завершении приложения. */
   onModuleDestroy(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  /**
+   * Один раз синхронизирует CPS-позиции и геокодирует ожидающий пакет.
+   * Пересекающийся запуск безопасно пропускается.
+   */
+  async runOnce(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    try {
+      const candidates =
+        await this.connectivityRecordRepo.findLatestUnprojectedSensorLocations(
+          this.batchSize,
+        );
+      await this.sensorLocationRepo.upsertCandidates(candidates);
+
+      const pending = await this.sensorLocationRepo.findPending(this.batchSize);
+      if (pending.length === 0) return;
+      this.logger.debug(`Geocoding ${pending.length} CPS sensor(s)`);
+
+      for (const [index, location] of pending.entries()) {
+        await this.geocodeLocation(location);
+        if (index < pending.length - 1) {
+          await this.sleep(this.requestInterval);
+        }
+      }
+    } finally {
+      this.running = false;
     }
   }
 
   /**
-   * Ищет сенсоры без геокодированных данных (city === null)
-   * и запрашивает Nominatim для каждого с rate-limit паузой.
+   * Геокодирует одну актуальную позицию и сохраняет терминальный результат.
+   * Временные ошибки оставляет для следующего poll.
+   * @param location - ожидающая геокодирования позиция
    */
-  private async poll(): Promise<void> {
-    const sensors = await this.sensorRepo.findWithoutCity(this.batchSize);
-
-    if (sensors.length === 0) return;
-    this.logger.debug(`Geocoding ${sensors.length} sensor(s)`);
-
-    for (const sensor of sensors) {
-      const location = await this.reverseGeocode(
-        sensor.geo.lat,
-        sensor.geo.lng,
-      );
-
-      await this.sensorRepo.updateLocation(sensor._id, location);
-
-      this.logger.debug(
-        `Geocoded ${sensor.sensor_id}: ${location.city || '(empty)'}, ${location.state || '(empty)'}, ${location.country || '(empty)'}`,
-      );
-
-      await this.sleep(this.requestInterval);
+  private async geocodeLocation(
+    location: PendingSensorLocation,
+  ): Promise<void> {
+    const result = await this.reverseGeocode(
+      location.geo.lat,
+      location.geo.lng,
+    );
+    if (result.status === 'retry') return;
+    if (result.status === 'not_found') {
+      await this.sensorLocationRepo.markNotFound(location);
+      return;
     }
+
+    await this.sensorLocationRepo.markResolved(
+      location,
+      result.city,
+      result.region,
+      result.country,
+    );
+    this.logger.debug(
+      `Geocoded ${location.sensor_id}: ${result.city}, ${result.region || '(empty region)'}, ${result.country}`,
+    );
   }
 
   /**
    * Выполняет reverse geocoding через Nominatim API.
-   * Возвращает city, state, country. При ошибке возвращает пустые строки,
-   * чтобы не перезапрашивать.
+   * @param lat - широта WGS84
+   * @param lng - долгота WGS84
+   * @returns полный адрес, терминальное отсутствие адреса или retry
    */
   private async reverseGeocode(
     lat: number,
     lng: number,
-  ): Promise<{ city: string; state: string; country: string }> {
+  ): Promise<ReverseGeocodeResult> {
     const url = `${this.baseUrl}?lat=${lat}&lon=${lng}&format=json&zoom=10&accept-language=en`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.fetchTimeout);
 
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.fetchTimeout);
-
       const response = await globalThis.fetch(url, {
         signal: controller.signal,
         headers: { 'User-Agent': this.userAgent },
       });
-      clearTimeout(timer);
 
       if (!response.ok) {
         this.logger.warn(
           `Nominatim returned ${response.status} for (${lat}, ${lng})`,
         );
-        return { city: '', state: '', country: '' };
+        return response.status === 429 || response.status >= 500
+          ? { status: 'retry' }
+          : { status: 'not_found' };
       }
 
       const data = (await response.json()) as NominatimResponse;
       const address = data.address;
-
-      if (!address) {
-        return { city: '', state: '', country: '' };
-      }
-
-      return {
-        city:
-          address.city ||
-          address.town ||
-          address.village ||
-          address.hamlet ||
-          '',
-        state:
-          address.state ||
-          address.county ||
-          address.state_district ||
-          address.region ||
-          '',
-        country: address.country || '',
-      };
-    } catch (err) {
+      const city =
+        address?.city ||
+        address?.town ||
+        address?.village ||
+        address?.hamlet ||
+        '';
+      const country = address?.country || '';
+      const region =
+        address?.state ||
+        address?.county ||
+        address?.state_district ||
+        address?.region ||
+        '';
+      if (!city || !country) return { status: 'not_found' };
+      return { status: 'resolved', city, region, country };
+    } catch (error) {
       this.logger.warn(
-        `Nominatim failed for (${lat}, ${lng}): ${err instanceof Error ? err.message : String(err)}`,
+        `Nominatim failed for (${lat}, ${lng}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
-      return { city: '', state: '', country: '' };
+      return { status: 'retry' };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
-  /** @param ms - время ожидания в миллисекундах */
+  /**
+   * Ожидает заданный интервал между запросами.
+   * @param ms - время ожидания в миллисекундах
+   */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Записывает ошибку фонового цикла без остановки следующих запусков. */
+  private logPollError(error: unknown): void {
+    this.logger.error(
+      'CPS sensor geocoding poll error',
+      error instanceof Error ? error.stack : String(error),
+    );
   }
 }
