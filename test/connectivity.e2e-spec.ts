@@ -299,6 +299,20 @@ describe('Connectivity API (e2e)', () => {
     expect(response.headers.link).toBeUndefined();
   });
 
+  it('принимает sensor_id в SS58 и передаёт в repository как lowercase hex', async () => {
+    const sensorId = Buffer.alloc(32, 0xab);
+
+    await request(app.getHttpServer())
+      .get('/api/v3/messages/json')
+      .query({ sensor_id: encodeAddress(sensorId, 42) })
+      .expect(200);
+
+    expect(findMessagePage).toHaveBeenCalledWith({
+      limit: 1000,
+      sensorId: sensorId.toString('hex'),
+    });
+  });
+
   it('GET /api/v3/messages/latest/json возвращает последнее сообщение каждого сенсора', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/v3/messages/latest/json')

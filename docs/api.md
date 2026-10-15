@@ -140,6 +140,8 @@ The routes without a format suffix return protobuf. Their `/json` variants are i
 
 All V3 message routes expose their measurement selector under the query name `type`. For the paginated list and latest routes it is an optional filter over the stored measurement-type index. Max requires it to select the exact, case-sensitive protobuf JSON key used for maximum-value ordering and does not restrict the name to a predefined list, so newly stored measurement types are available without an API code change. Latest and max require `start` and `end` and limit the range to 24 hours.
 
+The optional `sensor_id` query filter accepts a valid SS58 address and normalizes its 32-byte public key to the canonical lowercase hexadecimal database representation. The legacy 64-character lowercase hexadecimal form without `0x` remains accepted for backward compatibility. An SS58 address may use any valid network prefix because the filter identifies the underlying public key; response addresses are always encoded with `CPS_SENSOR_SS58_PREFIX`.
+
 The CSV route uses required `start`, `end` and `city` query parameters, accepts at most 31 days and returns rows in chronological order. Its tab-separated layout is compatible with the legacy CSV, except that `sensor_id` is the public SS58 address and data comes only from canonical CPS storage. Known measurements are normalized to legacy units; other numeric protobuf fields are exported in their protocol units. GPS is represented by the `geo` column, while metadata and private sections are never exported.
 
 ### Protobuf responses
