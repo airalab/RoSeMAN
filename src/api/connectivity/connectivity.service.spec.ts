@@ -113,11 +113,16 @@ describe('ConnectivityService', () => {
 
   it('возвращает идентификаторы сенсоров текущего владельца', async () => {
     const { service, findCurrentSensorIdsByOwner } = createService();
-    findCurrentSensorIdsByOwner.mockResolvedValueOnce(['sensor-a', 'sensor-b']);
+    const firstSensor = Buffer.alloc(32, 1);
+    const secondSensor = Buffer.alloc(32, 2);
+    findCurrentSensorIdsByOwner.mockResolvedValueOnce([
+      firstSensor.toString('hex'),
+      secondSensor.toString('hex'),
+    ]);
 
     await expect(service.getSensorIdsByOwner('5Owner')).resolves.toEqual([
-      'sensor-a',
-      'sensor-b',
+      encodeAddress(firstSensor, 32),
+      encodeAddress(secondSensor, 32),
     ]);
     expect(findCurrentSensorIdsByOwner).toHaveBeenCalledWith('5Owner');
   });

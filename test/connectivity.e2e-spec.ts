@@ -134,14 +134,21 @@ describe('Connectivity API (e2e)', () => {
   });
 
   it('GET /api/v3/sensors/:owner возвращает текущие сенсоры владельца', async () => {
-    findCurrentSensorIdsByOwner.mockResolvedValueOnce(['sensor-a', 'sensor-b']);
+    const firstSensor = Buffer.alloc(32, 1);
+    const secondSensor = Buffer.alloc(32, 2);
+    findCurrentSensorIdsByOwner.mockResolvedValueOnce([
+      firstSensor.toString('hex'),
+      secondSensor.toString('hex'),
+    ]);
 
     const response = await request(app.getHttpServer())
       .get('/api/v3/sensors/5Owner')
       .expect(200);
 
     expect(findCurrentSensorIdsByOwner).toHaveBeenCalledWith('5Owner');
-    expect(response.body).toEqual({ result: ['sensor-a', 'sensor-b'] });
+    expect(response.body).toEqual({
+      result: [encodeAddress(firstSensor, 32), encodeAddress(secondSensor, 32)],
+    });
     expect(response.headers.deprecation).toBeUndefined();
     expect(response.headers.link).toBeUndefined();
   });

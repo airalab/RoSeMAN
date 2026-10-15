@@ -436,7 +436,7 @@ Indexes: unique `{record_key}`, unique `{payload_key, envelope_index}`, time-ran
 
 The public `GET /api/v3/messages/latest` endpoint uses the bounded 24-hour range, exposes its optional stored measurement-type filter as `type`, scans matching records in `{recorded_at: -1, _id: -1}` order and keeps the first record for each `sensor_id`. The paired `GET /api/v3/messages/max` endpoint uses the same range and base identity/payload filters but requires `type`: it extracts that public numeric measurement from `message_json`, keeps its greatest value for each `sensor_id`, and sorts the selected records by value descending. Sensors without a matching record are omitted; neither endpoint has pagination metadata.
 
-`GET /api/v3/sensors/:owner` starts with CPS anchors of the requested owner, finds candidate sensor IDs through `payload_key → source_key`, then resolves every candidate's newest valid decoded record and verifies the owner of that record's anchor. This preserves current-owner semantics when a sensor moves between CPS nodes while keeping the V3 read path independent of `measurements`.
+`GET /api/v3/sensors/:owner` starts with CPS anchors of the requested owner, finds candidate sensor IDs through `payload_key → source_key`, then resolves every candidate's newest valid decoded record and verifies the owner of that record's anchor. The API encodes the resulting public keys as SS58 addresses with `CPS_SENSOR_SS58_PREFIX`. This preserves current-owner semantics when a sensor moves between CPS nodes while keeping the V3 read path independent of `measurements`.
 
 ### Collection `sensor_locations` (SensorLocation)
 

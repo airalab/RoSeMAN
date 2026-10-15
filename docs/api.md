@@ -115,7 +115,7 @@ For NestJS validation errors, `message` can be an array of strings. If an `HttpE
 
 ## V3: Connectivity Protocol API
 
-In addition to protocol-message selections, V3 exposes `GET /api/v3/sensors/:owner`, `GET /api/v3/cities` and `GET /api/v3/messages/csv`. The ownership route reads only canonical CPS storage. The cities route reads the `sensor_locations` projection populated from valid public CPS GPS events and returns unique, sorted city names grouped by country and region. The CSV route joins current resolved city membership from that projection with valid canonical `connectivity_records`. An address without a Nominatim region uses the empty-string region key. Pending and unresolved locations are omitted. None of these routes depends on the deprecated `measurements` projection or emits deprecation headers.
+In addition to protocol-message selections, V3 exposes `GET /api/v3/sensors/:owner`, `GET /api/v3/cities` and `GET /api/v3/messages/csv`. The ownership route reads only canonical CPS storage and returns sensor IDs encoded with `CPS_SENSOR_SS58_PREFIX`. The cities route reads the `sensor_locations` projection populated from valid public CPS GPS events and returns unique, sorted city names grouped by country and region. The CSV route joins current resolved city membership from that projection with valid canonical `connectivity_records`. An address without a Nominatim region uses the empty-string region key. Pending and unresolved locations are omitted. None of these routes depends on the deprecated `measurements` projection or emits deprecation headers.
 
 The V3 API reads the canonical `connectivity_records` collection. Public results include only records that:
 

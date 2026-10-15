@@ -129,13 +129,14 @@ export class ConnectivityService {
   }
 
   /**
-   * Возвращает отсортированные идентификаторы сенсоров текущего владельца.
+   * Возвращает отсортированные SS58-идентификаторы сенсоров текущего владельца.
    * Владелец определяется по CPS-якорю самой свежей канонической записи.
    * @param owner - адрес владельца
-   * @returns уникальные идентификаторы сенсоров владельца
+   * @returns уникальные SS58-идентификаторы сенсоров владельца
    */
   async getSensorIdsByOwner(owner: string): Promise<string[]> {
-    return this.anchorRepo.findCurrentSensorIdsByOwner(owner);
+    const sensorIds = await this.anchorRepo.findCurrentSensorIdsByOwner(owner);
+    return sensorIds.map((sensorId) => this.toSensorSs58(sensorId));
   }
 
   /** Возвращает уникальные CPS-города по странам и регионам. */
@@ -467,13 +468,19 @@ export class ConnectivityService {
 
     return {
       timestamp: record.recorded_at,
-      sensorId: encodeAddress(
-        Buffer.from(record.sensor_id, 'hex'),
-        this.ss58Prefix,
-      ),
+      sensorId: this.toSensorSs58(record.sensor_id),
       ...(geo ? { geo } : {}),
       measurements,
     };
+  }
+
+  /**
+   * Кодирует внутренний lowercase hex sensor_id в публичный SS58-адрес.
+   * @param sensorId - 32-байтовый публичный ключ в hex без `0x`
+   * @returns SS58-адрес с настроенным CPS-префиксом
+   */
+  private toSensorSs58(sensorId: string): string {
+    return encodeAddress(Buffer.from(sensorId, 'hex'), this.ss58Prefix);
   }
 
   /**

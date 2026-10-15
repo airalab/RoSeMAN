@@ -82,11 +82,14 @@ All V3 message routes return only structurally valid, correctly signed and succe
 
 ```json
 {
-  "result": ["sensor-a", "sensor-b"]
+  "result": [
+    "4CDRcpeT1LeSdJkZiKecuEThh8VDDwjvAeZKYNPs5UpTUVEJ",
+    "4CEjxtxziNJdFjZHSc9UidQohjQ1h2LBJCPSPsD6LbcJwcFp"
+  ]
 }
 ```
 
-**Notes.** “Current” means the owner of the CPS anchor linked to each sensor's newest valid, correctly signed and decoded canonical record across all time. The result is sorted, contains unique sensor IDs and is an empty array when the owner has no sensors. The route reads `connectivity_records` and `cps_anchors`, does not depend on the deprecated `measurements` projection and does not emit deprecation headers.
+**Notes.** “Current” means the owner of the CPS anchor linked to each sensor's newest valid, correctly signed and decoded canonical record across all time. The result is sorted, contains unique sensor IDs encoded with `CPS_SENSOR_SS58_PREFIX` and is an empty array when the owner has no sensors. The route reads `connectivity_records` and `cps_anchors`, does not depend on the deprecated `measurements` projection and does not emit deprecation headers.
 
 ### Shared V3 filters
 
@@ -94,7 +97,7 @@ All V3 message routes return only structurally valid, correctly signed and succe
 | --------------- | ------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
 | `start`         | List: no; latest/max: yes | Integer, `0..8640000000000000`                                   | Inclusive `recorded_at` lower bound in Unix milliseconds |
 | `end`           | List: no; latest/max: yes | Integer, `0..8640000000000000`                                   | Exclusive `recorded_at` upper bound in Unix milliseconds |
-| `sensor_id`     | No                        | 64 lowercase hexadecimal characters                              | Raw Ed25519 public key used by the indexed record        |
+| `sensor_id`     | No                        | Valid SS58 address or 64 lowercase hexadecimal characters        | Ed25519 public key used by the indexed record            |
 | `node_id`       | No                        | Canonical decimal uint64                                         | Robonomics CPS NodeId from signed message metadata       |
 | `payload_type`  | No                        | `urban` or `insight`                                             | Decoded message payload branch                           |
 | `type`          | Max: yes; others: no      | List/latest: lowercase identifier up to 64 chars; max: non-empty | Public measurement selector                              |
