@@ -121,3 +121,10 @@ The full documentation lives in **[docs/](./docs/README.md)**:
 - [Database](./docs/database.md) — Repository pattern, repositories overview
 - [Metrics](./docs/metrics.md) — Prometheus `/metrics` endpoint
 - [Legacy deprecation](./docs/legacy-deprecation.md) — deprecated components, runtime signals and migration targets
+
+## License
+
+- **Code** — [GNU AGPL v3.0](LICENSE), Copyright (C) 2026 Pinout Limited. Code released before this change stays available under [BSD 3-Clause](LICENSES/BSD-3-Clause-Airalab.txt), Copyright (c) 2020, Airalab.
+- **Open measurement data** — [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/), attribution "© sensors.social contributors".
+
+Details — [NOTICE](NOTICE).
