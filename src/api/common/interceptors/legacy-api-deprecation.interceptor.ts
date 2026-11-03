@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import type { Observable } from 'rxjs';
+import { appendHeaderValue } from '../middleware/data-license.middleware.js';
 
 export const LEGACY_API_DEPRECATION_DATE = '@1791763200';
 export const LEGACY_API_DEPRECATION_DOCUMENT =
@@ -49,7 +50,8 @@ export class LegacyApiDeprecationInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const response = context.switchToHttp().getResponse<Response>();
     response.setHeader('Deprecation', LEGACY_API_DEPRECATION_DATE);
-    response.setHeader(
+    appendHeaderValue(
+      response,
       'Link',
       `<${LEGACY_API_DEPRECATION_DOCUMENT}>; rel="deprecation"`,
     );

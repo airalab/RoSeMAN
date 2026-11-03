@@ -44,6 +44,29 @@ describe('LegacyApiDeprecationInterceptor', () => {
     expect(handle).toHaveBeenCalledTimes(1);
   });
 
+  it('не затирает Link с лицензией данных', () => {
+    const headers = new Map<string, string | string[]>([
+      [
+        'Link',
+        '<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license"',
+      ],
+    ]);
+    const response = {
+      getHeader: jest.fn((name: string) => headers.get(name)),
+      setHeader: jest.fn((name: string, value: string | string[]) => {
+        headers.set(name, value);
+      }),
+    } as unknown as Response;
+
+    new LegacyApiDeprecationInterceptor().intercept(createContext(response), {
+      handle: () => of('ok'),
+    } as CallHandler);
+
+    expect(headers.get('Link')).toBe(
+      `<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license", <${LEGACY_API_DEPRECATION_DOCUMENT}>; rel="deprecation"`,
+    );
+  });
+
   it('сохраняет ранее открытые CORS-заголовки без дубликатов', () => {
     const headers = new Map<string, string | string[]>([
       ['Access-Control-Expose-Headers', 'X-Next-Cursor, Deprecation'],

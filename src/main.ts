@@ -8,6 +8,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AllExceptionsFilter } from './api/common/filters/http-exception.filter.js';
+import { dataLicenseHeaders } from './api/common/middleware/data-license.middleware.js';
 import { AppModule } from './app.module.js';
 
 function flag(name: string): 'enabled' | 'disabled' {
@@ -39,6 +40,8 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors();
+  // Лицензия открытых данных (ODbL 1.0) — в заголовках каждого ответа /api.
+  app.use('/api', dataLicenseHeaders);
 
   app.setGlobalPrefix('api', {
     exclude: ['/metrics'],
