@@ -17,6 +17,8 @@ Versioning is path-based. The application does not use NestJS `enableVersioning(
 
 Deprecated routes retain their response bodies and status codes, but add `Deprecation: @1791763200` and a `Link` with `rel="deprecation"`. No `Sunset` header is emitted because no removal date is scheduled. See [Legacy functionality deprecation](./legacy-deprecation.md).
 
+Every `/api` response carries the open-data licence in headers, without changing the body: `Link: <https://opendatacommons.org/licenses/odbl/1-0/>; rel="license"`, `X-Data-License: ODbL-1.0` and `X-Data-Attribution: sensors.social contributors`. These headers are exposed to browsers via `Access-Control-Expose-Headers`. On deprecated routes the license link and the deprecation link share one `Link` header.
+
 ## Starting and addressing the API
 
 The HTTP server starts unless `API_ENABLED=false`. The default port is `3000`; `PORT` can override it through application configuration.
