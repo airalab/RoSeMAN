@@ -20,6 +20,7 @@
 
 ## Stack
 
+- **Node.js 22.15+** (24 LTS in Docker) — needed for built-in `zlib.zstdDecompress`
 - **NestJS 11** + TypeScript (ESM)
 - **MongoDB** via **Mongoose**
 - **@polkadot/api** + `robonomics-api-augment`
