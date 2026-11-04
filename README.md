@@ -1,6 +1,10 @@
 # RoSeMAN
 
-**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode -- the CPS indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN indexes Connectivity Protocol data from the Robonomics parachain, verifies signed payloads, stores canonical messages in MongoDB and serves them via REST API.
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
+[![Data: ODbL 1.0](https://img.shields.io/badge/data-ODbL%201.0-brightgreen.svg)](https://opendatacommons.org/licenses/odbl/1-0/)
+[![REUSE](https://img.shields.io/badge/REUSE-annotated-informational.svg)](REUSE.toml)
+
+**Ro**bonomics **Se**nsors **M**easurement **A**nalytics and Archive **N**ode — the CPS indexer and analytics backend for [sensors.social](https://sensors.social). RoSeMAN indexes Connectivity Protocol data from the Robonomics parachain, verifies signed payloads, stores canonical messages in MongoDB and serves them via REST API.
 
 > **Deprecation notice:** Datalog/RWS indexing, the `measurements`/`cities` compatibility projection and the Sensor/Story APIs are deprecated and retained only for existing deployments. New deployments should use CPS indexing and the V3 Connectivity API. See [Legacy functionality deprecation](./docs/legacy-deprecation.md).
 
@@ -16,6 +20,7 @@
 
 ## Stack
 
+- **Node.js 22.15+** (24 LTS in Docker) — needed for built-in `zlib.zstdDecompress`
 - **NestJS 11** + TypeScript (ESM)
 - **MongoDB** via **Mongoose**
 - **@polkadot/api** + `robonomics-api-augment`
@@ -122,9 +127,13 @@ The full documentation lives in **[docs/](./docs/README.md)**:
 - [Metrics](./docs/metrics.md) — Prometheus `/metrics` endpoint
 - [Legacy deprecation](./docs/legacy-deprecation.md) — deprecated components, runtime signals and migration targets
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
-- **Code** — [GNU AGPL v3.0](LICENSE), Copyright (C) 2026 Pinout Limited. Code released before this change stays available under [BSD 3-Clause](LICENSES/BSD-3-Clause-Airalab.txt), Copyright (c) 2020, Airalab.
+- **Code** — [GNU AGPL v3.0](LICENSE), Copyright (C) 2026 Pinout Limited. Code released before this change stays available under [BSD 3-Clause](LICENSES/BSD-3-Clause.txt), Copyright (c) 2020, Airalab.
 - **Open measurement data** — [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/), attribution "© sensors.social contributors".
 
 Details — [NOTICE](NOTICE).
