@@ -5,6 +5,9 @@
   "author": "",
   "private": true,
   "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22.15.0"
+  },
   "type": "module",
   "scripts": {
     "build": "nest build",
