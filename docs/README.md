@@ -1,6 +1,6 @@
 # RoSeMAN documentation
 
-**Ro**obonomics **Se**ensors **M**easure Analytics and **A**rchive **N**ode — indexer for the CPS protocol of the Robonomics parachain, with verified payload ingestion and a protocol-aware REST API. Datalog/RWS support is retained as a [deprecated compatibility layer](./legacy-deprecation.md).
+**Ro**bonomics **Se**nsors **M**easurement **A**nalytics and Archive **N**ode — indexer for the CPS protocol of the Robonomics parachain, with verified payload ingestion and a protocol-aware REST API. Datalog/RWS support is retained as a [deprecated compatibility layer](./legacy-deprecation.md).
 
 The documentation covers every project component: blockchain indexer, IPFS processing, geocoding, REST API, metrics and deployment.
 

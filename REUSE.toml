@@ -1,0 +1,13 @@
+version = 1
+SPDX-PackageName = "RoSeMAN"
+SPDX-PackageSupplier = "Pinout Limited"
+SPDX-PackageDownloadLocation = "https://github.com/airalab/RoSeMAN"
+
+# Code is AGPL-3.0-only. Portions written before the 2026 relicensing were
+# released under BSD 3-Clause, Copyright (c) 2020, Airalab; see NOTICE and
+# LICENSES/BSD-3-Clause-Airalab.txt.
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = ["2026 Pinout Limited", "2020-2026 Airalab"]
+SPDX-License-Identifier = "AGPL-3.0-only"
