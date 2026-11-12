@@ -72,6 +72,31 @@ export class SensorService {
   }
 
   /**
+   * Возвращает среднее значение измерения заданного типа
+   * для каждого сенсора в указанном временном диапазоне.
+   * @returns объект вида `{ [sensor_id]: { model, geo, timestamp, value } }`
+   */
+  async getAvgData(
+    type: string,
+    start: number,
+    end: number,
+  ): Promise<Record<string, MaxDataEntry>> {
+    const docs = await this.measurementRepo.getAvgByType(type, start, end);
+
+    const result: Record<string, MaxDataEntry> = {};
+    for (const doc of docs) {
+      result[doc._id] = {
+        model: doc.model,
+        geo: doc.geo,
+        timestamp: doc.timestamp,
+        value: Math.round(Number(doc.value) * 100) / 100,
+      };
+    }
+
+    return result;
+  }
+
+  /**
    * Возвращает список сенсоров, имеющих данные в указанном временном диапазоне.
    * Для сенсоров с указанным owner добавляет поле owner.
    * @param start - начало диапазона (unix timestamp)

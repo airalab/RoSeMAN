@@ -47,6 +47,30 @@ export class SensorV2Controller {
   }
 
   /**
+   * Возвращает среднее значение измерения заданного типа
+   * для каждого сенсора в указанном временном диапазоне.
+   * Нужно для шкал, заданных на средних (PM по EEA): максимум дня
+   * красит весь день по одному выбросу.
+   * GET /api/v2/sensor/avgdata/:type/:start/:end
+   */
+  @Get('avgdata/:type/:start/:end')
+  @UseGuards(DateRangeGuard)
+  async getAvgData(
+    @Param('type') type: string,
+    @Param('start', ParseIntPipe) start: number,
+    @Param('end', ParseIntPipe) end: number,
+  ): Promise<{ result: Record<string, unknown> }> {
+    if (!TYPE_REGEX.test(type)) {
+      throw new BadRequestException(
+        'Invalid type: only lowercase letters, digits and underscores are allowed',
+      );
+    }
+
+    const result = await this.sensorService.getAvgData(type, start, end);
+    return { result };
+  }
+
+  /**
    * Возвращает список сенсоров с данными в указанном временном диапазоне.
    * GET /api/v2/sensor/list/:start/:end
    * @param start - начало диапазона (unix timestamp)

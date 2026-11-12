@@ -96,6 +96,48 @@ export class MeasurementRepository {
   }
 
   /**
+   * Среднее значение измерения заданного типа для каждого сенсора в диапазоне.
+   * geo и timestamp — из последнего измерения сенсора в диапазоне.
+   * @param type - тип измерения (`pm25`, `pm10` …)
+   * @param start - начало диапазона (unix timestamp)
+   * @param end - конец диапазона (unix timestamp)
+   */
+  async getAvgByType(
+    type: string,
+    start: number,
+    end: number,
+  ): Promise<AggregatedMaxEntry[]> {
+    const field = `measurement.${type}`;
+
+    return this.model
+      .aggregate<AggregatedMaxEntry>([
+        {
+          $match: {
+            model: { $in: SENSOR_DATA_MODELS },
+            timestamp: { $gte: start, $lte: end },
+            [field]: { $exists: true },
+          },
+        },
+        { $sort: { timestamp: 1 } },
+        {
+          $group: {
+            _id: '$sensor_id',
+            model: { $last: '$model' },
+            geo: { $last: '$geo' },
+            timestamp: { $last: '$timestamp' },
+            value: {
+              $avg: {
+                $convert: { input: `$${field}`, to: 'double', onError: null, onNull: null },
+              },
+            },
+          },
+        },
+        { $match: { value: { $ne: null } } },
+      ])
+      .exec();
+  }
+
+  /**
    * Возвращает список уникальных сенсоров, имеющих измерения
    * в указанном временном диапазоне.
    * Для каждого сенсора берётся последняя запись по timestamp; owner

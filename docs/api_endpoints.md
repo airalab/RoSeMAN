@@ -27,6 +27,7 @@ This page documents every HTTP route in newest-first order: V3, V2, then unversi
 | V3         | `GET /api/v3/messages/max/json`                | Maximum JSON message per sensor     |
 | V3         | `GET /api/v3/messages/csv`                     | CPS sensor TSV export               |
 | V2         | `GET /api/v2/sensor/maxdata/:type/:start/:end` | Maximum values by sensor            |
+| V2         | `GET /api/v2/sensor/avgdata/:type/:start/:end` | Mean values by sensor               |
 | V2         | `GET /api/v2/sensor/list/:start/:end`          | Sensor list                         |
 | V2         | `GET /api/v2/sensor/urban/:start/:end`         | Urban sensor list                   |
 | V2         | `GET /api/v2/sensor/markers/:start/:end`       | Map marker list                     |
@@ -263,6 +264,16 @@ All `start` and `end` path parameters in this section are Unix seconds parsed as
 ```
 
 **Notes.** The associated model, location and timestamp come from the record containing that sensor's maximum value. `geo` may be absent.
+
+### `GET /api/v2/sensor/avgdata/:type/:start/:end`
+
+**Purpose.** Returns the mean value of one measurement type for every sensor with matching data in the period. Used where a scale is defined on means, not on single readings — PM2.5 and PM10 on the sensors.social map follow the EEA index bands for hourly means, and the day's maximum would colour a whole day by one spike.
+
+**Parameters.** Same as `maxdata`: `type` matches `^[a-z0-9_]+$`; `start` and `end` are required integer Unix-second path parameters.
+
+**Response.** HTTP `200`, the same shape as `maxdata`; `value` is the mean rounded to 0.01. Values that are not numbers are skipped.
+
+**Notes.** `model`, `geo` and `timestamp` come from the sensor's latest record in the period. `geo` may be absent.
 
 ### `GET /api/v2/sensor/list/:start/:end`
 
