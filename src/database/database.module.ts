@@ -22,6 +22,10 @@ import {
 } from './schemas/sensor-location.schema.js';
 import { Story, StorySchema } from './schemas/story.schema.js';
 import {
+  SensorProfile,
+  SensorProfileSchema,
+} from './schemas/sensor-profile.schema.js';
+import {
   Subscription,
   SubscriptionSchema,
 } from './schemas/subscription.schema.js';
@@ -34,6 +38,7 @@ import { MeasurementRepository } from './repositories/measurement.repository.js'
 import { SensorRepository } from './repositories/sensor.repository.js';
 import { SensorLocationRepository } from './repositories/sensor-location.repository.js';
 import { StoryRepository } from './repositories/story.repository.js';
+import { SensorProfileRepository } from './repositories/sensor-profile.repository.js';
 import { SubscriptionRepository } from './repositories/subscription.repository.js';
 
 /**
@@ -54,6 +59,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
       { name: Sensor.name, schema: SensorSchema },
       { name: SensorLocation.name, schema: SensorLocationSchema },
       { name: Story.name, schema: StorySchema },
+      { name: SensorProfile.name, schema: SensorProfileSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
     ]),
   ],
@@ -67,6 +73,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     SensorRepository,
     SensorLocationRepository,
     StoryRepository,
+    SensorProfileRepository,
     SubscriptionRepository,
   ],
   exports: [
@@ -79,6 +86,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     SensorRepository,
     SensorLocationRepository,
     StoryRepository,
+    SensorProfileRepository,
     SubscriptionRepository,
   ],
 })

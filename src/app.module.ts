@@ -16,12 +16,17 @@ import {
   cpsConfig,
   geocodingConfig,
   ipfsConfig,
+  profileConfig,
   robonomicsConfig,
 } from './config/index.js';
 import { DatabaseModule } from './database/database.module.js';
 import { GeocodingModule } from './geocoding/geocoding.module.js';
 import { MeasurementModule } from './measurement/measurement.module.js';
 import { MetricsModule } from './metrics/metrics.module.js';
+import {
+  ProfileApiModule,
+  ProfilePinModule,
+} from './profile/profile.module.js';
 import { RobonomicsModule } from './robonomics/robonomics.module.js';
 
 /**
@@ -50,6 +55,7 @@ function buildImports(): Array<
         ipfsConfig,
         geocodingConfig,
         cpsConfig,
+        profileConfig,
       ],
     }),
     MongooseModule.forRootAsync({
@@ -68,6 +74,7 @@ function buildImports(): Array<
       StatusModule,
       SensorModule,
       StoryModule,
+      ProfileApiModule,
       MetricsModule,
       PrometheusModule.register({
         defaultMetrics: {
@@ -84,6 +91,10 @@ function buildImports(): Array<
 
   if (process.env.MEASUREMENT_ENABLED !== 'false') {
     modules.push(MeasurementModule);
+  }
+
+  if (process.env.PROFILE_ENABLED === 'true') {
+    modules.push(ProfilePinModule);
   }
 
   if (process.env.GEOCODING_ENABLED !== 'false') {
