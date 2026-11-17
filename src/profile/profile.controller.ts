@@ -1,4 +1,5 @@
 import { Controller, Get, NotFoundException, Param, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { CID } from 'multiformats/cid';
 import { SensorProfileRepository } from '../database/repositories/sensor-profile.repository.js';
@@ -35,9 +36,17 @@ function sniffType(head: Uint8Array): string {
 @Controller('v2/profile')
 export class ProfileController {
   constructor(
+    private readonly config: ConfigService,
     private readonly profiles: SensorProfileRepository,
     private readonly kubo: KuboClient,
   ) {}
+
+  @Get('node')
+  node(): { result: { multiaddrs: string[] } } {
+    return {
+      result: { multiaddrs: this.config.get<string[]>('profile.kuboP2p', []) },
+    };
+  }
 
   @Get('image/:cid')
   async image(

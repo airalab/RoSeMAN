@@ -16,6 +16,12 @@ export default registerAs('profile', () => ({
     /\/+$/,
     '',
   ),
+  /** Public multiaddrs of that Kubo (WSS, with /p2p/<peer id>): the phone dials it to hand over
+   * the photos. Served at GET /api/v2/profile/node so clients only need the RoSeMAN URL. */
+  kuboP2p: (process.env.PROFILE_KUBO_P2P || '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean),
   pollInterval: int(process.env.PROFILE_POLL_INTERVAL, 5000),
   batchSize: int(process.env.PROFILE_BATCH_SIZE, 5),
   /** Each pin waits this long for the phone to hand over blocks. */
