@@ -4,6 +4,7 @@ import { EVENT_HANDLERS, EXTRINSIC_HANDLERS } from './constants.js';
 import { CpsSnapshotService } from './cps-snapshot.service.js';
 import { filterHandlers } from './handler-filter.js';
 import { CpsPayloadSetHandler } from './handlers/cps-payload-set.handler.js';
+import { CpsProfileHandler } from './handlers/cps-profile.handler.js';
 import { DatalogNewRecordHandler } from './handlers/datalog-new-record.handler.js';
 import { RwsExtrinsicHandler } from './handlers/rws-extrinsic.handler.js';
 import { RwsNewDevicesHandler } from './handlers/rws-new-devices.handler.js';
@@ -17,6 +18,7 @@ import { RobonomicsService } from './robonomics.service.js';
     RobonomicsService,
     CpsSnapshotService,
     CpsPayloadSetHandler,
+    CpsProfileHandler,
     DatalogNewRecordHandler,
     RwsNewDevicesHandler,
     RwsExtrinsicHandler,
@@ -27,6 +29,7 @@ import { RobonomicsService } from './robonomics.service.js';
         filterHandlers(handlers, 'event'),
       inject: [
         CpsPayloadSetHandler,
+        CpsProfileHandler,
         DatalogNewRecordHandler,
         RwsNewDevicesHandler,
       ],
