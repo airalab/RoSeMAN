@@ -305,7 +305,7 @@ All `start` and `end` path parameters in this section are Unix seconds parsed as
 
 **Parameters.** `start` and `end` are required integer Unix-second path parameters.
 
-**Response.** HTTP `200`; each `result` item contains the sensor-list fields plus `device_model`, optional `owner`, and—for Urban-classified entries—a `sensors` array of the owner's other devices.
+**Response.** HTTP `200`; each `result` item contains the sensor-list fields plus `device_model`, optional `owner`, and—for Urban-classified entries—a `sensors` array of the other devices in the same group: for CPS sensors, the bundle (the other children of the sensor's parent node in the CPS tree); for legacy datalog sensors, the same owner.
 
 ```json
 {
@@ -323,7 +323,7 @@ All `start` and `end` path parameters in this section are Unix seconds parsed as
 }
 ```
 
-**Notes.** Results include Urban sensors, sensors without `device_model`, and Insight sensors whose owner has no Urban sensor. An Insight sensor without an owner is also included. The `sensors` field excludes the current sensor.
+**Notes.** Results include Urban sensors, sensors without `device_model`, and Insight sensors whose group (CPS bundle, or owner for datalog) has no Urban sensor. An Insight sensor without an owner is also included. The `sensors` field excludes the current sensor and lists only sensors with data in the period. CPS `owner` is the identity of the parent of the sensor's node, or the sensor itself when the parent has none.
 
 ### `GET /api/v2/sensor/owner/:owner`
 

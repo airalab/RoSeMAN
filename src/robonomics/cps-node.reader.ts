@@ -25,6 +25,12 @@ type CpsNodeIdCodec = Codec;
 
 type CpsParentOption = CpsCodecOption<CpsNodeIdCodec>;
 
+interface CpsAccountCodec extends Codec {
+  toU8a(isBare?: boolean): Uint8Array;
+}
+
+type CpsAccountOption = CpsCodecOption<CpsAccountCodec>;
+
 interface CpsScopeInfoCodec extends Codec {
   get(key: string): Codec | undefined;
 }
@@ -43,6 +49,8 @@ interface CpsStorageQuery {
   readonly payload?: CpsStorageEntry<CpsPayloadOption>;
   readonly scopes?: CpsStorageEntry<CpsScopeInfoOption>;
   readonly children?: CpsStorageEntry<CpsChildrenCodec>;
+  readonly identityNode?: CpsStorageEntry<CpsCodecOption<CpsNodeIdCodec>>;
+  readonly nodeIdentity?: CpsStorageEntry<CpsAccountOption>;
 }
 
 interface CpsApiAt {
@@ -52,6 +60,7 @@ interface CpsApiAt {
 }
 
 export interface CpsNodeState {
+  /** Владелец ближайшего Scope узла партии; для V3 API, не для измерений. */
   readonly owner?: string;
   readonly meta: Uint8Array | null;
   readonly payload: Uint8Array | null;
@@ -59,6 +68,105 @@ export interface CpsNodeState {
 
 export interface CpsSubtreeNodeState extends CpsNodeState {
   readonly nodeId: string;
+}
+
+/** Положение датчика в дереве CPS, найденное по его собственному ключу. */
+export interface CpsSensorPlacement {
+  /** NodeId, identity которого — ключ датчика; null, если ключ не привязан. */
+  readonly sensorNodeId: string | null;
+  /** Родитель узла датчика; null для непривязанного ключа или корня. */
+  readonly parentNodeId: string | null;
+  /** Identity родителя (32 байта); null, если у родителя её нет. */
+  readonly ownerAccount: Uint8Array | null;
+}
+
+/**
+ * Находит узел датчика по ключу и identity его родителя.
+ * `identityNode` и `nodeIdentity` в паллете — строгая связка 1:1.
+ * @param api - подключённый API Robonomics
+ * @param blockHash - хеш состояния для чтения
+ * @param sensorKey - 32-байтный Ed25519-ключ из подписанного конверта
+ * @returns положение датчика; ошибки RPC пробрасываются
+ */
+export async function readCpsSensorPlacementAt(
+  api: ApiPromise,
+  blockHash: string,
+  sensorKey: Uint8Array,
+): Promise<CpsSensorPlacement> {
+  const cpsQuery = await cpsQueryAt(api, blockHash);
+  const { identityNode, nodeIdentity, nodes } = cpsQuery;
+  if (!identityNode || !nodeIdentity || !nodes) {
+    throw new Error(
+      'CPS identity storage is unavailable at the requested block',
+    );
+  }
+
+  const nodeOption = await identityNode(sensorKey);
+  if (nodeOption.isNone) {
+    return { sensorNodeId: null, parentNodeId: null, ownerAccount: null };
+  }
+  const sensorNodeId = normalizeCpsNodeId(nodeOption.unwrap().toString());
+
+  const infoOption = await nodes(sensorNodeId);
+  const parentOption = infoOption.isNone
+    ? undefined
+    : (infoOption.unwrap().get('parent') as CpsParentOption | undefined);
+  if (!parentOption || parentOption.isNone) {
+    return { sensorNodeId, parentNodeId: null, ownerAccount: null };
+  }
+  const parentNodeId = normalizeCpsNodeId(parentOption.unwrap().toString());
+
+  const ownerOption = await nodeIdentity(parentNodeId);
+  return {
+    sensorNodeId,
+    parentNodeId,
+    ownerAccount: ownerOption.isNone ? null : ownerOption.unwrap().toU8a(true),
+  };
+}
+
+/**
+ * Читает identity всех детей узла — состав бандла.
+ * Дети без identity — не датчики и пропускаются.
+ * @param api - подключённый API Robonomics
+ * @param blockHash - хеш состояния для чтения
+ * @param parentNodeId - узел бандла
+ * @returns NodeId детей и их 32-байтные ключи в порядке создания
+ */
+export async function readCpsBundleAt(
+  api: ApiPromise,
+  blockHash: string,
+  parentNodeId: string,
+): Promise<{ nodeId: string; account: Uint8Array }[]> {
+  const cpsQuery = await cpsQueryAt(api, blockHash);
+  const { children, nodeIdentity } = cpsQuery;
+  if (!children || !nodeIdentity) {
+    throw new Error(
+      'CPS identity storage is unavailable at the requested block',
+    );
+  }
+
+  const members: { nodeId: string; account: Uint8Array }[] = [];
+  for (const childId of await children(parentNodeId)) {
+    const nodeId = normalizeCpsNodeId(childId.toString());
+    const identity = await nodeIdentity(nodeId);
+    if (!identity.isNone) {
+      members.push({ nodeId, account: identity.unwrap().toU8a(true) });
+    }
+  }
+  return members;
+}
+
+/** Storage API паллета CPS в точном состоянии блока. */
+async function cpsQueryAt(
+  api: ApiPromise,
+  blockHash: string,
+): Promise<CpsStorageQuery> {
+  const apiAt = (await api.at(blockHash)) as unknown as CpsApiAt;
+  const cpsQuery = apiAt.query.cps;
+  if (!cpsQuery) {
+    throw new Error('CPS storage is unavailable at the requested block');
+  }
+  return cpsQuery;
 }
 
 /**
@@ -174,7 +282,9 @@ export async function isCpsNodeInSubtreesAt(
 }
 
 /**
- * Читает payload из layout pallet 1.0 и разрешает владельца ближайшего Scope.
+ * Читает payload и meta из layout pallet 1.0 и владельца ближайшего Scope.
+ * Узел вне Scope больше не ошибка: owner остаётся пустым. Владелец измерений
+ * разрешается по каждому датчику отдельно (CpsSensorIdentityService).
  * @param cpsQuery - storage API pallet CPS для конкретного блока
  * @param nodeId - идентификатор CPS node
  * @returns состояние node либо null при отсутствии payload
@@ -195,12 +305,8 @@ async function readSplitCpsNode(
   if (payloadOption.isNone) return null;
 
   const owner = await resolveScopeOwner(nodes, scopes, nodeId);
-  if (!owner) {
-    throw new Error('CPS scope owner not found');
-  }
-
   return {
-    owner,
+    ...(owner ? { owner } : {}),
     meta: await readSplitCpsMeta(meta, nodeId),
     payload: payloadOption.unwrap().toU8a(true),
   };
@@ -225,7 +331,7 @@ async function readSplitCpsMeta(
  * @param nodes - storage entry `cps.nodes` с `NodeInfo { parent, scope }`
  * @param scopes - storage entry `cps.scopes` с `ScopeInfo { owner, ... }`
  * @param nodeId - начальный идентификатор CPS node
- * @returns SS58-адрес владельца Scope либо undefined для неконсистентного state
+ * @returns SS58-адрес владельца Scope либо undefined
  */
 async function resolveScopeOwner(
   nodes: CpsStorageEntry<CpsNodeOption>,
@@ -233,7 +339,6 @@ async function resolveScopeOwner(
   nodeId: unknown,
 ): Promise<string | undefined> {
   let currentNodeId = nodeId;
-
   for (let depth = 0; depth <= MAX_CPS_TREE_DEPTH; depth += 1) {
     const nodeOption = await nodes(currentNodeId);
     if (nodeOption.isNone) return undefined;

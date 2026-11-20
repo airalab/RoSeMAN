@@ -45,6 +45,8 @@ export interface OwnedSensorEntry extends SensorListEntry {
  */
 export interface MarkerSensorEntry extends OwnedSensorEntry {
   device_model: string;
+  /** Соседи по бандлу CPS из самого свежего измерения; null у datalog-сенсоров. */
+  bundle?: string[] | null;
 }
 
 /**
@@ -227,6 +229,7 @@ export class MeasurementRepository {
             donated_by: { $first: { $ifNull: ['$donated_by', ''] } },
             device_model: { $first: { $ifNull: ['$device_model', ''] } },
             owner: { $first: { $ifNull: ['$owner', ''] } },
+            bundle: { $first: '$bundle' },
             timestamp: { $first: '$timestamp' },
           },
         },
@@ -248,6 +251,7 @@ export class MeasurementRepository {
             donated_by: 1,
             device_model: 1,
             owner: 1,
+            bundle: 1,
             timestamp: 1,
           },
         },

@@ -40,6 +40,10 @@ export class Measurement {
   @Prop({ type: String })
   owner?: string;
 
+  /** hex-ключи соседей по бандлу CPS (дети того же родителя), без самого датчика. */
+  @Prop({ type: [String], default: undefined })
+  bundle?: string[];
+
   @Prop({ required: true, type: Number, index: true })
   timestamp!: number;
 }
