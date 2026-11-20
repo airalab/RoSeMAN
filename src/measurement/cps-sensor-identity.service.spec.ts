@@ -1,7 +1,10 @@
 import type { ConfigService } from '@nestjs/config';
 import { encodeAddress } from '@polkadot/util-crypto';
 import type { RobonomicsService } from '../robonomics/robonomics.service.js';
-import { CpsSensorIdentityService } from './cps-sensor-identity.service.js';
+import {
+  CpsSensorIdentityService,
+  CpsSensorRejection,
+} from './cps-sensor-identity.service.js';
 
 /** Дерево CPS одного блока: узлы, родители, identity. */
 interface Tree {
@@ -30,7 +33,11 @@ const none = {
 };
 
 /** ApiPromise с одним деревом на любой блок и счётчиком чтений storage. */
-function createService(tree: Tree, failIdentityNode = false) {
+function createService(
+  tree: Tree,
+  failIdentityNode = false,
+  nodeIds: string[] = [],
+) {
   const reads = { identityNode: 0, nodes: 0, nodeIdentity: 0, children: 0 };
   const cps = {
     identityNode: jest.fn((account: Uint8Array) => {
@@ -79,7 +86,10 @@ function createService(tree: Tree, failIdentityNode = false) {
     },
   };
   const service = new CpsSensorIdentityService(
-    { get: (_k: string, fallback: unknown) => fallback } as ConfigService,
+    {
+      get: (k: string, fallback: unknown) =>
+        k === 'cps.nodeIds' ? nodeIds : fallback,
+    } as ConfigService,
     { getApi: () => Promise.resolve(api) } as unknown as RobonomicsService,
   );
   return { service, reads };
@@ -119,16 +129,26 @@ describe('CpsSensorIdentityService', () => {
     });
   });
 
-  it('ключ без узла в дереве: владелец — сам датчик, бандла нет', async () => {
+  it('ключ без узла в дереве отклоняется', async () => {
     const { service } = createService(tree);
 
-    await expect(service.resolve(100, key(99))).resolves.toEqual({
-      owner: encodeAddress(key(99), 32),
-      ownerIsFallback: true,
+    await expect(service.resolve(100, key(99))).resolves.toMatchObject({
+      rejection: CpsSensorRejection.Unregistered,
       sensorNodeId: null,
-      parentNodeId: null,
       bundle: [],
     });
+  });
+
+  it('узел датчика вне поддеревьев CPS_NODE_IDS отклоняется, внутри — принимается', async () => {
+    const { service } = createService(tree, false, ['3']);
+
+    await expect(service.resolve(100, key(20))).resolves.toMatchObject({
+      rejection: CpsSensorRejection.OutsideSubtree,
+      sensorNodeId: '20',
+    });
+    const inside = await service.resolve(100, urban);
+    expect(inside.rejection).toBeUndefined();
+    expect(inside.owner).toBe(encodeAddress(owner, 32));
   });
 
   it('в одном блоке читает датчик один раз, бандл — один раз на всех соседей', async () => {
