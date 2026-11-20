@@ -212,6 +212,29 @@ describe('CpsAnchorProcessorService', () => {
     );
   });
 
+  it('не принимает конверт датчика, не зарегистрированного в дереве', async () => {
+    const { processor, anchor, updateStatus, upsertMany } =
+      await createNodeThreeProcessor({
+        resolve: jest.fn().mockResolvedValue({
+          rejection: 'UNREGISTERED_SENSOR',
+          owner: '4Self',
+          ownerIsFallback: true,
+          sensorNodeId: null,
+          parentNodeId: null,
+          bundle: [],
+        }),
+      } as unknown as CpsSensorIdentityService);
+
+    await expect(processor.runOnce()).resolves.toBe(1);
+
+    expect(upsertMany).not.toHaveBeenCalled();
+    expect(updateStatus).toHaveBeenCalledWith(
+      anchor.source_key,
+      CpsAnchorStatus.PROCESSED_WITH_ERRORS,
+      expect.objectContaining({ legacyProjectionCount: 0 }),
+    );
+  });
+
   it('при ошибке чтения дерева ставит anchor в retry, а не теряет партию', async () => {
     const { processor, anchor, updateStatus, upsertMany } =
       await createNodeThreeProcessor({

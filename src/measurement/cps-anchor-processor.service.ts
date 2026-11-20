@@ -263,15 +263,17 @@ export class CpsAnchorProcessorService
             anchor.block,
             verification.envelope.sensorId,
           );
-          if (identity.ownerIsFallback) {
-            ownerlessParents.add(identity.parentNodeId ?? 'unbound');
+          if (!identity.rejection && identity.ownerIsFallback) {
+            ownerlessParents.add(identity.parentNodeId ?? 'root');
           }
-          const transformed = this.transformer.transform(
-            verification.envelope,
-            message,
-            anchor,
-            identity,
-          );
+          const transformed = identity.rejection
+            ? ({ transformed: false, code: identity.rejection } as const)
+            : this.transformer.transform(
+                verification.envelope,
+                message,
+                anchor,
+                identity,
+              );
           if (!transformed.transformed) {
             invalidEnvelopeCount += 1;
             if (record) {
