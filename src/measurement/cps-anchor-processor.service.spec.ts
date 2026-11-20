@@ -42,6 +42,20 @@ import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 import { buildEnvelopeSigningBytes } from './protocol/envelope-signature-verifier.js';
 import { ProtocolBatchWireFormat } from './protocol/signed-envelope-batch-payload.decoder.js';
+import type { CpsSensorIdentityService } from './cps-sensor-identity.service.js';
+
+/** Дерево CPS: владелец — identity родителя, бандл пуст. */
+function sensorIdentityMock(): CpsSensorIdentityService {
+  return {
+    resolve: jest.fn().mockResolvedValue({
+      owner: '5Owner',
+      ownerIsFallback: false,
+      sensorNodeId: '1',
+      parentNodeId: '0',
+      bundle: [],
+    }),
+  } as unknown as CpsSensorIdentityService;
+}
 
 interface CpsMetricsMock {
   readonly service: CpsMetricsService;
@@ -124,6 +138,96 @@ async function createSignedBatch(
 }
 
 describe('CpsAnchorProcessorService', () => {
+  /** Процессор с одним anchor узла 3 и сообщением без Meta.node_id (= 0). */
+  async function createNodeThreeProcessor(identity: CpsSensorIdentityService) {
+    const values: Record<string, unknown> = {
+      'cps.enabled': true,
+      'cps.maxAttempts': 5,
+      'cps.retryBaseDelay': 1_000,
+      'cps.batchWireFormat': ProtocolBatchWireFormat.Raw,
+    };
+    const config = {
+      get: jest.fn(
+        (key: string, fallback?: unknown) => values[key] ?? fallback,
+      ),
+    } as unknown as ConfigService;
+    const anchor = {
+      source_key: 'cps:3:chain:test',
+      node_id: '3',
+      block: 6255906,
+      cid: 'QmTest',
+      attempt_count: 1,
+    } as CpsAnchorDocument;
+    const claimNext = jest
+      .fn()
+      .mockResolvedValueOnce(anchor)
+      .mockResolvedValueOnce(null);
+    const updateStatus = jest.fn().mockResolvedValue(undefined);
+    const upsertMany = jest
+      .fn<Promise<void>, [Measurement[]]>()
+      .mockResolvedValue(undefined);
+    const processor = new CpsAnchorProcessorService(
+      config,
+      {
+        fetchBytes: jest.fn().mockResolvedValue(await createSignedBatch(true)),
+      } as unknown as IpfsFetcherService,
+      { claimNext, updateStatus } as unknown as CpsAnchorRepository,
+      {} as ConnectivityPayloadRepository,
+      {} as ConnectivityRecordRepository,
+      { upsertMany } as unknown as MeasurementRepository,
+      {
+        bulkUpsert: jest.fn().mockResolvedValue(undefined),
+      } as unknown as SensorRepository,
+      new CpsMeasurementTransformer(),
+      new ConnectivityRecordMapper(),
+      createCpsMetricsMock().service,
+      identity,
+    );
+    return { processor, anchor, updateStatus, upsertMany };
+  }
+
+  it('принимает сообщение без Meta.node_id из партии чужого узла: владелец и бандл из дерева', async () => {
+    const resolve = jest.fn().mockResolvedValue({
+      owner: '4Parent',
+      ownerIsFallback: false,
+      sensorNodeId: '12',
+      parentNodeId: '4',
+      bundle: ['ab'.repeat(32)],
+    });
+    const { processor, anchor, updateStatus, upsertMany } =
+      await createNodeThreeProcessor({
+        resolve,
+      } as unknown as CpsSensorIdentityService);
+
+    await expect(processor.runOnce()).resolves.toBe(1);
+
+    expect(resolve).toHaveBeenCalledWith(anchor.block, expect.any(Uint8Array));
+    expect(upsertMany).toHaveBeenCalledWith([
+      expect.objectContaining({ owner: '4Parent', bundle: ['ab'.repeat(32)] }),
+    ]);
+    expect(updateStatus).toHaveBeenCalledWith(
+      anchor.source_key,
+      CpsAnchorStatus.PROCESSED,
+      expect.objectContaining({ legacyProjectionCount: 1 }),
+    );
+  });
+
+  it('при ошибке чтения дерева ставит anchor в retry, а не теряет партию', async () => {
+    const { processor, anchor, updateStatus, upsertMany } =
+      await createNodeThreeProcessor({
+        resolve: jest.fn().mockRejectedValue(new Error('RPC down')),
+      } as unknown as CpsSensorIdentityService);
+
+    await expect(processor.runOnce()).resolves.toBe(1);
+
+    expect(upsertMany).not.toHaveBeenCalled();
+    expect(updateStatus).toHaveBeenCalledWith(
+      anchor.source_key,
+      CpsAnchorStatus.RETRY_PENDING,
+      expect.objectContaining({ errorMessage: 'RPC down' }),
+    );
+  });
+
   it('проверяет raw batch и завершает anchor только после MongoDB-upsert', async () => {
     const values: Record<string, unknown> = {
       'cps.enabled': true,
@@ -169,6 +273,7 @@ describe('CpsAnchorProcessorService', () => {
       new CpsMeasurementTransformer(),
       new ConnectivityRecordMapper(),
       createCpsMetricsMock().service,
+      sensorIdentityMock(),
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -251,6 +356,7 @@ describe('CpsAnchorProcessorService', () => {
       new CpsMeasurementTransformer(),
       new ConnectivityRecordMapper(),
       createCpsMetricsMock().service,
+      sensorIdentityMock(),
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -325,6 +431,7 @@ describe('CpsAnchorProcessorService', () => {
       new CpsMeasurementTransformer(),
       new ConnectivityRecordMapper(),
       createCpsMetricsMock().service,
+      sensorIdentityMock(),
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -407,6 +514,7 @@ describe('CpsAnchorProcessorService', () => {
       new CpsMeasurementTransformer(),
       new ConnectivityRecordMapper(),
       metrics.service,
+      sensorIdentityMock(),
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);
@@ -532,6 +640,7 @@ describe('CpsAnchorProcessorService', () => {
       new CpsMeasurementTransformer(),
       new ConnectivityRecordMapper(),
       metrics.service,
+      sensorIdentityMock(),
     );
 
     await expect(processor.runOnce()).resolves.toBe(1);

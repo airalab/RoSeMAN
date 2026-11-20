@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  type MarkerSensorEntry,
   MeasurementRepository,
   type OwnedSensorEntry,
   type SensorListEntry,
@@ -23,8 +24,8 @@ interface MarkerSensorItem extends SensorListEntry {
   device_model: string;
   owner?: string;
   /**
-   * Сенсоры того же владельца (другие урбаны и инсайты, без самого себя).
-   * Добавляется только к урбан-сенсорам (включая с пустым device_model).
+   * Сенсоры того же бандла CPS (дети того же родителя), а у datalog-сенсоров —
+   * того же владельца; без самого себя. Только у урбан-сенсоров.
    */
   sensors?: Array<{ sensor_id: string; device_model?: string }>;
 }
@@ -105,14 +106,13 @@ export class SensorService {
    * временной диапазон. В результат попадают:
    * 1. все urban-сенсоры (device_model содержит "urban");
    * 2. все сенсоры без указанного device_model;
-   * 3. insight-сенсоры, у владельца которых нет ни одного сенсора из
-   *    пунктов 1–2 (insight без владельца также включается).
+   * 3. insight-сенсоры, в группе которых нет ни одного сенсора из пунктов 1–2.
+   * Группа CPS-сенсора — его бандл: дети того же родителя в дереве CPS
+   * (поле bundle измерения). Группа datalog-сенсора — сенсоры того же owner.
    * Каждый элемент содержит device_model, а если в измерении указан
-   * owner — также поле owner. Информация о владельце берётся из поля
-   * owner коллекции measurement (не из подписок).
-   * К урбан-сенсорам (пункты 1–2) добавляется поле sensors — список
-   * сенсоров того же владельца (другие урбаны и инсайты, включая
-   * инсайты, отфильтрованные из пункта 3; без самого сенсора).
+   * owner — также поле owner (из коллекции measurement, не из подписок).
+   * К урбан-сенсорам (пункты 1–2) добавляется поле sensors — остальные
+   * сенсоры группы с данными за период (включая скрытые insight), без самого сенсора.
    * @param start - начало диапазона (unix timestamp)
    * @param end - конец диапазона (unix timestamp)
    */
@@ -126,47 +126,54 @@ export class SensorService {
     );
     if (sensors.length === 0) return [];
 
-    // Владельцы, у которых есть urban-сенсор или сенсор без device_model
-    // (insight-сенсоры таких владельцев в результат не попадают), и
-    // группировка всех кандидатов по владельцу для поля sensors.
+    const byId = new Map(sensors.map((sensor) => [sensor.sensor_id, sensor]));
+    const toSibling = (sensor: MarkerSensorEntry) =>
+      sensor.device_model
+        ? { sensor_id: sensor.sensor_id, device_model: sensor.device_model }
+        : { sensor_id: sensor.sensor_id };
+
+    // Datalog-сенсоры без бандла CPS группируются по владельцу, как раньше.
     const urbanOwners = new Set<string>();
-    const sensorsByOwner = new Map<
-      string,
-      Array<{ sensor_id: string; device_model?: string }>
-    >();
+    const sensorsByOwner = new Map<string, MarkerSensorEntry[]>();
     for (const sensor of sensors) {
-      if (!sensor.owner) continue;
+      if (Array.isArray(sensor.bundle) || !sensor.owner) continue;
       if (!INSIGHT_REGEX.test(sensor.device_model)) {
         urbanOwners.add(sensor.owner);
       }
       const siblings = sensorsByOwner.get(sensor.owner) ?? [];
-      siblings.push(
-        sensor.device_model
-          ? { sensor_id: sensor.sensor_id, device_model: sensor.device_model }
-          : { sensor_id: sensor.sensor_id },
-      );
+      siblings.push(sensor);
       sensorsByOwner.set(sensor.owner, siblings);
     }
+
+    const siblingsOf = (sensor: MarkerSensorEntry): MarkerSensorEntry[] => {
+      if (Array.isArray(sensor.bundle)) {
+        return sensor.bundle.flatMap((id) => byId.get(id) ?? []);
+      }
+      if (!sensor.owner) return [];
+      return (sensorsByOwner.get(sensor.owner) ?? []).filter(
+        (s) => s.sensor_id !== sensor.sensor_id,
+      );
+    };
 
     const result: MarkerSensorItem[] = [];
     for (const sensor of sensors) {
       const isInsight = INSIGHT_REGEX.test(sensor.device_model);
-      if (isInsight && sensor.owner && urbanOwners.has(sensor.owner)) {
-        // insight включаем, только если у его владельца нет urban-сенсора
+      const siblings = siblingsOf(sensor);
+      const hasUrbanSibling = Array.isArray(sensor.bundle)
+        ? siblings.some((s) => !INSIGHT_REGEX.test(s.device_model))
+        : Boolean(sensor.owner && urbanOwners.has(sensor.owner));
+      if (isInsight && hasUrbanSibling) {
+        // insight показывается внутри маркера urban-сенсора своего бандла
         continue;
       }
 
       // owner отдаётся только если он указан в измерении
       const { owner, ...entry } = sensor;
+      delete entry.bundle;
       const item: MarkerSensorItem = owner ? { ...entry, owner } : entry;
 
-      // У урбан-сенсоров — список сенсоров того же владельца (без самого себя)
       if (!isInsight) {
-        item.sensors = owner
-          ? (sensorsByOwner.get(owner) ?? []).filter(
-              (s) => s.sensor_id !== sensor.sensor_id,
-            )
-          : [];
+        item.sensors = siblings.map(toSibling);
       }
 
       result.push(item);

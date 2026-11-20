@@ -85,11 +85,8 @@ function createUrbanMessage(withGeo: boolean): Message {
 describe('CpsMeasurementTransformer', () => {
   const transformer = new CpsMeasurementTransformer();
   const owner = encodeAddress(new Uint8Array(32).fill(7), 32);
-  const anchor = {
-    source_key: 'cps:0:test',
-    node_id: '0',
-    owner,
-  };
+  const anchor = { source_key: 'cps:0:test' };
+  const identity = { owner, bundle: ['ab'.repeat(32)] };
 
   it('сохраняет доступный geo и публичные показатели Urban', async () => {
     const envelope = await createVerifiedEnvelope();
@@ -97,6 +94,7 @@ describe('CpsMeasurementTransformer', () => {
       envelope,
       createUrbanMessage(true),
       anchor,
+      identity,
     );
 
     expect(result.transformed).toBe(true);
@@ -107,6 +105,7 @@ describe('CpsMeasurementTransformer', () => {
       geo: { lat: 53.1959, lng: 50.1002 },
       measurement: { temperature: 21.5 },
       owner,
+      bundle: ['ab'.repeat(32)],
       timestamp: 1_787_594_400,
       source_type: 'cps',
       source_id: 'cps:0:test',
@@ -119,6 +118,7 @@ describe('CpsMeasurementTransformer', () => {
       envelope,
       createUrbanMessage(false),
       anchor,
+      identity,
     );
 
     expect(result.transformed).toBe(true);

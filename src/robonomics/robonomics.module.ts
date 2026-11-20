@@ -11,11 +11,11 @@ import { RwsNewDevicesHandler } from './handlers/rws-new-devices.handler.js';
 import { RwsStoryHandler } from './handlers/rws-story.handler.js';
 import type { ChainEventHandler } from './interfaces/chain-event-handler.interface.js';
 import type { ChainExtrinsicHandler } from './interfaces/chain-extrinsic-handler.interface.js';
-import { RobonomicsService } from './robonomics.service.js';
+import { RobonomicsApiModule } from './robonomics-api.module.js';
 
 @Module({
+  imports: [RobonomicsApiModule],
   providers: [
-    RobonomicsService,
     CpsSnapshotService,
     CpsPayloadSetHandler,
     CpsProfileHandler,
@@ -42,6 +42,6 @@ import { RobonomicsService } from './robonomics.service.js';
     },
     BlockIndexerService,
   ],
-  exports: [RobonomicsService],
+  exports: [RobonomicsApiModule],
 })
 export class RobonomicsModule {}

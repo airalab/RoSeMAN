@@ -26,6 +26,7 @@ import type { Measurement } from '../database/schemas/measurement.schema.js';
 import { CpsMetricsService } from '../metrics/cps-metrics.service.js';
 import { resolveCpsAnchorPayload } from './cps-anchor-payload.resolver.js';
 import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
+import { CpsSensorIdentityService } from './cps-sensor-identity.service.js';
 import { ConnectivityRecordMapper } from './connectivity-record.mapper.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 import { Ed25519EnvelopeSignatureVerifier } from './protocol/envelope-signature-verifier.js';
@@ -72,6 +73,7 @@ export class CpsAnchorProcessorService
     private readonly transformer: CpsMeasurementTransformer,
     private readonly connectivityRecordMapper: ConnectivityRecordMapper,
     private readonly cpsMetrics: CpsMetricsService,
+    private readonly sensorIdentity: CpsSensorIdentityService,
   ) {
     this.enabled = config.get<boolean>('cps.enabled', false);
     this.canonicalStorageEnabled = config.get<boolean>(
@@ -198,6 +200,7 @@ export class CpsAnchorProcessorService
       let privateSectionCount = 0;
       const measurements: Measurement[] = [];
       const projectedRecords: ConnectivityRecordInput[] = [];
+      const ownerlessParents = new Set<string>();
 
       if (this.canonicalStorageEnabled) {
         for (const [envelopeIndex, codes] of structuralErrors) {
@@ -256,10 +259,18 @@ export class CpsAnchorProcessorService
             );
             await this.connectivityRecordRepo.upsertRecord(record);
           }
+          const identity = await this.sensorIdentity.resolve(
+            anchor.block,
+            verification.envelope.sensorId,
+          );
+          if (identity.ownerIsFallback) {
+            ownerlessParents.add(identity.parentNodeId ?? 'unbound');
+          }
           const transformed = this.transformer.transform(
             verification.envelope,
             message,
             anchor,
+            identity,
           );
           if (!transformed.transformed) {
             invalidEnvelopeCount += 1;
@@ -292,6 +303,12 @@ export class CpsAnchorProcessorService
             await this.connectivityRecordRepo.upsertRecord(record);
           }
         }
+      }
+
+      if (ownerlessParents.size > 0) {
+        this.logger.warn(
+          `CPS anchor ${anchor.source_key}: sensor owner falls back to the sensor itself, parent node without identity: ${[...ownerlessParents].join(', ')}`,
+        );
       }
 
       try {

@@ -40,6 +40,20 @@ import { CpsMeasurementTransformer } from './cps-measurement.transformer.js';
 import { IpfsFetcherService } from './ipfs-fetcher.service.js';
 import { buildEnvelopeSigningBytes } from './protocol/envelope-signature-verifier.js';
 import { ProtocolBatchWireFormat } from './protocol/signed-envelope-batch-payload.decoder.js';
+import type { CpsSensorIdentityService } from './cps-sensor-identity.service.js';
+
+/** Дерево CPS: владелец — identity родителя, бандл пуст. */
+function sensorIdentityMock(): CpsSensorIdentityService {
+  return {
+    resolve: jest.fn().mockResolvedValue({
+      owner: '5Owner',
+      ownerIsFallback: false,
+      sensorNodeId: '1',
+      parentNodeId: '0',
+      bundle: [],
+    }),
+  } as unknown as CpsSensorIdentityService;
+}
 
 type FailurePoint =
   | 'fetch'
@@ -219,6 +233,7 @@ async function createRetryHarness(
       recordCompletedAnchor,
       recordProjectionErrors,
     } as unknown as CpsMetricsService,
+    sensorIdentityMock(),
   );
 
   return {

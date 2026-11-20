@@ -105,7 +105,7 @@ export class ConnectivityRecordMapper {
     message: Message,
   ): ConnectivityRecordInput {
     const messageJson = this.toMessageJson(message);
-    const metadata = validateMessageMetadata(message, record.node_id ?? '');
+    const metadata = validateMessageMetadata(message);
     const timestampFields = message.metadata
       ? { timestamp_ms: message.metadata.timestamp.toString() }
       : {};

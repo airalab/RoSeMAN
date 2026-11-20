@@ -9,44 +9,36 @@ import {
 } from './message-metadata.validator.js';
 
 describe('validateMessageMetadata', () => {
-  it('возвращает точный timestamp и Date для совпадающего CPS NodeId', () => {
+  it('возвращает точный timestamp и Date', () => {
     const result = validateMessageMetadata(
       create(MessageSchema, {
-        metadata: create(MetaSchema, {
-          nodeId: 42n,
-          timestamp: 1_787_594_400_999n,
-        }),
+        metadata: create(MetaSchema, { timestamp: 1_787_594_400_999n }),
       }),
-      '42',
     );
 
     expect(result).toEqual({
       valid: true,
-      nodeId: 42n,
       timestamp: 1_787_594_400_999n,
       recordedAt: new Date('2026-08-24T18:00:00.999Z'),
     });
   });
 
-  it('отклоняет сообщение, заявившее другой CPS NodeId', () => {
-    const result = validateMessageMetadata(
-      create(MessageSchema, {
-        metadata: create(MetaSchema, {
-          nodeId: 43n,
-          timestamp: 1_787_594_400_999n,
+  it('не сверяет устаревший Meta.node_id: любой NodeId и его отсутствие принимаются', () => {
+    for (const nodeId of [0n, 3n, 43n]) {
+      const result = validateMessageMetadata(
+        create(MessageSchema, {
+          metadata: create(MetaSchema, {
+            nodeId,
+            timestamp: 1_787_594_400_999n,
+          }),
         }),
-      }),
-      '42',
-    );
-
-    expect(result).toEqual({
-      valid: false,
-      code: MessageMetadataValidationErrorCode.NodeIdMismatch,
-    });
+      );
+      expect(result.valid).toBe(true);
+    }
   });
 
   it('отклоняет нулевой timestamp из отсутствующих метаданных', () => {
-    expect(validateMessageMetadata(create(MessageSchema, {}), '0')).toEqual({
+    expect(validateMessageMetadata(create(MessageSchema, {}))).toEqual({
       valid: false,
       code: MessageMetadataValidationErrorCode.InvalidTimestamp,
     });

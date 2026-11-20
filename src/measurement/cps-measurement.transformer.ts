@@ -5,10 +5,8 @@ import { SensorModel } from '../common/constants/sensor-model.enum.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
 import type { CpsAnchorDocument } from '../database/schemas/cps-anchor.schema.js';
 import type { VerifiedSignedEnvelope } from './protocol/envelope-signature-verifier.js';
-import {
-  MessageMetadataValidationErrorCode,
-  validateMessageMetadata,
-} from './protocol/message-metadata.validator.js';
+import type { CpsSensorIdentity } from './cps-sensor-identity.service.js';
+import { validateMessageMetadata } from './protocol/message-metadata.validator.js';
 
 interface SensorValue {
   readonly measurement?: {
@@ -29,7 +27,9 @@ interface PublicSensor {
 /** @deprecated Коды ошибок совместимой проекции в legacy measurements. */
 export enum CpsMeasurementTransformErrorCode {
   InvalidGeo = 'INVALID_GEO',
+  /** @deprecated Больше не выдаётся: без identity родителя владелец — сам датчик. */
   MissingOwner = 'MISSING_OWNER',
+  /** @deprecated Больше не выдаётся: `Meta.node_id` не сверяется. */
   NodeIdMismatch = 'NODE_ID_MISMATCH',
   UnsupportedPayload = 'UNSUPPORTED_PAYLOAD',
   NoMeasurements = 'NO_MEASUREMENTS',
@@ -55,27 +55,21 @@ export class CpsMeasurementTransformer {
    * Собирает одно измерение из всех публичных секций конверта.
    * @param envelope - конверт с проверенной Ed25519-подписью
    * @param message - декодированное сообщение устройства
-   * @param anchor - CPS-якорь для проверки NodeId и разрешения владельца
+   * @param anchor - CPS-якорь, источник записи
+   * @param identity - владелец и бандл датчика из дерева CPS
    * @returns документ измерения либо стабильная причина отклонения
    */
   transform(
     envelope: VerifiedSignedEnvelope,
     message: Message,
-    anchor: Pick<CpsAnchorDocument, 'source_key' | 'node_id' | 'owner'>,
+    anchor: Pick<CpsAnchorDocument, 'source_key'>,
+    identity: Pick<CpsSensorIdentity, 'owner' | 'bundle'>,
   ): CpsMeasurementTransformResult {
-    const metadata = validateMessageMetadata(message, anchor.node_id);
+    const metadata = validateMessageMetadata(message);
     if (!metadata.valid) {
-      return this.failure(
-        metadata.code === MessageMetadataValidationErrorCode.NodeIdMismatch
-          ? CpsMeasurementTransformErrorCode.NodeIdMismatch
-          : CpsMeasurementTransformErrorCode.InvalidTimestamp,
-      );
+      return this.failure(CpsMeasurementTransformErrorCode.InvalidTimestamp);
     }
     const timestamp = Number(metadata.timestamp / 1000n);
-
-    if (!anchor.owner) {
-      return this.failure(CpsMeasurementTransformErrorCode.MissingOwner);
-    }
 
     if (
       message.payload.case !== 'urban' &&
@@ -105,7 +99,8 @@ export class CpsMeasurementTransformer {
         measurement: collected.measurement,
         ...(collected.geo ? { geo: collected.geo } : {}),
         device_model: message.payload.case,
-        owner: anchor.owner,
+        owner: identity.owner,
+        bundle: identity.bundle,
         timestamp,
         source_type: MeasurementSourceType.CPS,
         source_id: anchor.source_key,
