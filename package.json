@@ -45,7 +45,7 @@
     "iconv-lite": "^0.7.2",
     "lz4-napi": "^2.10.0",
     "lzma-native": "8.0.6",
-    "mongoose": "^7.8.9",
+    "mongoose": "^9.11.4",
     "multiformats": "14.0.5",
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.2",
