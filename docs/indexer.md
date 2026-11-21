@@ -122,12 +122,13 @@ Current names:
 | Handler name         | Type      | Section / Method                                               |
 | -------------------- | --------- | -------------------------------------------------------------- |
 | `cps-payload-set`    | event     | `cps.PayloadSet`                                               |
+| `cps-profile`        | event     | `cps.PayloadSet` on a sensor profile node                      |
 | `datalog-new-record` | event     | `datalog.NewRecord`                                            |
 | `rws-new-devices`    | event     | `rws.NewDevices`                                               |
 | `rws-extrinsic`      | extrinsic | `rws.call`                                                     |
 | `rws-story`          | extrinsic | `rws.call` (reads `datalog.NewRecord` events of the extrinsic) |
 
-Only `cps-payload-set` is current. All other names in this table are deprecated and produce a startup warning when active. Use `ENABLED_HANDLERS=cps-payload-set` for new deployments.
+Only `cps-payload-set` and `cps-profile` are current. All other names in this table are deprecated and produce a startup warning when active. Use `ENABLED_HANDLERS=cps-payload-set,cps-profile` for new deployments; without `cps-profile` sensor profiles are never indexed.
 
 ## Handlers
 

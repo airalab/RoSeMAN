@@ -83,7 +83,7 @@ Compose uses the same Dockerfile and builds the image from the repository root. 
 | `rest-api`         | `${ROSEMAN_IMAGE}` / built | REST API; reads `.env`                                  |
 | `indexer-polkadot` | `${ROSEMAN_IMAGE}` / built | Polkadot CPS worker; reads `.env`, then `.env.polkadot` |
 
-Configuration is supplied through Compose `env_file`; environment files are not copied into the image or mounted into containers. Compose overrides `MONGODB_URI` with the internal `mongodb` hostname and the credentials from `.env`. All applications depend on the authenticated MongoDB healthcheck. The Polkadot example enables CPS with canonical and raw storage. Its explicit handler allowlist contains only `cps-payload-set`; deprecated Datalog/RWS handlers are disabled.
+Configuration is supplied through Compose `env_file`; environment files are not copied into the image or mounted into containers. Compose overrides `MONGODB_URI` with the internal `mongodb` hostname and the credentials from `.env`. All applications depend on the authenticated MongoDB healthcheck. The Polkadot example enables CPS with canonical and raw storage. Its explicit handler allowlist contains `cps-payload-set` and `cps-profile` (sensor profiles); deprecated Datalog/RWS handlers are disabled.
 
 ```bash
 cp .env.example .env
@@ -142,7 +142,7 @@ CPS_ENABLED=true
 CPS_CANONICAL_STORAGE_ENABLED=true
 CPS_RAW_PAYLOAD_STORAGE_ENABLED=true
 CPS_NODE_IDS=0
-ENABLED_HANDLERS=cps-payload-set
+ENABLED_HANDLERS=cps-payload-set,cps-profile
 ```
 
 A non-empty `CPS_NODE_IDS` defines roots for the initial recursive snapshot and restricts realtime events to those complete subtrees. If it is empty or absent, snapshot reads no nodes while realtime accepts any numeric NodeId. The two storage flags enable the lossless/canonical dual write; both default to `false` for a controlled rollout. `MEASUREMENT_ENABLED=true` also creates the legacy datalog processor; with `datalog-new-record` excluded it receives no new legacy records, but it can still process old pending rows already present in the shared database.
