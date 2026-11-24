@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { type AnyBulkWriteOperation, Model, type Types } from 'mongoose';
 import { Sensor, type SensorDocument } from '../schemas/sensor.schema.js';
+import { isReservedGovId } from '../../gov-stations/reserved.js';
 
 /**
  * Репозиторий для работы с коллекцией sensor.
@@ -22,7 +23,11 @@ export class SensorRepository {
   async bulkUpsert(
     entries: Array<[string, { lat: number; lng: number }]>,
   ): Promise<void> {
-    const ops: AnyBulkWriteOperation<Sensor>[] = entries.map(
+    // Only datalog and CPS processing writes here; a government station id from them is a forgery
+    // (src/gov-stations/reserved.ts), the gov-stations module never registers sensors in this collection
+    const allowed = entries.filter(([sensorId]) => !isReservedGovId(sensorId));
+    if (!allowed.length) return;
+    const ops: AnyBulkWriteOperation<Sensor>[] = allowed.map(
       ([sensor_id, geo]) => ({
         updateOne: {
           filter: { sensor_id },
