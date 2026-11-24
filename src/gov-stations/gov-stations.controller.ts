@@ -6,6 +6,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { GovMeasurementRepository } from '../database/repositories/gov-measurement.repository.js';
+import { GovSourceRepository } from '../database/repositories/gov-source.repository.js';
 import { GovStationRepository } from '../database/repositories/gov-station.repository.js';
 import { GOV_SOURCES } from './sources/index.js';
 import type { GovStation } from './sources/types.js';
@@ -22,11 +23,14 @@ export interface GovStationView extends GovStation {
 
 export interface GovSourceView {
   id: string;
+  network: string;
   publisher: string;
   url: string;
   country: string;
   note: string;
-  stations: GovStationView[] | Array<Pick<GovStation, 'id' | 'name'>>;
+  stations:
+    | GovStationView[]
+    | Array<Pick<GovStation, 'id' | 'name' | 'operator'>>;
 }
 
 @Controller('v2/gov')
@@ -34,6 +38,7 @@ export class GovStationsController {
   constructor(
     private readonly readings: GovMeasurementRepository,
     private readonly stations: GovStationRepository,
+    private readonly switches: GovSourceRepository,
   ) {}
 
   /**
@@ -49,18 +54,26 @@ export class GovStationsController {
       (await this.readings.latest(since)).map((r) => [r.station_id, r]),
     );
     const known = await this.stations.findByIds([...latest.keys()]);
+    const off = await this.switches.disabled();
     const result: GovSourceView[] = [];
     for (const s of GOV_SOURCES) {
+      if (off.has(s.id)) continue;
       const own = known.filter((st) => st.source === s.id);
       if (!own.length) continue;
       result.push({
         id: s.id,
+        network: s.network,
         publisher: s.publisher,
         url: s.url,
         country: s.country,
-        note: 'Public data of the national air quality monitoring network, hourly means, μg/m³, republished as is.',
+        note:
+          s.gasUnit === 'ppb'
+            ? 'Public data of a government air quality monitoring network, hourly means as published: PM in μg/m³, NO₂ and O₃ in ppb, CO in ppm.'
+            : 'Public data of a government air quality monitoring network, hourly means, μg/m³, republished as is.',
         stations: brief
-          ? own.map(({ id, name }) => ({ id, name }))
+          ? own.map(({ id, name, operator }) =>
+              operator ? { id, name, operator } : { id, name },
+            )
           : own.map((st) => {
               const r = latest.get(st.id);
               return {

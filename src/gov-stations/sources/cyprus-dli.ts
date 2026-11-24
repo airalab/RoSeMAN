@@ -167,6 +167,7 @@ export function parseDliPage(html: string): GovStationReading[] {
 
 export const cyprusDli: GovSource = {
   id: 'cy-dli',
+  network: 'DLI, Cyprus',
   publisher:
     'Department of Labour Inspection, Ministry of Labour, Welfare and Social Insurance, Republic of Cyprus',
   url: 'https://airquality.dli.mlsi.gov.cy/',

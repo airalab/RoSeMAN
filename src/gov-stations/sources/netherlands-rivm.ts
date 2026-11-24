@@ -76,6 +76,7 @@ export function rivmReadings(
 
 export const netherlandsRivm: GovSource = {
   id: 'nl-rivm',
+  network: 'Luchtmeetnet, RIVM',
   publisher:
     'RIVM Luchtmeetnet, the national air quality network of the Netherlands',
   url: 'https://www.luchtmeetnet.nl/',

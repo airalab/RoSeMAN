@@ -15,6 +15,10 @@ import {
   GovMeasurementSchema,
 } from './schemas/gov-measurement.schema.js';
 import {
+  GovSourceState,
+  GovSourceStateSchema,
+} from './schemas/gov-source.schema.js';
+import {
   GovStationEntry,
   GovStationSchema,
 } from './schemas/gov-station.schema.js';
@@ -46,6 +50,7 @@ import { ConnectivityPayloadRepository } from './repositories/connectivity-paylo
 import { ConnectivityRecordRepository } from './repositories/connectivity-record.repository.js';
 import { DatalogRepository } from './repositories/datalog.repository.js';
 import { GovMeasurementRepository } from './repositories/gov-measurement.repository.js';
+import { GovSourceRepository } from './repositories/gov-source.repository.js';
 import { GovStationRepository } from './repositories/gov-station.repository.js';
 import { IndexStateRepository } from './repositories/index-state.repository.js';
 import { MeasurementRepository } from './repositories/measurement.repository.js';
@@ -69,6 +74,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
       { name: ConnectivityRecord.name, schema: ConnectivityRecordSchema },
       { name: Datalog.name, schema: DatalogSchema },
       { name: GovMeasurement.name, schema: GovMeasurementSchema },
+      { name: GovSourceState.name, schema: GovSourceStateSchema },
       { name: GovStationEntry.name, schema: GovStationSchema },
       { name: IndexState.name, schema: IndexStateSchema },
       { name: Measurement.name, schema: MeasurementSchema },
@@ -86,6 +92,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     ConnectivityRecordRepository,
     DatalogRepository,
     GovMeasurementRepository,
+    GovSourceRepository,
     GovStationRepository,
     IndexStateRepository,
     MeasurementRepository,
@@ -101,6 +108,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     ConnectivityRecordRepository,
     DatalogRepository,
     GovMeasurementRepository,
+    GovSourceRepository,
     GovStationRepository,
     IndexStateRepository,
     MeasurementRepository,

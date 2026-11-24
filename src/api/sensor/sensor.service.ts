@@ -5,7 +5,9 @@ import {
   type OwnedSensorEntry,
   type SensorListEntry,
 } from '../../database/repositories/measurement.repository.js';
+import { GovSourceRepository } from '../../database/repositories/gov-source.repository.js';
 import { SensorRepository } from '../../database/repositories/sensor.repository.js';
+import { isHiddenGovId } from '../../gov-stations/reserved.js';
 import { type GeoBound } from './dto/sensor-json-query.dto.js';
 
 interface MaxDataEntry {
@@ -42,6 +44,7 @@ export class SensorService {
   constructor(
     private readonly measurementRepo: MeasurementRepository,
     private readonly sensorRepo: SensorRepository,
+    private readonly govSources: GovSourceRepository,
   ) {}
 
   /**
@@ -57,10 +60,14 @@ export class SensorService {
     start: number,
     end: number,
   ): Promise<Record<string, MaxDataEntry>> {
-    const docs = await this.measurementRepo.getMaxByType(type, start, end);
+    const [docs, hidden] = await Promise.all([
+      this.measurementRepo.getMaxByType(type, start, end),
+      this.govSources.disabled(),
+    ]);
 
     const result: Record<string, MaxDataEntry> = {};
     for (const doc of docs) {
+      if (isHiddenGovId(doc._id, hidden)) continue;
       result[doc._id] = {
         model: doc.model,
         geo: doc.geo,
@@ -120,10 +127,11 @@ export class SensorService {
     start: number,
     end: number,
   ): Promise<MarkerSensorItem[]> {
-    const sensors = await this.measurementRepo.findMarkerSensorsInRange(
-      start,
-      end,
-    );
+    const [all, hidden] = await Promise.all([
+      this.measurementRepo.findMarkerSensorsInRange(start, end),
+      this.govSources.disabled(),
+    ]);
+    const sensors = all.filter((s) => !isHiddenGovId(s.sensor_id, hidden));
     if (sensors.length === 0) return [];
 
     const byId = new Map(sensors.map((sensor) => [sensor.sensor_id, sensor]));

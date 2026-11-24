@@ -30,6 +30,9 @@ export class GovStationEntry {
 
   @Prop({ type: Boolean })
   approx?: boolean;
+
+  @Prop({ type: String })
+  operator?: string;
 }
 
 export const GovStationSchema = SchemaFactory.createForClass(GovStationEntry);
