@@ -25,6 +25,10 @@ import {
 } from './schemas/measurement.schema.js';
 import { Sensor, SensorSchema } from './schemas/sensor.schema.js';
 import {
+  SensorLatest,
+  SensorLatestSchema,
+} from './schemas/sensor-latest.schema.js';
+import {
   SensorLocation,
   SensorLocationSchema,
 } from './schemas/sensor-location.schema.js';
@@ -69,6 +73,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
       { name: IndexState.name, schema: IndexStateSchema },
       { name: Measurement.name, schema: MeasurementSchema },
       { name: Sensor.name, schema: SensorSchema },
+      { name: SensorLatest.name, schema: SensorLatestSchema },
       { name: SensorLocation.name, schema: SensorLocationSchema },
       { name: Story.name, schema: StorySchema },
       { name: SensorProfile.name, schema: SensorProfileSchema },

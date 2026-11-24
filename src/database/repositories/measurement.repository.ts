@@ -10,6 +10,13 @@ import {
   Measurement,
   type MeasurementDocument,
 } from '../schemas/measurement.schema.js';
+import {
+  SensorLatest,
+  type SensorLatestDocument,
+} from '../schemas/sensor-latest.schema.js';
+
+/** The markers window reaches "now" when it ends no earlier than this before the present. */
+const LATEST_WINDOW_SLACK_S = 3600;
 
 interface AggregatedMaxEntry {
   _id: string;
@@ -58,9 +65,14 @@ export interface MarkerSensorEntry extends OwnedSensorEntry {
 export class MeasurementRepository {
   private readonly logger = new Logger(MeasurementRepository.name);
 
+  /** Markers for a window that reaches now are read from sensor_latest (SENSOR_LATEST_READS=true). */
+  private readonly latestReads = process.env.SENSOR_LATEST_READS === 'true';
+
   constructor(
     @InjectModel(Measurement.name)
     private readonly model: Model<MeasurementDocument>,
+    @InjectModel(SensorLatest.name)
+    private readonly latestModel: Model<SensorLatestDocument>,
   ) {}
 
   /**
@@ -215,6 +227,12 @@ export class MeasurementRepository {
     start: number,
     end: number,
   ): Promise<MarkerSensorEntry[]> {
+    if (
+      this.latestReads &&
+      end >= Math.floor(Date.now() / 1000) - LATEST_WINDOW_SLACK_S
+    ) {
+      return this.findMarkerSensorsLatest(start, end);
+    }
     return this.model
       .aggregate<MarkerSensorEntry>([
         {
@@ -628,6 +646,90 @@ export class MeasurementRepository {
   }
 
   /**
+   * The same rows as the aggregation in findMarkerSensorsInRange, read from sensor_latest: for a window
+   * that reaches now, a sensor's newest measurement in the window is its newest measurement overall.
+   */
+  async findMarkerSensorsLatest(
+    start: number,
+    end: number,
+  ): Promise<MarkerSensorEntry[]> {
+    const rows = await this.latestModel
+      .find(
+        {
+          model: { $in: SENSOR_DATA_MODELS },
+          timestamp: { $gte: start, $lte: end },
+          $or: [
+            { device_model: { $in: [null, '', 'gov'] } },
+            { device_model: { $regex: 'urban', $options: 'i' } },
+            { device_model: { $regex: 'insight', $options: 'i' } },
+          ],
+        },
+        { _id: 0 },
+      )
+      .lean<SensorLatest[]>();
+    return rows.map((r) => ({
+      sensor_id: r.sensor_id,
+      model: r.model,
+      geo: r.geo ?? undefined,
+      donated_by: r.donated_by ?? '',
+      device_model: r.device_model ?? '',
+      owner: r.owner ?? '',
+      bundle: r.bundle ?? undefined,
+      timestamp: r.timestamp,
+    }));
+  }
+
+  /**
+   * Moves each sensor's sensor_latest row forward to the newest document of the batch, if it is newer
+   * than what is stored. One pipeline update per sensor, so concurrent writers and out-of-order
+   * batches cannot move it back.
+   */
+  async updateLatest(docs: Measurement[]): Promise<void> {
+    const newest = new Map<string, Measurement>();
+    for (const d of docs) {
+      if (!SENSOR_DATA_MODELS.includes(d.model)) continue;
+      const cur = newest.get(d.sensor_id);
+      if (!cur || d.timestamp > cur.timestamp) newest.set(d.sensor_id, d);
+    }
+    if (!newest.size) return;
+    const pick = (ts: number, value: unknown, field: string) => ({
+      $cond: [
+        { $gt: [ts, { $ifNull: ['$timestamp', -1] }] },
+        { $literal: value ?? null },
+        `$${field}`,
+      ],
+    });
+    await this.latestModel.bulkWrite(
+      [...newest.values()].map((d) => ({
+        updateOne: {
+          filter: { sensor_id: d.sensor_id },
+          update: [
+            {
+              $set: {
+                model: pick(d.timestamp, d.model, 'model'),
+                geo: pick(
+                  d.timestamp,
+                  d.geo ? { lat: d.geo.lat, lng: d.geo.lng } : null,
+                  'geo',
+                ),
+                donated_by: pick(d.timestamp, d.donated_by, 'donated_by'),
+                device_model: pick(d.timestamp, d.device_model, 'device_model'),
+                owner: pick(d.timestamp, d.owner, 'owner'),
+                bundle: pick(d.timestamp, d.bundle, 'bundle'),
+                timestamp: {
+                  $max: [d.timestamp, { $ifNull: ['$timestamp', -1] }],
+                },
+              },
+            },
+          ],
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+
+  /**
    * Вставляет массив документов, используя upsert для предотвращения дублей.
    * Если запись с таким sensor_id и timestamp уже существует, она будет обновлена.
    * @param docs - массив документов для вставки
@@ -651,6 +753,7 @@ export class MeasurementRepository {
     }));
 
     await this.model.bulkWrite(operations, { ordered: false });
+    await this.updateLatest(allowed);
   }
 
   /**

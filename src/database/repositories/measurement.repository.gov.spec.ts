@@ -3,6 +3,7 @@ import type {
   Measurement,
   MeasurementDocument,
 } from '../schemas/measurement.schema.js';
+import type { SensorLatestDocument } from '../schemas/sensor-latest.schema.js';
 import { MeasurementRepository } from './measurement.repository.js';
 
 const doc = (sensor_id: string, source_type?: string): Measurement => ({
@@ -16,9 +17,12 @@ const doc = (sensor_id: string, source_type?: string): Measurement => ({
 describe('MeasurementRepository.upsertMany and government station ids', () => {
   type Op = { updateOne: { update: { $set: Measurement } } };
   const bulkWrite = jest.fn<Promise<object>, [Op[]]>().mockResolvedValue({});
-  const repo = new MeasurementRepository({
-    bulkWrite,
-  } as unknown as Model<MeasurementDocument>);
+  const repo = new MeasurementRepository(
+    { bulkWrite } as unknown as Model<MeasurementDocument>,
+    {
+      bulkWrite: jest.fn().mockResolvedValue({}),
+    } as unknown as Model<SensorLatestDocument>,
+  );
 
   beforeEach(() => bulkWrite.mockClear());
 

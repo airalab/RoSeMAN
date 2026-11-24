@@ -19,6 +19,7 @@
     "start:polkadot": "npm run build && DOTENV_CONFIG_PATH=.env.polkadot node dist/main",
     "start:dev:polkadot": "DOTENV_CONFIG_PATH=.env.polkadot nest start --watch",
     "sync-indexes": "npm run build && node dist/scripts/sync-indexes.js",
+    "backfill-sensor-latest": "npm run build && node dist/scripts/backfill-sensor-latest.js",
     "dedup-measurements": "npm run build && node dist/scripts/dedup-measurements.js",
     "backfill-connectivity": "npm run build && node dist/scripts/backfill-connectivity.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
