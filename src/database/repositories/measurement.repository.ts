@@ -239,6 +239,8 @@ export class MeasurementRepository {
               { device_model: '' },
               { device_model: { $regex: 'urban', $options: 'i' } },
               { device_model: { $regex: 'insight', $options: 'i' } },
+              // government stations (src/gov-stations/projection.ts)
+              { device_model: 'gov' },
             ],
           },
         },
