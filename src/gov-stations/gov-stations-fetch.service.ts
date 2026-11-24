@@ -6,11 +6,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GovMeasurementRepository } from '../database/repositories/gov-measurement.repository.js';
+import { GovStationRepository } from '../database/repositories/gov-station.repository.js';
 import { MeasurementRepository } from '../database/repositories/measurement.repository.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
 import { toSensorMeasurement } from './projection.js';
 import { selectSources } from './sources/index.js';
-import type { GovSource } from './sources/types.js';
+import type { GovSource, GovStation } from './sources/types.js';
+
+/** Station lists change rarely: re-read them once a day. */
+const STATIONS_TTL_MS = 24 * 3600_000;
 
 interface FetchConfig {
   sources: string[];
@@ -31,11 +35,16 @@ export class GovStationsFetchService implements OnModuleInit, OnModuleDestroy {
   private readonly sources: GovSource[];
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private readonly stations = new Map<
+    string,
+    { at: number; list: GovStation[] }
+  >();
 
   constructor(
     config: ConfigService,
     private readonly readings: GovMeasurementRepository,
     private readonly measurements: MeasurementRepository,
+    private readonly stationRepo: GovStationRepository,
   ) {
     this.cfg = config.get<FetchConfig>('govStations') as FetchConfig;
     this.sources = selectSources(this.cfg.sources);
@@ -63,14 +72,41 @@ export class GovStationsFetchService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** The source's stations: from memory, else fresh from the source (once a day), else from the DB. */
+  private async stationsOf(source: GovSource): Promise<GovStation[]> {
+    const cached = this.stations.get(source.id);
+    if (cached && Date.now() - cached.at < STATIONS_TTL_MS) return cached.list;
+    try {
+      const list = await source.fetchStations(this.cfg.timeoutMs);
+      if (list.length) {
+        await this.stationRepo.upsertMany(source.id, list);
+        this.stations.set(source.id, { at: Date.now(), list });
+        this.logger.log(`${source.id}: ${list.length} stations`);
+        return list;
+      }
+    } catch (e) {
+      this.logger.warn(`${source.id} stations: ${(e as Error).message}`);
+    }
+    const stored = await this.stationRepo.findBySource(source.id);
+    // retry the source in an hour rather than a day when it failed
+    if (stored.length)
+      this.stations.set(source.id, {
+        at: Date.now() - STATIONS_TTL_MS + 3600_000,
+        list: stored,
+      });
+    return stored;
+  }
+
   private async fetchOne(source: GovSource): Promise<void> {
     try {
-      const latest = await source.fetchLatest(this.cfg.timeoutMs);
+      const stationList = await this.stationsOf(source);
+      if (!stationList.length) return;
+      const latest = await source.fetchLatest(this.cfg.timeoutMs, stationList);
       const added = await this.readings.upsertMany(
         latest.map((r) => ({ ...r, source: source.id })),
       );
       // The same hours as regular sensor measurements: markers, the card and charts read these
-      const stations = new Map(source.stations.map((st) => [st.id, st]));
+      const stations = new Map(stationList.map((st) => [st.id, st]));
       const docs = latest
         .map((r) => {
           const st = stations.get(r.station_id);

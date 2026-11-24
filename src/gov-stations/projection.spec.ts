@@ -1,7 +1,13 @@
 import { toSensorMeasurement } from './projection.js';
 import { cyprusDli } from './sources/cyprus-dli.js';
 
-const station = cyprusDli.stations.find((s) => s.id === 'cy-dli-nictra')!;
+const station = {
+  id: 'cy-dli-nictra',
+  name: 'Nicosia — traffic',
+  kind: 'traffic',
+  lat: 35.1519,
+  lng: 33.3478,
+};
 
 describe('government station as a map sensor', () => {
   it('keeps PM in μg/m³ and converts gases to the map units at 20 °C', () => {
