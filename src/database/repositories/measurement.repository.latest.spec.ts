@@ -75,6 +75,26 @@ describe('sensor_latest', () => {
     });
   });
 
+  it('ignores timestamps from the future and non-numbers', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    await repo.upsertMany([
+      m('a', now - 60),
+      m('a', now + 86400),
+      m('b', Number.NaN),
+      m('c', now + 300),
+    ]);
+    const ops = latestWrite.mock.calls[0][0];
+    expect(
+      ops.map((o) => [
+        o.updateOne.filter.sensor_id,
+        o.updateOne.update[0].$set.timestamp,
+      ]),
+    ).toEqual([
+      ['a', { $max: [now - 60, { $ifNull: ['$timestamp', -1] }] }],
+      ['c', { $max: [now + 300, { $ifNull: ['$timestamp', -1] }] }],
+    ]);
+  });
+
   it('reads markers in the shape of the aggregation', async () => {
     find.mockReturnValue({
       lean: () =>

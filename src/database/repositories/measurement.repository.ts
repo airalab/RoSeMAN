@@ -17,6 +17,8 @@ import {
 
 /** The markers window reaches "now" when it ends no earlier than this before the present. */
 const LATEST_WINDOW_SLACK_S = 3600;
+/** Clock skew a sensor may have before its measurement is too far in the future for sensor_latest. */
+export const LATEST_FUTURE_SLACK_S = 600;
 
 interface AggregatedMaxEntry {
   _id: string;
@@ -685,9 +687,14 @@ export class MeasurementRepository {
    * batches cannot move it back.
    */
   async updateLatest(docs: Measurement[]): Promise<void> {
+    // A timestamp from the future would pin the row (nothing real is ever newer) and drop the
+    // sensor from the markers for "now": such documents never reach sensor_latest.
+    const latestAllowed = Math.floor(Date.now() / 1000) + LATEST_FUTURE_SLACK_S;
     const newest = new Map<string, Measurement>();
     for (const d of docs) {
       if (!SENSOR_DATA_MODELS.includes(d.model)) continue;
+      if (!Number.isFinite(d.timestamp) || d.timestamp > latestAllowed)
+        continue;
       const cur = newest.get(d.sensor_id);
       if (!cur || d.timestamp > cur.timestamp) newest.set(d.sensor_id, d);
     }

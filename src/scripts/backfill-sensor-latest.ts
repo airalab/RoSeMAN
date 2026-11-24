@@ -16,7 +16,10 @@ import { getModelToken, MongooseModule } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { appConfig } from '../config/index.js';
 import { DatabaseModule } from '../database/database.module.js';
-import { MeasurementRepository } from '../database/repositories/measurement.repository.js';
+import {
+  LATEST_FUTURE_SLACK_S,
+  MeasurementRepository,
+} from '../database/repositories/measurement.repository.js';
 import {
   Measurement,
   type MeasurementDocument,
@@ -56,14 +59,17 @@ async function run(): Promise<void> {
     logger.log(`${ids.length} sensors with data in the last ${days} days`);
     for (let i = 0; i < ids.length; i += BATCH) {
       const newest = await Promise.all(
-        ids
-          .slice(i, i + BATCH)
-          .map((id) =>
-            model
-              .findOne({ sensor_id: id })
-              .sort({ timestamp: -1 })
-              .lean<Measurement>(),
-          ),
+        ids.slice(i, i + BATCH).map((id) =>
+          model
+            .findOne({
+              sensor_id: id,
+              timestamp: {
+                $lte: Math.floor(Date.now() / 1000) + LATEST_FUTURE_SLACK_S,
+              },
+            })
+            .sort({ timestamp: -1 })
+            .lean<Measurement>(),
+        ),
       );
       await repo.updateLatest(newest.filter((d): d is Measurement => !!d));
       logger.log(`${Math.min(i + BATCH, ids.length)} / ${ids.length}`);
