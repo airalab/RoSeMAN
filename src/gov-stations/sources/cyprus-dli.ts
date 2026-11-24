@@ -171,14 +171,18 @@ export const cyprusDli: GovSource = {
     'Department of Labour Inspection, Ministry of Labour, Welfare and Social Insurance, Republic of Cyprus',
   url: 'https://airquality.dli.mlsi.gov.cy/',
   country: 'CY',
-  stations: STATIONS.map(({ id, name, kind, lat, lng, approx }) => ({
-    id,
-    name,
-    kind,
-    lat,
-    lng,
-    approx,
-  })),
+  fetchStations(): Promise<GovStation[]> {
+    return Promise.resolve(
+      STATIONS.map(({ id, name, kind, lat, lng, approx }) => ({
+        id,
+        name,
+        kind,
+        lat,
+        lng,
+        approx,
+      })),
+    );
+  },
   async fetchLatest(timeoutMs: number): Promise<GovStationReading[]> {
     // Their proxy cache answers 304 even to an unconditional request (seen 24.11.2026); a query
     // that changes every 15 min gets a fresh page and still lets the cache serve repeats.
