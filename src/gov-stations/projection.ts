@@ -22,6 +22,11 @@ const TO_MAP_UNITS: Record<string, (v: number) => number> = {
   co: (v) => (v * MOLAR_VOLUME_20C) / 28.0101 / 1000,
 };
 
+/** A source publishing gases in ppb (CO in ppm) already speaks the map's units. */
+const FROM_PPB: Record<string, (v: number) => number> = Object.fromEntries(
+  Object.keys(TO_MAP_UNITS).map((key) => [key, (v: number) => v]),
+);
+
 const round = (v: number, digits: number): number => Number(v.toFixed(digits));
 
 /**
@@ -34,7 +39,8 @@ export function toSensorMeasurement(
   reading: GovStationReading,
 ): Measurement | null {
   const measurement: Record<string, number> = {};
-  for (const [key, convert] of Object.entries(TO_MAP_UNITS)) {
+  const units = source.gasUnit === 'ppb' ? FROM_PPB : TO_MAP_UNITS;
+  for (const [key, convert] of Object.entries(units)) {
     const v = reading.values[key];
     if (Number.isFinite(v))
       measurement[key] = round(convert(v), key === 'co' ? 3 : 1);

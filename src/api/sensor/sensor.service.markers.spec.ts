@@ -2,6 +2,7 @@ import type {
   MarkerSensorEntry,
   MeasurementRepository,
 } from '../../database/repositories/measurement.repository.js';
+import type { GovSourceRepository } from '../../database/repositories/gov-source.repository.js';
 import type { SensorRepository } from '../../database/repositories/sensor.repository.js';
 import { SensorService } from './sensor.service.js';
 
@@ -23,12 +24,13 @@ function entry(
   };
 }
 
-function markers(sensors: MarkerSensorEntry[]) {
+function markers(sensors: MarkerSensorEntry[], disabled = new Set<string>()) {
   const service = new SensorService(
     {
       findMarkerSensorsInRange: jest.fn().mockResolvedValue(sensors),
     } as unknown as MeasurementRepository,
     {} as SensorRepository,
+    { disabled: () => Promise.resolve(disabled) } as GovSourceRepository,
   );
   return service.getMarkerSensorList(0, 10);
 }
@@ -69,5 +71,17 @@ describe('SensorService.getMarkerSensorList', () => {
     expect(result[0].sensors).toEqual([
       { sensor_id: 'b', device_model: 'insight' },
     ]);
+  });
+
+  it('leaves out the stations of a government source that is switched off', async () => {
+    const result = await markers(
+      [
+        entry('de-uba-21', 'gov', ''),
+        entry('us-airnow-060371103', 'gov', ''),
+        entry('u1', 'urban', ''),
+      ],
+      new Set(['us-airnow']),
+    );
+    expect(result.map((r) => r.sensor_id)).toEqual(['de-uba-21', 'u1']);
   });
 });

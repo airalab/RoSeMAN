@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GovMeasurementRepository } from '../database/repositories/gov-measurement.repository.js';
+import { GovSourceRepository } from '../database/repositories/gov-source.repository.js';
 import { GovStationRepository } from '../database/repositories/gov-station.repository.js';
 import { MeasurementRepository } from '../database/repositories/measurement.repository.js';
 import type { Measurement } from '../database/schemas/measurement.schema.js';
@@ -23,7 +24,7 @@ interface FetchConfig {
 }
 
 /**
- * Polls every enabled source and stores its latest hour (GOV_STATIONS_ENABLED=true): as published in
+ * Polls every source of GOV_STATIONS_SOURCES that is not switched off (gov_sources) and stores its latest hour (GOV_STATIONS_ENABLED=true): as published in
  * gov_measurements, and as a regular sensor in measurements (projection.ts) for the map.
  * The sources publish hourly; polling every 15 min catches a new hour without a long lag,
  * and the unique (station, hour) index makes repeated reads of the same hour no-ops.
@@ -45,6 +46,7 @@ export class GovStationsFetchService implements OnModuleInit, OnModuleDestroy {
     private readonly readings: GovMeasurementRepository,
     private readonly measurements: MeasurementRepository,
     private readonly stationRepo: GovStationRepository,
+    private readonly switches: GovSourceRepository,
   ) {
     this.cfg = config.get<FetchConfig>('govStations') as FetchConfig;
     this.sources = selectSources(this.cfg.sources);
@@ -66,7 +68,10 @@ export class GovStationsFetchService implements OnModuleInit, OnModuleDestroy {
     if (this.running) return;
     this.running = true;
     try {
-      await Promise.all(this.sources.map((s) => this.fetchOne(s)));
+      const off = await this.switches.disabled();
+      await Promise.all(
+        this.sources.filter((s) => !off.has(s.id)).map((s) => this.fetchOne(s)),
+      );
     } finally {
       this.running = false;
     }

@@ -1,8 +1,6 @@
-import {
-  ircelReadings,
-  ircelStations,
-  type IrcelSeries,
-} from './belgium-irceline.js';
+import { IRCELINE } from './belgium-irceline.js';
+import { type SosSeries, sosReadings, sosStations } from './sos-52n.js';
+import { UK_AIR } from './uk-defra.js';
 import { cetEpoch, ubaReadings, ubaStations } from './germany-uba.js';
 import { rivmReadings } from './netherlands-rivm.js';
 
@@ -57,7 +55,7 @@ describe('Belgium IRCEL-CELINE', () => {
   it('names a station by its place and keeps one entry per station', () => {
     const s = station(1030, '40AL01 - Linkeroever');
     expect(
-      ircelStations([{ station: s }, { station: s }] as IrcelSeries[]),
+      sosStations(IRCELINE, [{ station: s }, { station: s }] as SosSeries[]),
     ).toEqual([
       {
         id: 'be-irceline-1030',
@@ -70,7 +68,8 @@ describe('Belgium IRCEL-CELINE', () => {
   });
 
   it('takes the last value of each pollutant, converts mg/m³, drops stale and negative ones', () => {
-    const r = ircelReadings(
+    const r = sosReadings(
+      IRCELINE,
       {
         '6001': [
           {
@@ -107,6 +106,39 @@ describe('Belgium IRCEL-CELINE', () => {
         timestamp: fresh / 1000,
         values: { pm25: 13.38, co: 210 },
       },
+    ]);
+  });
+});
+
+describe('UK DEFRA UK-AIR', () => {
+  it('names a station by the label before the pollutant, reads [lat, lng]', () => {
+    const series = [
+      {
+        station: {
+          properties: {
+            id: 788035,
+            label:
+              'Toft Newton-Particulate matter less than 2.5 micro m (aerosol)',
+          },
+          geometry: { coordinates: [53.3741, -0.4498, 'NaN'] },
+        },
+      },
+      {
+        station: {
+          properties: {
+            id: 1,
+            label: 'Stoke-on-Trent Centre-Nitrogen dioxide (air)',
+          },
+          geometry: { coordinates: [53.02, -2.17, 'NaN'] },
+        },
+      },
+      { station: { properties: { id: 2, label: 'Nowhere-Ozone' } } },
+    ] as SosSeries[];
+    expect(
+      sosStations(UK_AIR, series).map((s) => [s.id, s.name, s.lat, s.lng]),
+    ).toEqual([
+      ['uk-defra-788035', 'Toft Newton', 53.3741, -0.4498],
+      ['uk-defra-1', 'Stoke-on-Trent Centre', 53.02, -2.17],
     ]);
   });
 });

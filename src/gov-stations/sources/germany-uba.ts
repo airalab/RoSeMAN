@@ -105,6 +105,7 @@ function cetDayHour(epochS: number): { date: string; hour: number } {
 
 export const germanyUba: GovSource = {
   id: 'de-uba',
+  network: 'Umweltbundesamt, Germany',
   publisher:
     'Umweltbundesamt (German Environment Agency), air quality networks of the federal states',
   url: 'https://www.umweltbundesamt.de/daten/luft/luftdaten',

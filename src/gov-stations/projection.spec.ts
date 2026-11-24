@@ -1,5 +1,6 @@
 import { toSensorMeasurement } from './projection.js';
 import { cyprusDli } from './sources/cyprus-dli.js';
+import { usAirnow } from './sources/us-airnow.js';
 
 const station = {
   id: 'cy-dli-nictra',
@@ -36,6 +37,15 @@ describe('government station as a map sensor', () => {
     });
     expect(m?.owner).toBeUndefined();
     expect(m?.measurement).not.toHaveProperty('so2');
+  });
+
+  it('passes gases through for a source that publishes ppb', () => {
+    const m = toSensorMeasurement(usAirnow, station, {
+      station_id: station.id,
+      timestamp: 1,
+      values: { pm25: 12.4, o3: 31, no2: 4.1, co: 0.25 },
+    });
+    expect(m?.measurement).toEqual({ pm25: 12.4, o3: 31, no2: 4.1, co: 0.25 });
   });
 
   it('skips an hour with nothing the map can show', () => {
