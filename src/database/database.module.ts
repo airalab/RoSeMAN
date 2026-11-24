@@ -10,6 +10,10 @@ import {
   ConnectivityRecordSchema,
 } from './schemas/connectivity-record.schema.js';
 import { Datalog, DatalogSchema } from './schemas/datalog.schema.js';
+import {
+  GovMeasurement,
+  GovMeasurementSchema,
+} from './schemas/gov-measurement.schema.js';
 import { IndexState, IndexStateSchema } from './schemas/index-state.schema.js';
 import {
   Measurement,
@@ -33,6 +37,7 @@ import { CpsAnchorRepository } from './repositories/cps-anchor.repository.js';
 import { ConnectivityPayloadRepository } from './repositories/connectivity-payload.repository.js';
 import { ConnectivityRecordRepository } from './repositories/connectivity-record.repository.js';
 import { DatalogRepository } from './repositories/datalog.repository.js';
+import { GovMeasurementRepository } from './repositories/gov-measurement.repository.js';
 import { IndexStateRepository } from './repositories/index-state.repository.js';
 import { MeasurementRepository } from './repositories/measurement.repository.js';
 import { SensorRepository } from './repositories/sensor.repository.js';
@@ -54,6 +59,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
       { name: ConnectivityPayload.name, schema: ConnectivityPayloadSchema },
       { name: ConnectivityRecord.name, schema: ConnectivityRecordSchema },
       { name: Datalog.name, schema: DatalogSchema },
+      { name: GovMeasurement.name, schema: GovMeasurementSchema },
       { name: IndexState.name, schema: IndexStateSchema },
       { name: Measurement.name, schema: MeasurementSchema },
       { name: Sensor.name, schema: SensorSchema },
@@ -68,6 +74,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     ConnectivityPayloadRepository,
     ConnectivityRecordRepository,
     DatalogRepository,
+    GovMeasurementRepository,
     IndexStateRepository,
     MeasurementRepository,
     SensorRepository,
@@ -81,6 +88,7 @@ import { SubscriptionRepository } from './repositories/subscription.repository.j
     ConnectivityPayloadRepository,
     ConnectivityRecordRepository,
     DatalogRepository,
+    GovMeasurementRepository,
     IndexStateRepository,
     MeasurementRepository,
     SensorRepository,

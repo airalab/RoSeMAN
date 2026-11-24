@@ -4,3 +4,4 @@ export { default as ipfsConfig } from './ipfs.config.js';
 export { default as geocodingConfig } from './geocoding.config.js';
 export { default as cpsConfig } from './cps.config.js';
 export { default as profileConfig } from './profile.config.js';
+export { default as govStationsConfig } from './gov-stations.config.js';

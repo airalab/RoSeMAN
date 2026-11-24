@@ -15,12 +15,17 @@ import {
   appConfig,
   cpsConfig,
   geocodingConfig,
+  govStationsConfig,
   ipfsConfig,
   profileConfig,
   robonomicsConfig,
 } from './config/index.js';
 import { DatabaseModule } from './database/database.module.js';
 import { GeocodingModule } from './geocoding/geocoding.module.js';
+import {
+  GovStationsApiModule,
+  GovStationsFetchModule,
+} from './gov-stations/gov-stations.module.js';
 import { MeasurementModule } from './measurement/measurement.module.js';
 import { MetricsModule } from './metrics/metrics.module.js';
 import {
@@ -37,6 +42,8 @@ import { RobonomicsModule } from './robonomics/robonomics.module.js';
  * - `INDEXER_ENABLED` — RobonomicsModule (сканирование блоков).
  * - `MEASUREMENT_ENABLED` — CPS processor и deprecated datalog/projection.
  * - `GEOCODING_ENABLED` — CPS-проекция sensor_locations и reverse geocoding.
+ * - `GOV_STATIONS_ENABLED` (по умолчанию выключен) — опрос сайтов государственных сетей
+ *   мониторинга (src/gov-stations); API /api/v2/gov/* идёт вместе с API_ENABLED.
  *
  * Выставив нужные флаги в `false`, можно запускать отдельные инстансы:
  * индексатор, обработчик IPFS, геокодер, REST API — в любых комбинациях.
@@ -56,6 +63,7 @@ function buildImports(): Array<
         geocodingConfig,
         cpsConfig,
         profileConfig,
+        govStationsConfig,
       ],
     }),
     MongooseModule.forRootAsync({
@@ -75,6 +83,7 @@ function buildImports(): Array<
       SensorModule,
       StoryModule,
       ProfileApiModule,
+      GovStationsApiModule,
       MetricsModule,
       PrometheusModule.register({
         defaultMetrics: {
@@ -95,6 +104,10 @@ function buildImports(): Array<
 
   if (process.env.PROFILE_ENABLED === 'true') {
     modules.push(ProfilePinModule);
+  }
+
+  if (process.env.GOV_STATIONS_ENABLED === 'true') {
+    modules.push(GovStationsFetchModule);
   }
 
   if (process.env.GEOCODING_ENABLED !== 'false') {
