@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { isReservedGovId } from '../../gov-stations/reserved.js';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -55,6 +56,8 @@ export interface MarkerSensorEntry extends OwnedSensorEntry {
  */
 @Injectable()
 export class MeasurementRepository {
+  private readonly logger = new Logger(MeasurementRepository.name);
+
   constructor(
     @InjectModel(Measurement.name)
     private readonly model: Model<MeasurementDocument>,
@@ -630,7 +633,16 @@ export class MeasurementRepository {
    * @param docs - массив документов для вставки
    */
   async upsertMany(docs: Measurement[]): Promise<void> {
-    const operations = docs.map((doc) => ({
+    const allowed = docs.filter(
+      (doc) => doc.source_type === 'gov' || !isReservedGovId(doc.sensor_id),
+    );
+    if (allowed.length < docs.length) {
+      this.logger.warn(
+        `dropped ${docs.length - allowed.length} measurement(s) under a government station id`,
+      );
+    }
+    if (!allowed.length) return;
+    const operations = allowed.map((doc) => ({
       updateOne: {
         filter: { sensor_id: doc.sensor_id, timestamp: doc.timestamp },
         update: { $set: doc },
