@@ -89,11 +89,16 @@ export class GovStationRepository {
           s: { $min: '$lat' },
           e: { $max: '$lng' },
           n: { $max: '$lat' },
+          // $concatArrays: a bare array here would be read as the accumulator's arguments
           cells: {
-            $addToSet: [
-              { $floor: { $divide: ['$lat', AREA_CELL_DEG] } },
-              { $floor: { $divide: ['$lng', AREA_CELL_DEG] } },
-            ],
+            $addToSet: {
+              $concatArrays: [
+                [
+                  { $floor: { $divide: ['$lat', AREA_CELL_DEG] } },
+                  { $floor: { $divide: ['$lng', AREA_CELL_DEG] } },
+                ],
+              ],
+            },
           },
         },
       },
