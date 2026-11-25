@@ -74,6 +74,16 @@ async function run(): Promise<void> {
     const main = app.get<Connection>(getConnectionToken());
     const feeds = app.get<Connection>(getConnectionToken(FEEDS_CONNECTION));
     logger.log(`from ${main.db.databaseName} to ${feeds.db.databaseName}`);
+    // the upserts below look documents up by these keys: without the indexes each is a full scan
+    await feeds.db
+      .collection('feed_stations')
+      .createIndex({ id: 1 }, { unique: true });
+    await feeds.db
+      .collection('feed_readings')
+      .createIndex({ station_id: 1, timestamp: 1 }, { unique: true });
+    await feeds.db
+      .collection('feed_sources')
+      .createIndex({ id: 1 }, { unique: true });
 
     await copy(logger, main, feeds, ['gov_stations', 'feed_stations'], (d) => {
       const { area, last_ts, ...rest } = d;
