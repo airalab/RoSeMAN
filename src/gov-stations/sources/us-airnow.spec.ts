@@ -1,17 +1,20 @@
 import { airnowReadings, airnowStations, hourlyFiles } from './us-airnow.js';
 
 const LOCATIONS = [
-  'StationID|AQSID|FullAQSID|Parameter|MonitorType|SiteCode|SiteName|Status|AgencyID|AgencyName|EPARegion|Latitude|Longitude|Elevation|GMTOffset|CountryFIPS|CBSA_ID',
-  '1|060371103|840060371103|PM2.5|Permanent|1103|LOS ANGELES-N. MAIN|Active|CA1|South Coast AQMD|R9|34.066429|-118.226755|87|-8|US|31080',
-  '1|060371103|840060371103|OZONE|Permanent|1103|LOS ANGELES-N. MAIN|Active|CA1|South Coast AQMD|R9|34.066429|-118.226755|87|-8|US|31080',
-  '2|000050314|124000050314|PM2.5|Permanent|0314|Québec - Charlesbour|Active|QC1|Canada-Quebec1|CA|46.86|-71.27||-5|CA|',
-  '3|060370002|840060370002|OZONE|Permanent|0002|AZUSA|Active|CA1|South Coast AQMD|R9|34.13|-117.92||-8|US|',
-  '4|000000000|586000000000|PM2.5|Permanent|0000|Islamabad-Old|Inactive|PK1|U.S. Department of State Pakistan|DSPK|33.72|73.11||5|PK|',
+  'StationID|AQSID|FullAQSID|Parameter|MonitorType|SiteCode|SiteName|Status|AgencyID|AgencyName|EPARegion|Latitude|Longitude|Elevation|GMTOffset|CountryFIPS|CBSA_ID|CBSA_Name|StateAQSCode|StateAbbreviation',
+  '1|060371103|840060371103|PM2.5|Permanent|1103|LOS ANGELES-N. MAIN|Active|CA1|South Coast AQMD|R9|34.066429|-118.226755|87|-8|US|31080||06|CA',
+  '1|060371103|840060371103|OZONE|Permanent|1103|LOS ANGELES-N. MAIN|Active|CA1|South Coast AQMD|R9|34.066429|-118.226755|87|-8|US|31080||06|CA',
+  '2|000050314|124000050314|PM2.5|Permanent|0314|Québec - Charlesbour|Active|QC1|Canada-Quebec1|CA|46.86|-71.27||-5|CA|||CC',
+  '3|060370002|840060370002|OZONE|Permanent|0002|AZUSA|Active|CA1|South Coast AQMD|R9|34.13|-117.92||-8|US|||06|CA',
+  '4|000000000|586000000000|PM2.5|Permanent|0000|Islamabad-Old|Inactive|PK1|U.S. Department of State Pakistan|DSPK|33.72|73.11||5|PK|||',
+  '5|MMAIR1010|840MMAIR1010|PM2.5|Temporary|1010|USFWS1001|Active|AIRSIS|AIRSIS|R9|32.898409|-117.120137||-8|US|||',
+  '6|MMAIR1003|840MMAIR1003|PM2.5|Temporary|1003|USFWS1000|Active|AIRSIS|AIRSIS|R10|60.788984|-161.779883||-9|US|||',
+  '7|NRB000046|404NRB000046|PM2.5|Permanent|0046|Nairobi CBD|Active|KE1|Nairobi EPA||-1.28156|36.81883||3||||',
 ].join('\n');
 
 describe('AirNow', () => {
   it('keeps active sites that measure dust, one station per site', () => {
-    expect(airnowStations(LOCATIONS)).toEqual([
+    expect(airnowStations(LOCATIONS).slice(0, 2)).toEqual([
       {
         id: 'us-airnow-840060371103',
         name: 'Los Angeles-N. Main',
@@ -19,6 +22,7 @@ describe('AirNow', () => {
         lat: 34.066429,
         lng: -118.226755,
         operator: 'South Coast AQMD',
+        region: 'US-CA',
       },
       {
         id: 'us-airnow-124000050314',
@@ -27,8 +31,24 @@ describe('AirNow', () => {
         lat: 46.86,
         lng: -71.27,
         operator: 'Canada-Quebec1',
+        region: 'CA',
       },
     ]);
+  });
+
+  it('takes the country from the AQS id, and a missing U.S. state from the nearest site within 300 km', () => {
+    const regions = Object.fromEntries(
+      airnowStations(LOCATIONS).map((s) => [s.name, s.region]),
+    );
+    expect(regions).toEqual({
+      'Los Angeles-N. Main': 'US-CA',
+      'Québec - Charlesbour': 'CA',
+      // San Diego, ~180 km from Los Angeles
+      Usfws1001: 'US-CA',
+      // Alaska, no site with a state nearby
+      Usfws1000: 'US',
+      'Nairobi CBD': 'KE',
+    });
   });
 
   it('matches 9- and 12-digit site ids, ends the hour, keeps ppb, skips negatives', () => {

@@ -20,6 +20,8 @@ import {
   profileConfig,
   robonomicsConfig,
 } from './config/index.js';
+import { FeedsDatabaseModule } from './database/feeds-database.module.js';
+import { feedsMongooseModule } from './database/feeds-connection.js';
 import { DatabaseModule } from './database/database.module.js';
 import { GeocodingModule } from './geocoding/geocoding.module.js';
 import {
@@ -74,6 +76,8 @@ function buildImports(): Array<
       }),
     }),
     DatabaseModule,
+    feedsMongooseModule(),
+    FeedsDatabaseModule,
   ];
 
   if (process.env.API_ENABLED !== 'false') {

@@ -1,3 +1,4 @@
+import { ISO_NUMERIC_TO_ALPHA2, US_STATES } from './iso-codes.js';
 import {
   getText,
   type GovSource,
@@ -56,9 +57,53 @@ export function airnowStations(text: string): GovStation[] {
       lat,
       lng,
       operator: f[col.AgencyName] || undefined,
+      region: regionOf(f[col.FullAQSID], f[col.StateAbbreviation]),
     });
   }
-  return [...byId.values()];
+  const stations = [...byId.values()];
+  fillUsStates(stations);
+  return stations;
+}
+
+/**
+ * The map visitor's unit of choice: a U.S. state ("US-CA"), else the country ("CA", "TH", "KE"). The country
+ * is the first three digits of the full AQS id — ISO 3166 numeric; CountryFIPS uses another code list.
+ */
+function regionOf(fullAqsid: string, state: string): string | undefined {
+  const country = ISO_NUMERIC_TO_ALPHA2.get(fullAqsid.slice(0, 3));
+  if (country === 'US' && state in US_STATES) return `US-${state}`;
+  return country;
+}
+
+/** Farther than this from every U.S. station with a state, a station stays in "US" as a whole. */
+const NEAREST_STATE_KM = 300;
+
+/**
+ * About one U.S. site in eight has no state (temporary smoke monitors, tribal networks): it takes the state
+ * of the nearest site that has one. A visitor who switched a state on expects every station in it.
+ */
+function fillUsStates(stations: GovStation[]): void {
+  const known = stations.filter((s) => s.region?.startsWith('US-'));
+  for (const st of stations) {
+    if (st.region !== 'US') continue;
+    let best: GovStation | null = null;
+    let bestKm = NEAREST_STATE_KM;
+    for (const k of known) {
+      const km = distanceKm(st, k);
+      if (km < bestKm) [best, bestKm] = [k, km];
+    }
+    if (best) st.region = best.region;
+  }
+}
+
+function distanceKm(a: GovStation, b: GovStation): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
 }
 
 /**

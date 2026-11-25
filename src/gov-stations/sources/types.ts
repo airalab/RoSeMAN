@@ -11,6 +11,11 @@ export interface GovStation {
   approx?: boolean;
   /** The agency that runs this station, where the source gathers several (AirNow: a state's department). */
   operator?: string;
+  /**
+   * Part of the source's territory that a map visitor switches on as one: an ISO 3166 code — country
+   * ("TH") or subdivision ("US-CA"). Absent for a national network: its area is the whole source.
+   */
+  region?: string;
 }
 
 /**

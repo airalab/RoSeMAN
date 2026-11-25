@@ -21,11 +21,14 @@ interface FetchConfig {
   sources: string[];
   pollInterval: number;
   timeoutMs: number;
+  legacyProjection: boolean;
 }
 
 /**
- * Polls every source of GOV_STATIONS_SOURCES that is not switched off (gov_sources) and stores its latest hour (GOV_STATIONS_ENABLED=true): as published in
- * gov_measurements, and as a regular sensor in measurements (projection.ts) for the map.
+ * Polls every source of GOV_STATIONS_SOURCES that is not switched off (feed_sources) and stores its latest hour
+ * (GOV_STATIONS_ENABLED=true) as published, in the feeds database: feed_readings, and the station's newest hour
+ * in feed_stations. With GOV_STATIONS_LEGACY_PROJECTION=true also as a regular sensor in measurements
+ * (projection.ts), for a map that still reads government stations from there.
  * The sources publish hourly; polling every 15 min catches a new hour without a long lag,
  * and the unique (station, hour) index makes repeated reads of the same hour no-ops.
  */
@@ -110,6 +113,16 @@ export class GovStationsFetchService implements OnModuleInit, OnModuleDestroy {
       const added = await this.readings.upsertMany(
         latest.map((r) => ({ ...r, source: source.id })),
       );
+      const newest = new Map<string, number>();
+      for (const r of latest) {
+        newest.set(
+          r.station_id,
+          Math.max(newest.get(r.station_id) ?? 0, r.timestamp),
+        );
+      }
+      await this.stationRepo.touch(newest);
+      if (added) this.logger.log(`${source.id}: ${added} new station-hours`);
+      if (!this.cfg.legacyProjection) return;
       // The same hours as regular sensor measurements: markers, the card and charts read these
       const stations = new Map(stationList.map((st) => [st.id, st]));
       const docs = latest
@@ -119,7 +132,6 @@ export class GovStationsFetchService implements OnModuleInit, OnModuleDestroy {
         })
         .filter((d): d is Measurement => d !== null);
       if (docs.length) await this.measurements.upsertMany(docs);
-      if (added) this.logger.log(`${source.id}: ${added} new station-hours`);
     } catch (e) {
       this.logger.warn(`${source.id}: ${(e as Error).message}`);
     }
