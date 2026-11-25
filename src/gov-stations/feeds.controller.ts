@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { GovMeasurementRepository } from '../database/repositories/gov-measurement.repository.js';
 import { GovSourceRepository } from '../database/repositories/gov-source.repository.js';
-import { GovStationRepository } from '../database/repositories/gov-station.repository.js';
+import {
+  AREA_CELL_DEG,
+  GovStationRepository,
+} from '../database/repositories/gov-station.repository.js';
 import { areaName } from './areas.js';
 import { type FeedMarker, feedMarkers } from './feed-markers.js';
 import { toMapUnits } from './projection.js';
@@ -27,6 +30,8 @@ export interface FeedAreaView {
   name: string;
   stations: number;
   bbox: [number, number, number, number];
+  /** Grid cells with a station, [lat index, lng index]; cell side is `cellDeg` of the response */
+  cells: Array<[number, number]>;
 }
 
 export interface FeedView {
@@ -74,13 +79,13 @@ export class FeedsController {
   /** Feeds with a station heard from in the last 24 h, each with its areas: name, station count, bbox. */
   @Get()
   @Header('Cache-Control', 'public, max-age=60')
-  async list(): Promise<{ result: FeedView[] }> {
+  async list(): Promise<{ result: FeedView[]; cellDeg: number }> {
     if (!this.catalog || Date.now() - this.catalog.at > CATALOG_TTL_MS) {
       const value = this.buildCatalog();
       value.catch(() => (this.catalog = null));
       this.catalog = { at: Date.now(), value };
     }
-    return { result: await this.catalog.value };
+    return { result: await this.catalog.value, cellDeg: AREA_CELL_DEG };
   }
 
   private async buildCatalog(): Promise<FeedView[]> {
@@ -106,6 +111,7 @@ export class FeedsController {
           name: areaName(s, a.area),
           stations: a.stations,
           bbox: a.bbox,
+          cells: a.cells,
         })),
       });
     }

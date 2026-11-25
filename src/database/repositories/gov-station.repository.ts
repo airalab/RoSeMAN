@@ -15,12 +15,20 @@ export type StoredGovStation = GovStation & {
   last_ts?: number;
 };
 
+/** Side of a grid cell of FeedArea.cells, degrees. */
+export const AREA_CELL_DEG = 0.5;
+
 export interface FeedArea {
   area: string;
   source: string;
   stations: number;
   /** [west, south, east, north] of its stations */
   bbox: [number, number, number, number];
+  /**
+   * Grid cells with a station, [floor(lat / AREA_CELL_DEG), floor(lng / AREA_CELL_DEG)]: where the area
+   * really is. A country's bbox reaches over its neighbours; the cells do not.
+   */
+  cells: Array<[number, number]>;
 }
 
 const HIDE = { _id: 0, __v: 0, createdAt: 0, updatedAt: 0 };
@@ -81,6 +89,12 @@ export class GovStationRepository {
           s: { $min: '$lat' },
           e: { $max: '$lng' },
           n: { $max: '$lat' },
+          cells: {
+            $addToSet: [
+              { $floor: { $divide: ['$lat', AREA_CELL_DEG] } },
+              { $floor: { $divide: ['$lng', AREA_CELL_DEG] } },
+            ],
+          },
         },
       },
       {
@@ -90,6 +104,7 @@ export class GovStationRepository {
           source: 1,
           stations: 1,
           bbox: ['$w', '$s', '$e', '$n'],
+          cells: 1,
         },
       },
       { $sort: { area: 1 } },
