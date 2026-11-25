@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { FEEDS_CONNECTION } from '../feeds-connection.js';
 import {
   GovSourceState,
   type GovSourceStateDocument,
@@ -14,7 +15,7 @@ export class GovSourceRepository {
   private cache: { at: number; ids: Promise<Set<string>> } | null = null;
 
   constructor(
-    @InjectModel(GovSourceState.name)
+    @InjectModel(GovSourceState.name, FEEDS_CONNECTION)
     private readonly model: Model<GovSourceStateDocument>,
   ) {}
 

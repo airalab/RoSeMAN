@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { FEEDS_CONNECTION } from '../feeds-connection.js';
 import {
   GovMeasurement,
   type GovMeasurementDocument,
@@ -16,7 +17,7 @@ export interface GovReading {
 @Injectable()
 export class GovMeasurementRepository {
   constructor(
-    @InjectModel(GovMeasurement.name)
+    @InjectModel(GovMeasurement.name, FEEDS_CONNECTION)
     private readonly model: Model<GovMeasurementDocument>,
   ) {}
 
@@ -52,6 +53,25 @@ export class GovMeasurementRepository {
       },
       { $project: { _id: 0 } },
     ]);
+  }
+
+  /** Every reading of these stations within [from, to], oldest first. */
+  async window(
+    stationIds: string[],
+    from: number,
+    to: number,
+  ): Promise<GovReading[]> {
+    if (!stationIds.length) return [];
+    return this.model
+      .find(
+        {
+          station_id: { $in: stationIds },
+          timestamp: { $gte: from, $lte: to },
+        },
+        { _id: 0, station_id: 1, timestamp: 1, values: 1 },
+      )
+      .sort({ timestamp: 1 })
+      .lean<GovReading[]>();
   }
 
   async history(

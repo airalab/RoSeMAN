@@ -1,4 +1,4 @@
-// Switch a government source off the map, or back on, without a restart (gov_sources):
+// Switch a government source off the map, or back on, without a restart (feed_sources, feeds database):
 //
 //   node dist/scripts/gov-source.js                 # every known source and whether it is on
 //   node dist/scripts/gov-source.js off us-airnow   # not polled; its stations leave the map within a minute
@@ -9,24 +9,22 @@ import 'robonomics-api-augment';
 import '../env-bootstrap.js';
 
 import { Logger, Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { MongooseModule } from '@nestjs/mongoose';
-import { appConfig } from '../config/index.js';
-import { DatabaseModule } from '../database/database.module.js';
+import { appConfig, govStationsConfig } from '../config/index.js';
+import { feedsMongooseModule } from '../database/feeds-connection.js';
+import { FeedsDatabaseModule } from '../database/feeds-database.module.js';
 import { GovSourceRepository } from '../database/repositories/gov-source.repository.js';
 import { GOV_SOURCES } from '../gov-stations/sources/index.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [appConfig] }),
-    MongooseModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (cfg: ConfigService) => ({
-        uri: cfg.get<string>('app.mongodbUri'),
-      }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [appConfig, govStationsConfig],
     }),
-    DatabaseModule,
+    feedsMongooseModule(),
+    FeedsDatabaseModule,
   ],
 })
 class GovSourceCliModule {}

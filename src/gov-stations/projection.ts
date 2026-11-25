@@ -29,6 +29,20 @@ const FROM_PPB: Record<string, (v: number) => number> = Object.fromEntries(
 
 const round = (v: number, digits: number): number => Number(v.toFixed(digits));
 
+/** Values as published → the map's units; quantities the map has no scale for are left out. */
+export function toMapUnits(
+  source: Pick<GovSource, 'gasUnit'>,
+  values: Record<string, number>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  const units = source.gasUnit === 'ppb' ? FROM_PPB : TO_MAP_UNITS;
+  for (const [key, convert] of Object.entries(units)) {
+    const v = values[key];
+    if (Number.isFinite(v)) out[key] = round(convert(v), key === 'co' ? 3 : 1);
+  }
+  return out;
+}
+
 /**
  * One hour of a government station as a regular `measurements` document, so that markers, the sensor card
  * and its charts show it the same way as an Altruist. No owner: a station belongs to no account.
@@ -38,13 +52,7 @@ export function toSensorMeasurement(
   station: GovStation,
   reading: GovStationReading,
 ): Measurement | null {
-  const measurement: Record<string, number> = {};
-  const units = source.gasUnit === 'ppb' ? FROM_PPB : TO_MAP_UNITS;
-  for (const [key, convert] of Object.entries(units)) {
-    const v = reading.values[key];
-    if (Number.isFinite(v))
-      measurement[key] = round(convert(v), key === 'co' ? 3 : 1);
-  }
+  const measurement = toMapUnits(source, reading.values);
   if (!Object.keys(measurement).length) return null;
   return {
     sensor_id: station.id,
