@@ -16,7 +16,7 @@ export type StoredGovStation = GovStation & {
 };
 
 /** Side of a grid cell of FeedArea.cells, degrees. */
-export const AREA_CELL_DEG = 0.5;
+export const AREA_CELL_DEG = 0.1;
 
 export interface FeedArea {
   area: string;
